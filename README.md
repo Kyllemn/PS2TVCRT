@@ -1,5 +1,7 @@
 # RetroLoader
 
+Manual online: https://claude.ai/artifact/TbHwMBFJQS6zcHkxzZPuug
+
 RetroLoader é um launcher de ISOs e apps para PS2, feito para atender às demandas de TVs CRT no mercado. Letras maiores, fácil navegação, para pegar e jogar. Execute seus jogos diretamente da raiz de qualquer dispositivo. Navegue fácil pelos menus. Bem-vindo ao mundo CRT dos anos 2000, a era de ouro do PS2. Usa o Neutrino para o boot/chainload dos jogos.
 
 ## Funcionalidades
