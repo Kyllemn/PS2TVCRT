@@ -1,0 +1,712 @@
+<title>Manual do FastLoader</title>
+<meta name="description" content="Manual completo do FastLoader para PlayStation 2: telas, botões, abas, gerenciador de arquivos e o PS1PS2Capas.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: capa com a TV mostrando as telas em rodízio; menu fixo; seções em coluna de leitura com figuras largas. Visual: o próprio roxo e amarelo do loader. */
+:root{
+  --bg:#150a22; --bg2:#1e0e30; --panel:#2c1b44; --panel2:#24143a; --line:#504070;
+  --fg:#efeaf6; --dim:#bdb2d2; --mute:#8d80a6;
+  --gold:#f8cc20; --gold-ink:#241800; --iso:#58a8ff; --elf:#40e050; --warn:#ff8a7a;
+  --x:#7fa6ff; --tri:#46d6a0; --sq:#f08ad8; --ci:#ff6d6d;
+  --display:"Chakra Petch","Segoe UI",system-ui,sans-serif;
+  --body:"Atkinson Hyperlegible","Segoe UI",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:72px}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:17px;line-height:1.6;margin:0}
+a{color:var(--gold)}
+:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
+h1,h2,h3{font-family:var(--display);line-height:1.15;text-wrap:balance;margin:0}
+h2{font-size:clamp(1.7rem,3.6vw,2.4rem);font-weight:700;letter-spacing:.01em}
+h3{font-size:1.25rem;font-weight:600}
+p{margin:0}
+code,kbd,.mono{font-family:var(--mono);font-size:.88em}
+code{background:var(--panel2);border:1px solid var(--line);padding:.05em .35em;border-radius:4px;color:#ffe58a;word-break:break-word}
+
+/* ---------- barra de navegação ---------- */
+.nav{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:rgba(21,10,34,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.nav-in{max-width:1180px;margin:0 auto;padding:0 16px;display:flex;align-items:center;gap:18px;height:58px}
+.brand{font-family:var(--display);font-weight:700;font-size:1.15rem;letter-spacing:.04em;white-space:nowrap;color:var(--fg);text-decoration:none}
+.brand b{color:var(--gold)}
+.nav ul{list-style:none;margin:0;padding:0;display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;flex:1;min-width:0}
+.nav ul::-webkit-scrollbar{display:none}
+.nav li a{display:block;padding:6px 11px;border-radius:6px;color:var(--dim);text-decoration:none;font-family:var(--display);font-weight:600;font-size:.92rem;white-space:nowrap}
+.nav li a:hover{color:var(--fg);background:var(--panel2)}
+.nav li a.on{color:var(--gold-ink);background:var(--gold)}
+
+/* ---------- capa ---------- */
+.hero{position:relative;overflow:hidden;border-bottom:1px solid var(--line);background:
+  radial-gradient(1200px 500px at 80% -10%,rgba(248,204,32,.10),transparent 60%),
+  radial-gradient(900px 600px at 0% 110%,rgba(88,168,255,.10),transparent 60%),var(--bg2)}
+.hero-in{max-width:1180px;margin:0 auto;padding:56px 16px 48px;display:grid;grid-template-columns:1.05fr 1fr;gap:44px;align-items:center}
+.eyebrow{font-family:var(--mono);font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--gold)}
+.hero h1{font-size:clamp(2.8rem,7vw,5.2rem);font-weight:700;letter-spacing:-.01em;margin:10px 0 14px}
+.hero h1 span{color:var(--gold)}
+.lede{font-size:1.18rem;color:var(--dim);max-width:34em}
+.pills{display:flex;flex-wrap:wrap;gap:8px;margin-top:22px}
+.pill{font-family:var(--display);font-weight:600;font-size:.85rem;padding:5px 11px;border:1px solid var(--line);border-radius:999px;color:var(--fg);background:var(--panel2)}
+.cta{display:flex;gap:12px;flex-wrap:wrap;margin-top:28px}
+.btn{display:inline-flex;align-items:center;gap:8px;font-family:var(--display);font-weight:700;font-size:1rem;padding:12px 18px;border-radius:8px;text-decoration:none;border:1px solid var(--line);color:var(--fg);background:var(--panel)}
+.btn.primary{background:var(--gold);border-color:var(--gold);color:var(--gold-ink)}
+.btn:hover{filter:brightness(1.08)}
+
+/* TV com as telas */
+.tv{position:relative;background:#0b0610;border-radius:22px;padding:16px 16px 34px;border:1px solid #3a2c52;box-shadow:0 30px 60px rgba(0,0,0,.55),inset 0 0 0 6px #140c1f}
+.screen{position:relative;border-radius:10px;overflow:hidden;aspect-ratio:640/448;background:#000}
+.screen img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .7s ease}
+.screen img.on{opacity:1}
+.screen::after{content:"";position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(0,0,0,.16) 0 1px,transparent 1px 3px);mix-blend-mode:multiply}
+.tv-cap{position:absolute;left:0;right:0;bottom:8px;text-align:center;font-family:var(--mono);font-size:.78rem;color:var(--mute)}
+.tv-dots{display:flex;gap:6px;justify-content:center;margin-top:12px}
+.tv-dots button{width:9px;height:9px;border-radius:50%;border:0;background:#3a2c52;padding:0;cursor:pointer}
+.tv-dots button.on{background:var(--gold)}
+
+/* ---------- conteúdo ---------- */
+main{max-width:1180px;margin:0 auto;padding:0 16px}
+section{padding-block:64px;border-bottom:1px solid rgba(80,64,112,.5)}
+.sec-head{display:grid;gap:10px;margin-bottom:28px;max-width:46rem}
+.sec-head p{color:var(--dim);font-size:1.08rem}
+.kicker{font-family:var(--mono);font-size:.78rem;letter-spacing:.14em;text-transform:uppercase;color:var(--gold)}
+.prose{max-width:46rem;display:grid;gap:14px}
+.prose ul,.prose ol{margin:0;padding-left:1.3em;display:grid;gap:6px}
+
+/* passos */
+.steps{counter-reset:s;display:grid;gap:14px;max-width:52rem;padding:0;margin:0;list-style:none}
+.steps li{counter-increment:s;display:grid;grid-template-columns:44px 1fr;gap:14px;align-items:start;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:16px}
+.steps li::before{content:counter(s);display:grid;place-items:center;width:44px;height:44px;border-radius:10px;background:var(--gold);color:var(--gold-ink);font-family:var(--display);font-weight:700;font-size:1.3rem}
+.steps li>div{min-width:0;display:grid;gap:4px}
+.steps h3{font-size:1.08rem}
+.steps p{color:var(--dim)}
+
+/* requisitos */
+.req{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.req div{border:1px solid var(--line);border-radius:12px;padding:16px;background:var(--bg2);display:grid;gap:6px}
+.req b{font-family:var(--display);font-size:1.05rem}
+.req span{color:var(--dim);font-size:.96rem}
+
+/* controle */
+.pad-wrap{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:28px;align-items:start}
+.ctx{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.ctx button{font-family:var(--display);font-weight:600;font-size:.92rem;padding:7px 12px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--dim);cursor:pointer}
+.ctx button[aria-pressed="true"]{background:var(--gold);color:var(--gold-ink);border-color:var(--gold)}
+.pad svg{width:100%;height:auto;display:block}
+.pad .hit{cursor:pointer}
+.pad .hit:hover .cap,.pad .hit.sel .cap{stroke:var(--gold);stroke-width:3}
+.pad .hit.sel .cap{fill:#3b2656}
+.pad-info{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:18px;min-height:220px;display:grid;gap:10px;align-content:start}
+.pad-info h3{display:flex;align-items:center;gap:10px}
+.pad-info .muted{color:var(--mute)}
+.keytable{width:100%;border-collapse:collapse;font-size:.95rem}
+.keytable td{padding:7px 8px;border-top:1px solid rgba(80,64,112,.6);vertical-align:top}
+.keytable td:first-child{white-space:nowrap;font-family:var(--display);font-weight:600;width:1%}
+.tbl-wrap{overflow-x:auto}
+
+/* ícones de botão */
+.b{display:inline-grid;place-items:center;width:1.55em;height:1.55em;border-radius:50%;border:2px solid currentColor;font-family:var(--display);font-weight:700;font-size:.78em;line-height:1;vertical-align:-.3em;margin-inline:1px}
+.b.x{color:var(--x)} .b.t{color:var(--tri)} .b.s{color:var(--sq)} .b.c{color:var(--ci)}
+.k{display:inline-block;font-family:var(--display);font-weight:700;font-size:.78em;padding:.1em .45em;border-radius:4px;background:var(--gold);color:var(--gold-ink);vertical-align:.08em}
+.k.o{background:transparent;color:var(--fg);border:1px solid var(--line)}
+
+/* abas */
+.tabs-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.tab-card{border:1px solid var(--line);border-radius:14px;background:var(--bg2);padding:18px;display:grid;gap:10px;align-content:start}
+.tab-card header{display:flex;align-items:center;gap:10px}
+.tag{font-family:var(--display);font-weight:700;font-size:.95rem;padding:4px 10px;border-radius:6px;background:var(--gold);color:var(--gold-ink)}
+.tab-card p{color:var(--dim)}
+.tab-card ul{margin:0;padding-left:1.2em;display:grid;gap:4px;color:var(--fg);font-size:.95rem}
+.yes,.no{font-family:var(--mono);font-size:.74rem;letter-spacing:.1em;text-transform:uppercase}
+.yes{color:var(--elf)} .no{color:var(--warn)}
+
+/* figuras */
+.fig{display:grid;gap:8px;margin:0}
+.fig img{width:100%;border-radius:10px;border:1px solid var(--line);cursor:zoom-in;display:block;background:#000}
+.fig figcaption{font-size:.9rem;color:var(--mute)}
+.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:28px;align-items:start}
+.split .prose{max-width:none}
+
+.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
+.gallery button{padding:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#000;cursor:zoom-in;text-align:left;display:grid}
+.gallery img{width:100%;display:block;aspect-ratio:640/448;object-fit:cover}
+.gallery span{display:block;padding:8px 10px;background:var(--panel2);font-family:var(--display);font-weight:600;font-size:.9rem;color:var(--fg)}
+
+/* avisos */
+.note{border:1px solid var(--line);border-left:4px solid var(--gold);background:var(--panel2);border-radius:10px;padding:14px 16px;display:grid;gap:4px}
+.note.warn{border-left-color:var(--warn)}
+.note b{font-family:var(--display)}
+
+/* árvore de pastas */
+.tree{font-family:var(--mono);font-size:.9rem;line-height:1.7;background:#0e0718;border:1px solid var(--line);border-radius:12px;padding:16px 18px;overflow-x:auto;white-space:pre;color:var(--dim)}
+.tree .d{color:var(--gold)} .tree .i{color:var(--iso)} .tree .e{color:var(--elf)} .tree .c{color:var(--mute)}
+
+/* FAQ */
+details{border:1px solid var(--line);border-radius:10px;background:var(--bg2)}
+details+details{margin-top:10px}
+summary{cursor:pointer;padding:14px 16px;font-family:var(--display);font-weight:600;font-size:1.05rem;list-style:none;display:flex;justify-content:space-between;gap:12px}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"+";color:var(--gold);font-size:1.3rem;line-height:1}
+details[open] summary::after{content:"–"}
+details>div{padding:0 16px 16px;color:var(--dim);display:grid;gap:8px}
+
+/* lightbox */
+.lb{position:fixed;inset:0;z-index:50;background:rgba(8,4,14,.92);display:grid;place-items:center;padding:24px}
+.lb img{max-width:min(1280px,100%);max-height:82vh;border-radius:10px;border:1px solid var(--line)}
+.lb p{color:var(--dim);text-align:center;margin-top:10px;font-family:var(--display)}
+.lb button{position:absolute;top:14px;right:16px;font-size:1.6rem;background:none;border:0;color:var(--fg);cursor:pointer}
+
+/* download */
+.dl-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:16px;padding:10px 14px;border:1px dashed var(--gold);border-radius:10px;background:rgba(248,204,32,.07);font-size:.98rem;color:var(--fg);max-width:34em}
+.dl-top a{font-family:var(--display);font-weight:700}
+#download .dl-box{border:1px solid var(--gold);border-radius:16px;background:linear-gradient(180deg,var(--panel),var(--panel2));padding:28px;display:grid;gap:16px;max-width:46rem}
+#download .url{font-family:var(--mono);font-size:.92rem;color:var(--dim);word-break:break-all}
+footer{max-width:1180px;margin:0 auto;padding:36px 16px 56px;color:var(--mute);font-size:.92rem;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+footer b{color:var(--fg);font-family:var(--display)}
+
+@media (max-width:880px){
+  .hero-in,.pad-wrap,.split{grid-template-columns:1fr}
+  .hero-in{padding-top:36px}
+  section{padding-block:48px}
+}
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  .screen img{transition:none}
+}
+</style>
+
+<nav class="nav" aria-label="Seções">
+  <div class="nav-in">
+    <a class="brand" href="#topo">Fast<b>Loader</b></a>
+    <ul id="navlist">
+      <li><a href="#comecar">Começar</a></li>
+      <li><a href="#controle">Controle</a></li>
+      <li><a href="#abas">Abas</a></li>
+      <li><a href="#jogar">Jogar</a></li>
+      <li><a href="#files">FILES</a></li>
+      <li><a href="#extras">Extras</a></li>
+      <li><a href="#capas">PS1PS2Capas</a></li>
+      <li><a href="#pastas">Pastas</a></li>
+      <li><a href="#telas">Telas</a></li>
+      <li><a href="#duvidas">Dúvidas</a></li>
+      <li><a href="#download">Download</a></li>
+    </ul>
+  </div>
+</nav>
+
+<header class="hero" id="topo">
+  <div class="hero-in">
+    <div>
+      <div class="eyebrow">Manual de uso · PlayStation 2</div>
+      <h1>Fast<span>Loader</span></h1>
+      <p class="lede">Um lançador para PS2 que reúne seus jogos de PS2 e PS1, apps e arquivos numa tela só, com capa, logo e disco de cada jogo. Funciona com HD interno, pendrive, MX4SIO, MMCE e o próprio leitor de disco.</p>
+      <div class="pills">
+        <span class="pill">8 abas</span><span class="pill">HD · USB · MX4SIO · MMCE</span><span class="pill">PS2 e PS1</span><span class="pill">Gerenciador de arquivos</span><span class="pill">Capas automáticas</span>
+      </div>
+      <p class="dl-top">⬇ O download do FastLoader está no fim desta página. <a href="#download">Ir para o download</a></p>
+      <div class="cta">
+        <a class="btn primary" href="#comecar">Primeiros passos</a>
+        <a class="btn" href="#controle">Ver os botões</a>
+      </div>
+    </div>
+    <div>
+      <div class="tv">
+        <div class="screen" id="tv" aria-live="polite"></div>
+        <div class="tv-cap" id="tvcap"></div>
+      </div>
+      <div class="tv-dots" id="tvdots" role="tablist" aria-label="Telas"></div>
+    </div>
+  </div>
+</header>
+
+<main>
+
+<!-- ================= COMEÇAR ================= -->
+<section id="comecar">
+  <div class="sec-head">
+    <div class="kicker">Antes de tudo</div>
+    <h2>O que você precisa</h2>
+    <p>O FastLoader é um único arquivo, <code>fastLoader.elf</code>. Ele roda no seu PS2 como qualquer outro programa caseiro. Para iniciar jogos, ele usa dois programas de apoio que você coloca no pendrive ou no cartão.</p>
+  </div>
+  <div class="req">
+    <div><b>Um jeito de abrir .elf no PS2</b><span>FreeMcBoot, PS2BBL ou outro launcher no memory card. É por ele que você abre o <code>fastLoader.elf</code>.</span></div>
+    <div><b>Neutrino</b><span>Inicia as ISOs de PS2. Coloque o <code>neutrino.elf</code> (com as pastas que vêm no pacote dele) em <code>mc0:FastLoader/</code> ou <code>mass0:FastLoader/</code>. A raiz do pendrive também serve.</span></div>
+    <div><b>Ember</b><span>Emulador de PS1, só para a aba PS1. Pasta <code>EMBER/</code> no HD ou no pendrive, com o <code>ember.elf</code>, a <code>bios.bin</code> e os jogos em <code>EMBER/games/</code>.</span></div>
+    <div><b>Onde ficam os jogos</b><span>HD interno em exFAT, pendrive em exFAT ou FAT32, cartão MX4SIO ou MMCE. As ISOs podem ficar na raiz, em <code>DVD/</code> ou em <code>CD/</code>, igual ao OPL.</span></div>
+    <div><b>Memory card no slot 1</b><span>Guarda favoritos, nomes renomeados, modos de compatibilidade e a ordem do fundo sorteado.</span></div>
+    <div><b>PS1PS2Capas (opcional)</b><span>Programa para Windows que baixa capa, logo e disco de cada jogo e já grava tudo na pasta certa.</span></div>
+  </div>
+
+  <div class="sec-head" style="margin-top:44px">
+    <div class="kicker">Primeiro uso</div>
+    <h2>Do zero ao primeiro jogo</h2>
+  </div>
+  <ol class="steps">
+    <li><div><h3>Copie os jogos</h3><p>No PC, coloque suas ISOs de PS2 no HD ou no pendrive: na raiz, em <code>DVD/</code> ou em <code>CD/</code>. Para PS1, crie uma pasta por jogo dentro de <code>EMBER/games/</code> com o <code>.cue</code> e o <code>.bin</code>.</p></div></li>
+    <li><div><h3>Gere as capas (opcional)</h3><p>Abra o PS1PS2Capas, escolha a pasta das ISOs e o HD ou pendrive de destino e clique em gerar. Ele cria <code>FASTLOADER/CAPAS</code> sozinho. Veja a seção <a href="#capas">PS1PS2Capas</a>.</p></div></li>
+    <li><div><h3>Abra o FastLoader</h3><p>No PS2, abra o <code>fastLoader.elf</code> pelo seu launcher. Aparece a logo, uma barra de carregamento e depois a tela principal, com um fundo diferente a cada vez.</p></div></li>
+    <li><div><h3>Escolha a aba</h3><p>Use <span class="k o">L1</span> e <span class="k o">R1</span> para navegar entre HD, USB, MX4SIO, APPS, CDVD, MMCE, PS1 e FILES. A aba ativa fica amarela.</p></div></li>
+    <li><div><h3>Carregue a lista</h3><p>Cada aba só lê o dispositivo quando você pede. Aperte <span class="b x">✕</span> e a lista de jogos aparece. Para ler de novo depois de trocar arquivos, aperte <span class="k">SELECT</span>.</p></div></li>
+    <li><div><h3>Escolha e jogue</h3><p>Navegue pela lista com o direcional. A capa, a logo e o disco do jogo aparecem à direita. Aperte <span class="b x">✕</span>, confira o nome no popup e confirme com <span class="b x">✕</span>. O jogo inicia pelo Neutrino.</p></div></li>
+  </ol>
+</section>
+
+<!-- ================= CONTROLE ================= -->
+<section id="controle">
+  <div class="sec-head">
+    <div class="kicker">Botões</div>
+    <h2>O que cada botão faz</h2>
+    <p>Escolha onde você está e toque num botão do controle. Os botões mudam de função no gerenciador de arquivos e dentro dos popups.</p>
+  </div>
+  <div class="pad-wrap">
+    <div class="pad">
+      <div class="ctx" id="ctx" role="group" aria-label="Contexto">
+        <button type="button" data-ctx="lista" aria-pressed="true">Listas de jogos</button>
+        <button type="button" data-ctx="files" aria-pressed="false">FILES</button>
+        <button type="button" data-ctx="popup" aria-pressed="false">Popups</button>
+      </div>
+      <svg viewBox="0 0 560 320" role="img" aria-label="Controle DualShock 2 clicável">
+        <path d="M150 70 Q280 40 410 70 L470 90 Q530 110 540 190 Q550 290 490 300 Q450 305 420 250 L380 205 L180 205 L140 250 Q110 305 70 300 Q10 290 20 190 Q30 110 90 90 Z" fill="#221433" stroke="#504070" stroke-width="2"/>
+        <g class="hit" data-k="L2"><rect class="cap" x="96" y="30" width="78" height="22" rx="8" fill="#2c1b44" stroke="#504070"/><text x="135" y="46" text-anchor="middle" fill="#efeaf6" font-family="Chakra Petch" font-weight="700" font-size="13">L2</text></g>
+        <g class="hit" data-k="L1"><rect class="cap" x="96" y="56" width="78" height="20" rx="6" fill="#2c1b44" stroke="#504070"/><text x="135" y="71" text-anchor="middle" fill="#efeaf6" font-family="Chakra Petch" font-weight="700" font-size="13">L1</text></g>
+        <g class="hit" data-k="R2"><rect class="cap" x="386" y="30" width="78" height="22" rx="8" fill="#2c1b44" stroke="#504070"/><text x="425" y="46" text-anchor="middle" fill="#efeaf6" font-family="Chakra Petch" font-weight="700" font-size="13">R2</text></g>
+        <g class="hit" data-k="R1"><rect class="cap" x="386" y="56" width="78" height="20" rx="6" fill="#2c1b44" stroke="#504070"/><text x="425" y="71" text-anchor="middle" fill="#efeaf6" font-family="Chakra Petch" font-weight="700" font-size="13">R1</text></g>
+        <g class="hit" data-k="UP"><rect class="cap" x="118" y="104" width="30" height="32" rx="5" fill="#2c1b44" stroke="#504070"/><text x="133" y="126" text-anchor="middle" fill="#efeaf6" font-size="14">▲</text></g>
+        <g class="hit" data-k="DOWN"><rect class="cap" x="118" y="164" width="30" height="32" rx="5" fill="#2c1b44" stroke="#504070"/><text x="133" y="186" text-anchor="middle" fill="#efeaf6" font-size="14">▼</text></g>
+        <g class="hit" data-k="LEFT"><rect class="cap" x="84" y="136" width="34" height="28" rx="5" fill="#2c1b44" stroke="#504070"/><text x="101" y="155" text-anchor="middle" fill="#f8cc20" font-size="14">◀</text></g>
+        <g class="hit" data-k="RIGHT"><rect class="cap" x="148" y="136" width="34" height="28" rx="5" fill="#2c1b44" stroke="#504070"/><text x="165" y="155" text-anchor="middle" fill="#efeaf6" font-size="14">▶</text></g>
+        <g class="hit" data-k="SELECT"><rect class="cap" x="222" y="140" width="46" height="18" rx="9" fill="#2c1b44" stroke="#504070"/><text x="245" y="175" text-anchor="middle" fill="#bdb2d2" font-family="Chakra Petch" font-size="11">SELECT</text></g>
+        <g class="hit" data-k="START"><rect class="cap" x="292" y="140" width="46" height="18" rx="9" fill="#2c1b44" stroke="#504070"/><text x="315" y="175" text-anchor="middle" fill="#bdb2d2" font-family="Chakra Petch" font-size="11">START</text></g>
+        <g class="hit" data-k="T"><circle class="cap" cx="428" cy="112" r="19" fill="#2c1b44" stroke="#504070"/><path d="M428 102 L438 119 L418 119 Z" fill="none" stroke="#46d6a0" stroke-width="2.5"/></g>
+        <g class="hit" data-k="S"><circle class="cap" cx="390" cy="150" r="19" fill="#2c1b44" stroke="#504070"/><rect x="381" y="141" width="18" height="18" fill="none" stroke="#f08ad8" stroke-width="2.5"/></g>
+        <g class="hit" data-k="C"><circle class="cap" cx="466" cy="150" r="19" fill="#2c1b44" stroke="#504070"/><circle cx="466" cy="150" r="9" fill="none" stroke="#ff6d6d" stroke-width="2.5"/></g>
+        <g class="hit" data-k="X"><circle class="cap" cx="428" cy="188" r="19" fill="#2c1b44" stroke="#504070"/><path d="M420 180 L436 196 M436 180 L420 196" stroke="#7fa6ff" stroke-width="2.5"/></g>
+        <g class="hit" data-k="R3"><circle class="cap" cx="352" cy="232" r="26" fill="#2c1b44" stroke="#504070"/><text x="352" y="237" text-anchor="middle" fill="#efeaf6" font-family="Chakra Petch" font-weight="700" font-size="13">R3</text></g>
+        <circle cx="208" cy="232" r="26" fill="#1b102a" stroke="#3a2c52"/><text x="208" y="237" text-anchor="middle" fill="#5d4f78" font-family="Chakra Petch" font-size="12">L3</text>
+      </svg>
+    </div>
+    <div class="pad-info" id="padinfo" aria-live="polite"></div>
+  </div>
+
+  <div class="sec-head" style="margin-top:44px">
+    <h3>Tabela completa das listas de jogos</h3>
+  </div>
+  <div class="tbl-wrap">
+    <table class="keytable">
+      <tr><td><span class="b x">✕</span></td><td>Na 1ª vez, carrega a lista da aba. Depois, abre o popup "INICIAR [JOGO]?".</td></tr>
+      <tr><td><span class="b t">△</span></td><td>Renomear: abre o teclado para trocar o nome que aparece na lista. O arquivo no dispositivo não muda.</td></tr>
+      <tr><td><span class="b s">□</span></td><td>Modos de compatibilidade do jogo selecionado, guardados por jogo.</td></tr>
+      <tr><td><span class="b c">○</span></td><td>Pergunta "SAIR PARA O MENU DO PS2?".</td></tr>
+      <tr><td>Direcional ▲ ▼</td><td>Navega pela lista. Segurando, a lista rola sozinha e acelera depois de 2 segundos.</td></tr>
+      <tr><td>Direcional ◀</td><td>Adiciona o jogo aos favoritos (até 10).</td></tr>
+      <tr><td><span class="k o">L1</span> <span class="k o">R1</span></td><td>Aba anterior e próxima. Param na primeira e na última.</td></tr>
+      <tr><td><span class="k o">L2</span> <span class="k o">R2</span></td><td>Página anterior e próxima da lista.</td></tr>
+      <tr><td><span class="k">SELECT</span></td><td>Atualiza a lista, lendo o dispositivo de novo.</td></tr>
+      <tr><td><span class="k">START</span></td><td>Opções: desligar o console, reset e créditos.</td></tr>
+      <tr><td><span class="k">START</span>+<span class="k">SELECT</span></td><td>Abre os favoritos.</td></tr>
+      <tr><td><span class="k o">R3</span></td><td>Só nas abas MX4SIO e MMCE: troca entre os dois (eles não funcionam ao mesmo tempo).</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ================= ABAS ================= -->
+<section id="abas">
+  <div class="sec-head">
+    <div class="kicker">As 8 abas</div>
+    <h2>Uma aba para cada lugar</h2>
+    <p>A barra de baixo mostra as abas. Cada uma lê um lugar diferente e só procura arquivos quando você aperta <span class="b x">✕</span> nela.</p>
+  </div>
+  <div class="tabs-grid">
+    <article class="tab-card"><header><span class="tag">HD</span><h3>HD interno</h3></header>
+      <p>Jogos de PS2 no HD interno formatado em exFAT.</p>
+      <div class="yes">faz</div><ul><li>Lista ISOs da raiz, de <code>DVD/</code> e de <code>CD/</code></li><li>Capa, logo e disco do jogo</li><li>Favoritos, renomear e modos</li></ul>
+      <div class="no">não faz</div><ul><li>Não lê HD em formato PFS (o do HDLoader/OPL em partições)</li></ul></article>
+    <article class="tab-card"><header><span class="tag">USB</span><h3>Pendrive</h3></header>
+      <p>Jogos de PS2 no pendrive em exFAT ou FAT32.</p>
+      <div class="yes">faz</div><ul><li>Mesmas funções do HD</li></ul>
+      <div class="no">não faz</div><ul><li>FAT32 não aceita arquivos de 4 GB ou mais: DVD grande precisa de exFAT</li></ul></article>
+    <article class="tab-card"><header><span class="tag">MX4SIO</span><h3>Cartão SD no slot do memory card</h3></header>
+      <p>Jogos de PS2 num cartão SD pelo adaptador MX4SIO.</p>
+      <div class="yes">faz</div><ul><li>Mesmas funções do HD</li><li><span class="k o">R3</span> troca para o MMCE sem reiniciar</li></ul>
+      <div class="no">não faz</div><ul><li>Não funciona ao mesmo tempo que o MMCE</li></ul></article>
+    <article class="tab-card"><header><span class="tag">APPS</span><h3>Aplicativos</h3></header>
+      <p>Programas <code>.elf</code> da pasta <code>APPS/</code> do pendrive, até 3 níveis de subpastas.</p>
+      <div class="yes">faz</div><ul><li><span class="b x">✕</span> pergunta e executa o app</li></ul>
+      <div class="no">não faz</div><ul><li>Só lê o pendrive (para outros lugares use o FILES)</li></ul></article>
+    <article class="tab-card"><header><span class="tag">CDVD</span><h3>Leitor de disco</h3></header>
+      <p>Inicia o disco que está na gaveta: CD de PS1, CD de PS2 ou DVD de PS2.</p>
+      <div class="yes">faz</div><ul><li>Reconhece o tipo e mostra o nome do jogo (com o <code>nomes.txt</code>)</li><li>Mostra o disco do jogo, se o PS1PS2Capas já gerou</li><li>Desiste sozinho em 10 segundos se não houver disco</li></ul>
+      <div class="no">não faz</div><ul><li>Não lista o conteúdo do disco</li></ul></article>
+    <article class="tab-card"><header><span class="tag">MMCE</span><h3>MemCard PRO 2 / SD2PSX</h3></header>
+      <p>Jogos de PS2 em cartões MMCE, nos dois slots.</p>
+      <div class="yes">faz</div><ul><li>Mesmas funções do HD, com os dois slots juntos na lista</li><li><span class="k o">R3</span> troca para o MX4SIO</li></ul>
+      <div class="no">não faz</div><ul><li>Não funciona ao mesmo tempo que o MX4SIO</li></ul></article>
+    <article class="tab-card"><header><span class="tag">PS1</span><h3>Jogos de PS1 pelo Ember</h3></header>
+      <p>Jogos de PS1 da pasta <code>EMBER/games/</code>, cada jogo na sua pasta.</p>
+      <div class="yes">faz</div><ul><li>Pergunta HD ou pendrive toda vez que você entra na aba</li><li>Configurações do Ember por jogo antes de iniciar</li><li>Capa quadrada, logo e disco</li></ul>
+      <div class="no">não faz</div><ul><li>Ainda não lê PS1 do MX4SIO nem do MMCE</li></ul></article>
+    <article class="tab-card"><header><span class="tag">FILES</span><h3>Gerenciador de arquivos</h3></header>
+      <p>Navega pastas do HD, do pendrive, do MX4SIO ou do MMCE.</p>
+      <div class="yes">faz</div><ul><li>Executa <code>.elf</code> e inicia <code>.iso</code> de qualquer pasta</li><li>Copiar, recortar, colar e excluir</li></ul>
+      <div class="no">não faz</div><ul><li>Ainda não copia pastas inteiras</li><li>Não navega dentro do CD/DVD</li></ul></article>
+  </div>
+</section>
+
+<!-- ================= JOGAR ================= -->
+<section id="jogar">
+  <div class="sec-head">
+    <div class="kicker">Tela principal</div>
+    <h2>Como ler a tela</h2>
+  </div>
+  <div class="split">
+    <figure class="fig"><img src="img/01_hd.jpg" alt="Tela principal do FastLoader na aba HD com a lista de jogos, a capa, a logo e o disco de Mega Man X Collection" data-cap="Tela principal, aba HD"><figcaption>Tela principal na aba HD. Imagem ilustrativa.</figcaption></figure>
+    <div class="prose">
+      <p><b>Lista à esquerda.</b> O jogo selecionado fica amarelo. Nome grande demais é cortado com "…" e, quando selecionado, rola devagar para mostrar o resto.</p>
+      <p><b>Arte à direita.</b> Capa, logo e disco do jogo, se existirem na pasta <code>fastloader/capas</code> do mesmo dispositivo. A capa fica sempre no mesmo lugar, com ou sem logo.</p>
+      <p><b>Caixinha FAV / OPÇÕES.</b> Lembra que o direcional ◀ adiciona aos favoritos e o <span class="k">START</span> abre as opções. O disco do jogo aparece no canto dela.</p>
+      <p><b>Barra de abas.</b> HD, USB, MX4SIO, APPS, CDVD, MMCE, PS1 e FILES. <span class="k o">L1</span> e <span class="k o">R1</span> nas pontas.</p>
+      <p><b>Barra de comandos.</b> O que cada botão faz naquela tela.</p>
+    </div>
+  </div>
+
+  <div class="split" style="margin-top:36px">
+    <div class="prose">
+      <h3>Iniciar um jogo de PS2</h3>
+      <ol>
+        <li>Selecione o jogo e aperte <span class="b x">✕</span>.</li>
+        <li>O popup mostra o disco do jogo e "INICIAR [NOME]?".</li>
+        <li><span class="b x">✕</span> confirma. Aparece a barra "Carregando jogo" e o Neutrino assume.</li>
+        <li><span class="b c">○</span> volta para a lista sem iniciar.</li>
+      </ol>
+      <div class="note"><b>Jogo não funciona?</b><span>Aperte <span class="b s">□</span> no jogo e teste um modo de compatibilidade, como "Leitura rápida" ou "Emular DVD-DL". A escolha fica salva só para aquele jogo.</span></div>
+    </div>
+    <figure class="fig"><img src="img/03_iniciar.jpg" alt="Popup INICIAR com o disco do jogo à esquerda e os botões sim e não" data-cap="Popup de iniciar com o disco do jogo"><figcaption>Popup de iniciar com o disco do jogo.</figcaption></figure>
+  </div>
+
+  <div class="split" style="margin-top:36px">
+    <figure class="fig"><img src="img/10_ember.jpg" alt="Configurações do Ember para Final Fantasy VII com o disco do jogo no canto" data-cap="Configurações do Ember (aba PS1)"><figcaption>Aba PS1: configurações do Ember antes de iniciar.</figcaption></figure>
+    <div class="prose">
+      <h3>Iniciar um jogo de PS1</h3>
+      <ol>
+        <li>Entre na aba PS1 e aperte <span class="b x">✕</span>.</li>
+        <li>Escolha HD ou USB, onde está a pasta <code>EMBER</code>.</li>
+        <li>Selecione o jogo e aperte <span class="b x">✕</span>.</li>
+        <li>Ajuste Controle, Shading, Timing, Dithering e Display: <span class="b x">✕</span> troca o valor.</li>
+        <li><span class="b t">△</span> grava as opções e inicia. <span class="b c">○</span> volta sem salvar.</li>
+      </ol>
+      <p class="muted" style="color:var(--mute)">"Padrão (Default)" não grava nada no <code>settings.txt</code> do Ember. Saiu da aba e voltou? Ela pergunta o dispositivo de novo.</p>
+    </div>
+  </div>
+
+  <div class="split" style="margin-top:36px">
+    <div class="prose">
+      <h3>Iniciar pelo leitor (CDVD)</h3>
+      <ol>
+        <li>Coloque o disco e vá para a aba CDVD.</li>
+        <li>Aperte <span class="b x">✕</span>. O loader espera o disco por até 10 segundos.</li>
+        <li>O popup mostra o disco, o serial e o nome do jogo. <span class="b x">✕</span> inicia.</li>
+      </ol>
+      <div class="note warn"><b>Mensagens</b><span>"Sem disco na gaveta" deixa tentar de novo. "Disco não reconhecido" aparece para discos que não são jogo de PS1 ou PS2 e fecha com <span class="b c">○</span>.</span></div>
+    </div>
+    <figure class="fig"><img src="img/04_cdvd.jpg" alt="Popup da aba CDVD com o disco de Final Fantasy VII e o serial SCUS-94163" data-cap="Aba CDVD com disco reconhecido"><figcaption>CDVD com o nome e o disco do jogo.</figcaption></figure>
+  </div>
+</section>
+
+<!-- ================= FILES ================= -->
+<section id="files">
+  <div class="sec-head">
+    <div class="kicker">Gerenciador de arquivos</div>
+    <h2>FILES: navegar, copiar e apagar</h2>
+    <p>O FILES funciona como um explorador de arquivos. Pastas têm ícone amarelo, ISOs aparecem em azul e programas <code>.elf</code> em verde.</p>
+  </div>
+  <div class="split">
+    <figure class="fig"><img src="img/05_files.jpg" alt="Aba FILES mostrando pastas, ISOs em azul, ELFs em verde e o aviso R1 para ações com um arquivo copiado" data-cap="FILES com um arquivo copiado"><figcaption>O rodapé sempre mostra "R1 PARA AÇÕES" e o que está copiado.</figcaption></figure>
+    <div class="prose">
+      <h3>Botões dentro do FILES</h3>
+      <table class="keytable">
+        <tr><td><span class="b x">✕</span></td><td>Entra na pasta. Num <code>.elf</code> ou <code>.iso</code>, pergunta e executa.</td></tr>
+        <tr><td><span class="b t">△</span></td><td>Volta uma pasta.</td></tr>
+        <tr><td><span class="b c">○</span></td><td>Marca o item.</td></tr>
+        <tr><td><span class="k o">R1</span></td><td>Menu de ações: Recortar, Copiar, Colar, Excluir.</td></tr>
+        <tr><td><span class="k">SELECT</span></td><td>Sai do FILES e volta para a aba PS1.</td></tr>
+      </table>
+      <p>Ao entrar, o FILES pergunta qual dispositivo abrir: HD, USB, MX4SIO ou MMCE. As outras abas ficam escurecidas enquanto você está nele.</p>
+    </div>
+  </div>
+
+  <div class="sec-head" style="margin-top:44px"><h3>Copiar um arquivo para outro lugar</h3></div>
+  <ol class="steps">
+    <li><div><h3>Selecione e aperte R1</h3><p>Escolha o arquivo e aperte <span class="k o">R1</span>. No menu, escolha <b>Copiar</b> (ou <b>Recortar</b> para mover).</p></div></li>
+    <li><div><h3>Escolha o destino</h3><p>Abre o popup "COLAR EM QUAL DISPOSITIVO?" com o nome do arquivo. Escolher o mesmo dispositivo mantém a pasta onde você está. Escolher outro abre a raiz dele. <span class="b c">○</span> fecha e mantém o arquivo guardado.</p></div></li>
+    <li><div><h3>Abra a pasta de destino</h3><p>Navegue até onde quer colar. O rodapé continua mostrando "COPIADO: NOME".</p></div></li>
+    <li><div><h3>Cole</h3><p><span class="k o">R1</span> e <b>Colar</b>. A tela "Copiando" mostra MB e porcentagem. <span class="b c">○</span> cancela e apaga o que ficou pela metade.</p></div></li>
+  </ol>
+  <div class="gallery" style="margin-top:24px">
+    <button type="button" data-img="img/06_r1.jpg" data-cap="Menu do R1"><img src="img/06_r1.jpg" alt="Menu do R1 com Recortar, Copiar, Colar e Excluir"><span>Menu do R1</span></button>
+    <button type="button" data-img="img/07_colar_em.jpg" data-cap="Escolha onde colar"><img src="img/07_colar_em.jpg" alt="Popup Colar em qual dispositivo com HD, USB, MX4SIO e MMCE"><span>Colar em qual dispositivo?</span></button>
+    <button type="button" data-img="img/08_copiando.jpg" data-cap="Cópia em andamento"><img src="img/08_copiando.jpg" alt="Tela Copiando com barra de progresso em MB"><span>Copiando</span></button>
+    <button type="button" data-img="img/13_excluir.jpg" data-cap="Excluir pasta"><img src="img/13_excluir.jpg" alt="Popup Excluir pasta DVD pedindo confirmação"><span>Excluir pasta</span></button>
+  </div>
+
+  <div class="tabs-grid" style="margin-top:28px">
+    <article class="tab-card"><header><h3>Recortar</h3></header><p>No mesmo dispositivo é só mudar de pasta, instantâneo até para ISO de 4 GB. Entre dispositivos, copia e apaga o original no fim.</p></article>
+    <article class="tab-card"><header><h3>Arquivo já existe</h3></header><p>Aparece "SUBSTITUIR [NOME]?". <span class="b x">✕</span> substitui, <span class="b c">○</span> cancela. Nada é sobrescrito sem perguntar.</p></article>
+    <article class="tab-card"><header><h3>Excluir</h3></header><p>Arquivo: "EXCLUIR [NOME]?". Pasta: "EXCLUIR PASTA [NOME]?", que apaga a pasta e tudo dentro, mostrando a contagem.</p></article>
+    <article class="tab-card"><header><h3>Limite do FAT32</h3></header><p>Pendrive em FAT32 não guarda arquivos de 4 GB ou mais. Se a cópia parar aí, o aviso explica. Use exFAT.</p></article>
+  </div>
+</section>
+
+<!-- ================= EXTRAS ================= -->
+<section id="extras">
+  <div class="sec-head">
+    <div class="kicker">Recursos extras</div>
+    <h2>Favoritos, renomear, modos e opções</h2>
+  </div>
+  <div class="tabs-grid">
+    <article class="tab-card"><header><h3>Favoritos</h3></header>
+      <p>Na lista, aperte o direcional <b>◀</b> para guardar o jogo. <span class="k">START</span>+<span class="k">SELECT</span> abre a lista de favoritos de qualquer aba.</p>
+      <ul><li><span class="b x">✕</span> inicia (pergunta antes)</li><li><span class="b t">△</span> remove</li><li><span class="b c">○</span> fecha</li><li>Até 10 jogos, de qualquer dispositivo</li></ul></article>
+    <article class="tab-card"><header><h3>Renomear</h3></header>
+      <p><span class="b t">△</span> abre um teclado na tela. O nome novo só muda o que aparece na lista. O arquivo continua igual.</p>
+      <ul><li>Direcional escolhe a letra, <span class="b x">✕</span> digita</li><li>DEL apaga, ‹ › movem o cursor</li><li>OK salva, CANCELAR ou <span class="b c">○</span> descarta</li></ul></article>
+    <article class="tab-card"><header><h3>Modos de compatibilidade</h3></header>
+      <p><span class="b s">□</span> abre os modos do Neutrino para o jogo selecionado.</p>
+      <ul><li>Leitura rápida, leitura sincronizada, desvincular syscalls, emular DVD-DL, corrigir buffer overrun</li><li><span class="b x">✕</span> marca, <span class="b t">△</span> confirma, <span class="b c">○</span> cancela</li></ul></article>
+    <article class="tab-card"><header><h3>Opções (START)</h3></header>
+      <p>Desligar console, Reset (volta para o menu do PS2, como o <span class="b c">○</span> da lista) e Créditos.</p>
+      <ul><li><span class="b x">✕</span> escolhe, <span class="b c">○</span> volta</li></ul></article>
+  </div>
+  <div class="gallery" style="margin-top:24px">
+    <button type="button" data-img="img/09_favoritos.jpg" data-cap="Favoritos"><img src="img/09_favoritos.jpg" alt="Popup de favoritos com quatro jogos"><span>Favoritos</span></button>
+    <button type="button" data-img="img/11_modos.jpg" data-cap="Modos de compatibilidade"><img src="img/11_modos.jpg" alt="Popup de modos de compatibilidade com caixas de marcar"><span>Modos</span></button>
+    <button type="button" data-img="img/12_opcoes.jpg" data-cap="Opções"><img src="img/12_opcoes.jpg" alt="Popup de opções com desligar, reset e créditos"><span>Opções</span></button>
+  </div>
+</section>
+
+<!-- ================= CAPAS ================= -->
+<section id="capas">
+  <div class="sec-head">
+    <div class="kicker">Programa para Windows</div>
+    <h2>PS1PS2Capas: capas, logos e discos</h2>
+    <p>Ele lê suas ISOs no PC, descobre o serial de cada jogo e baixa a capa, a logo e o disco. Grava tudo no formato que o FastLoader usa.</p>
+  </div>
+  <ol class="steps">
+    <li><div><h3>Escolha a pasta das ISOs</h3><p>Painel da esquerda. Marque "Incluir subpastas" para achar também <code>DVD/</code> e <code>CD/</code>.</p></div></li>
+    <li><div><h3>Confira a lista</h3><p>Cada jogo aparece com <b>(PS1)</b> ou <b>(PS2)</b> na frente, o serial e se tem capa disponível.</p></div></li>
+    <li><div><h3>Escolha o HD ou pendrive de destino</h3><p>Basta escolher o próprio dispositivo. O programa cria <code>FASTLOADER\CAPAS</code>, <code>PS2</code>, <code>PS1</code> e <code>SERIAIS</code> sozinho.</p></div></li>
+    <li><div><h3>Gere</h3><p>Antes de baixar, ele testa se consegue gravar no destino e se os sites de capas respondem (no máximo 10 segundos).</p></div></li>
+  </ol>
+  <div class="tabs-grid" style="margin-top:24px">
+    <article class="tab-card"><header><h3>Logo ou disco da internet</h3></header><p>No navegador, clique com o botão direito na imagem e escolha "Copiar imagem". No programa, botão direito no jogo e "Colar logo" ou "Colar imagem de disco". Uma prévia mostra como fica no loader.</p></article>
+    <article class="tab-card"><header><h3>Nomes em maiúsculas</h3></header><p>Pode renomear as ISOs para MAIÚSCULAS e tirar o serial da frente ("SLUS_203.12.Jogo" vira "JOGO"). Os nomes originais ficam guardados para desfazer.</p></article>
+    <article class="tab-card"><header><h3>nomes.txt</h3></header><p>Gera a lista serial → nome usada pela aba CDVD, a partir das bases do PCSX2 e do DuckStation.</p></article>
+    <article class="tab-card"><header><h3>Capa própria</h3></header><p>Jogo sem capa no repositório? Botão direito e escolha uma imagem sua. Ela sempre tem prioridade.</p></article>
+  </div>
+</section>
+
+<!-- ================= PASTAS ================= -->
+<section id="pastas">
+  <div class="sec-head">
+    <div class="kicker">Organização</div>
+    <h2>Onde fica cada coisa</h2>
+    <p>Mesma estrutura no HD, no pendrive, no MX4SIO e no MMCE. Maiúsculas e minúsculas não fazem diferença.</p>
+  </div>
+  <div class="tree"><span class="d">DISPOSITIVO:/</span>
+├── <span class="i">Jogo de PS2.iso</span>              <span class="c"># ISOs na raiz…</span>
+├── <span class="d">DVD/</span>  <span class="i">Jogo.iso</span>                <span class="c"># …ou em DVD/ e CD/, igual ao OPL</span>
+├── <span class="d">CD/</span>   <span class="i">Jogo.iso</span>
+├── <span class="d">APPS/</span> <span class="e">programa.elf</span>            <span class="c"># aba APPS (só pendrive)</span>
+├── <span class="d">EMBER/</span>
+│   ├── <span class="e">ember.elf</span>
+│   ├── bios.bin
+│   └── <span class="d">games/</span>
+│       └── <span class="d">Final Fantasy VII/</span>  jogo.cue + jogo.bin
+├── <span class="d">FastLoader/</span> <span class="e">neutrino.elf</span>     <span class="c"># ou no memory card: mc0:FastLoader/</span>
+└── <span class="d">FASTLOADER/</span>                   <span class="c"># criada pelo PS1PS2Capas</span>
+    ├── nomes.txt
+    └── <span class="d">CAPAS/</span>
+        ├── <span class="d">PS2/</span>
+        │   ├── NOME DO JOGO.PNG        <span class="c"># capa</span>
+        │   ├── NOME DO JOGO_LOGO.PNG   <span class="c"># logo</span>
+        │   ├── NOME DO JOGO_ICO.PNG    <span class="c"># disco</span>
+        │   └── <span class="d">SERIAIS/</span> SLUS-20312_ICO.PNG  <span class="c"># disco pelo serial (CDVD)</span>
+        └── <span class="d">PS1/</span>  (mesma estrutura)
+
+<span class="d">mc0:</span> HDUI-FAVS.CFG · HDUI-RENAME.CFG · HDUI-MODES.CFG · HDUI-BG.CFG</div>
+</section>
+
+<!-- ================= TELAS ================= -->
+<section id="telas">
+  <div class="sec-head">
+    <div class="kicker">Galeria</div>
+    <h2>Todas as telas</h2>
+    <p>Toque numa tela para ampliar. São reproduções da interface; na TV as cores e o fundo variam.</p>
+  </div>
+  <div class="gallery" id="gal"></div>
+</section>
+
+<!-- ================= DÚVIDAS ================= -->
+<section id="duvidas">
+  <div class="sec-head">
+    <div class="kicker">Problemas comuns</div>
+    <h2>Dúvidas</h2>
+  </div>
+  <details><summary>A lista está vazia</summary><div><p>Aperte <span class="b x">✕</span> na aba: nenhuma aba lê o dispositivo sozinha. Se aparecer "Nenhum HD exFAT detectado" ou "Nenhum USB detectado", confira o formato (exFAT ou FAT32) e se as ISOs estão na raiz, em <code>DVD/</code> ou em <code>CD/</code>.</p></div></details>
+  <details><summary>Não aparece capa</summary><div><p>A capa precisa estar em <code>fastloader/capas/ps2</code> (ou <code>ps1</code>) do <b>mesmo</b> dispositivo do jogo, com o nome do arquivo da ISO. O PS1PS2Capas faz isso certo. PNG entrelaçado (Adam7) não é lido.</p></div></details>
+  <details><summary>MX4SIO ou MMCE não aparece</summary><div><p>Os dois usam a mesma porta e não funcionam juntos. Se você usou um, vá na aba do outro e aperte <span class="k o">R3</span> para trocar.</p></div></details>
+  <details><summary>O jogo de PS2 trava ou tela preta</summary><div><p>Teste os modos com <span class="b s">□</span>. Confirme também que o <code>neutrino.elf</code> está em <code>FastLoader/</code> no memory card ou no pendrive, com as pastas que vêm junto no pacote do Neutrino.</p></div></details>
+  <details><summary>A aba PS1 não inicia o jogo</summary><div><p>Aparece "ember.elf não encontrado" quando falta <code>EMBER/ember.elf</code> no dispositivo escolhido. Cada jogo precisa de uma pasta própria em <code>EMBER/games/</code>.</p></div></details>
+  <details><summary>A cópia parou perto de 4 GB</summary><div><p>O destino está em FAT32, que não aceita arquivos desse tamanho. Formate o pendrive em exFAT.</p></div></details>
+  <details><summary>Renomeei e o arquivo continua com o nome antigo</summary><div><p>É assim mesmo: o <span class="b t">△</span> muda só o nome exibido, guardado no memory card. Para renomear o arquivo de verdade, use o PS1PS2Capas no PC.</p></div></details>
+  <details><summary>O fundo muda sozinho?</summary><div><p>Sim, um por vez a cada vez que o FastLoader abre, sem repetir até passar por todos. A ordem fica no memory card.</p></div></details>
+</section>
+
+<!-- ================= DOWNLOAD ================= -->
+<section id="download">
+  <div class="sec-head">
+    <div class="kicker">Download</div>
+    <h2>Baixe o FastLoader</h2>
+    <p>A versão mais recente fica na página de releases do projeto no GitHub.</p>
+  </div>
+  <div class="dl-box">
+    <a class="btn primary" href="https://github.com/Kyllemn/PS2TVCRT/releases/tag/FastLoader2.0.0" target="_blank" rel="noopener">Baixar no GitHub</a>
+    <div class="url">https://github.com/Kyllemn/PS2TVCRT/releases/tag/FastLoader2.0.0</div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div><b>FastLoader</b> · manual de uso · 30/09/2026</div>
+  <div>Equipe Retrovolt · Leonardo Torres</div>
+</footer>
+
+<div class="lb" id="lb" hidden role="dialog" aria-modal="true" aria-label="Imagem ampliada">
+  <button type="button" id="lbclose" aria-label="Fechar">✕</button>
+  <div><img id="lbimg" alt=""><p id="lbcap"></p></div>
+</div>
+
+<script>
+(function(){
+  var SHOTS=[
+    ["img/01_hd.jpg","Aba HD com capa, logo e disco"],
+    ["img/02_ps1.jpg","Aba PS1 com Final Fantasy VII"],
+    ["img/03_iniciar.jpg","Popup de iniciar"],
+    ["img/04_cdvd.jpg","Aba CDVD"],
+    ["img/05_files.jpg","FILES com arquivo copiado"],
+    ["img/06_r1.jpg","Menu do R1 no FILES"],
+    ["img/07_colar_em.jpg","Escolher onde colar"],
+    ["img/08_copiando.jpg","Copiando arquivo"],
+    ["img/09_favoritos.jpg","Favoritos"],
+    ["img/10_ember.jpg","Configurações do Ember"],
+    ["img/11_modos.jpg","Modos de compatibilidade"],
+    ["img/12_opcoes.jpg","Opções"],
+    ["img/13_excluir.jpg","Excluir pasta"]
+  ];
+  var reduce=window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* TV da capa */
+  var tv=document.getElementById("tv"),cap=document.getElementById("tvcap"),dots=document.getElementById("tvdots");
+  var cur=0,timer=null;
+  SHOTS.slice(0,8).forEach(function(s,i){
+    var im=document.createElement("img");im.src=s[0];im.alt=s[1];if(i===0)im.className="on";tv.appendChild(im);
+    var b=document.createElement("button");b.type="button";b.setAttribute("aria-label",s[1]);if(i===0)b.className="on";
+    b.addEventListener("click",function(){show(i);restart();});dots.appendChild(b);
+  });
+  function show(i){
+    var ims=tv.querySelectorAll("img"),ds=dots.querySelectorAll("button");
+    ims[cur].classList.remove("on");ds[cur].classList.remove("on");
+    cur=i;ims[cur].classList.add("on");ds[cur].classList.add("on");cap.textContent=SHOTS[cur][1];
+  }
+  function restart(){if(timer)clearInterval(timer);if(!reduce)timer=setInterval(function(){show((cur+1)%8);},3600);}
+  cap.textContent=SHOTS[0][1];restart();
+
+  /* galeria */
+  var gal=document.getElementById("gal");
+  SHOTS.forEach(function(s){
+    var b=document.createElement("button");b.type="button";b.dataset.img=s[0];b.dataset.cap=s[1];
+    b.innerHTML='<img loading="lazy" alt=""><span></span>';
+    b.querySelector("img").src=s[0];b.querySelector("img").alt=s[1];b.querySelector("span").textContent=s[1];
+    gal.appendChild(b);
+  });
+
+  /* lightbox */
+  var lb=document.getElementById("lb"),lbimg=document.getElementById("lbimg"),lbcap=document.getElementById("lbcap");
+  function open(src,c){lbimg.src=src;lbimg.alt=c||"";lbcap.textContent=c||"";lb.hidden=false;document.getElementById("lbclose").focus();}
+  function close(){lb.hidden=true;}
+  document.addEventListener("click",function(e){
+    var t=e.target.closest("[data-img]");
+    if(t){open(t.dataset.img,t.dataset.cap);return;}
+    var f=e.target.closest(".fig img");
+    if(f){open(f.getAttribute("src"),f.dataset.cap||f.alt);}
+  });
+  document.getElementById("lbclose").addEventListener("click",close);
+  lb.addEventListener("click",function(e){if(e.target===lb)close();});
+  document.addEventListener("keydown",function(e){if(e.key==="Escape"&&!lb.hidden)close();});
+
+  /* controle interativo */
+  var NAMES={X:'<span class="b x">✕</span> Xis',T:'<span class="b t">△</span> Triângulo',S:'<span class="b s">□</span> Quadrado',C:'<span class="b c">○</span> Círculo',
+    UP:"Direcional ▲",DOWN:"Direcional ▼",LEFT:"Direcional ◀",RIGHT:"Direcional ▶",L1:"L1",R1:"R1",L2:"L2",R2:"R2",
+    SELECT:"SELECT",START:"START",R3:"R3 (apertar o analógico direito)"};
+  var MAP={
+    lista:{X:"Na 1ª vez, carrega a lista da aba. Depois, abre “INICIAR [JOGO]?”. Na aba PS1 abre as configurações do Ember; na CDVD procura o disco.",
+      T:"Renomear: teclado na tela para trocar o nome exibido. O arquivo não muda.",
+      S:"Modos de compatibilidade do Neutrino para o jogo selecionado.",
+      C:"Pergunta “SAIR PARA O MENU DO PS2?”.",
+      UP:"Sobe na lista. Segurando, a lista rola sozinha e acelera depois de 2 segundos.",
+      DOWN:"Desce na lista. Segurando, a lista rola sozinha e acelera depois de 2 segundos.",
+      LEFT:"Adiciona o jogo selecionado aos favoritos (até 10).",
+      RIGHT:"Sem função nas listas.",
+      L1:"Aba anterior. Para na HD.",R1:"Próxima aba. Para na FILES.",
+      L2:"Volta uma página inteira da lista.",R2:"Avança uma página inteira da lista.",
+      SELECT:"Atualiza a lista lendo o dispositivo de novo. Com START ao mesmo tempo, abre os favoritos.",
+      START:"Opções: desligar, reset e créditos. Com SELECT ao mesmo tempo, abre os favoritos.",
+      R3:"Só nas abas MX4SIO e MMCE: troca entre os dois (reinicia os drivers, leva uns segundos)."},
+    files:{X:"Entra na pasta. Num .elf ou .iso, pergunta e executa.",T:"Volta uma pasta.",S:"Sem função no FILES.",
+      C:"Marca ou desmarca o item.",UP:"Sobe na lista (segure para rolar).",DOWN:"Desce na lista (segure para rolar).",
+      LEFT:"Sem função no FILES.",RIGHT:"Sem função no FILES.",L1:"Travado dentro do FILES.",
+      R1:"Menu de ações: Recortar, Copiar, Colar, Excluir.",L2:"Página anterior.",R2:"Próxima página.",
+      SELECT:"Sai do FILES e volta para a aba PS1.",START:"Opções: desligar, reset e créditos.",R3:"Sem função no FILES."},
+    popup:{X:"Confirma a ação do popup (sim, iniciar, selecionar, substituir, excluir).",
+      T:"Nos popups com três botões: iniciar (Ember), confirmar (Modos) ou remover (Favoritos).",
+      S:"Sem função nos popups.",
+      C:"Cancela ou fecha. Nos avisos, é o único botão: “fechar”.",
+      UP:"Move o cursor entre as opções.",DOWN:"Move o cursor entre as opções.",
+      LEFT:"Move o cursor nas grades (escolha de dispositivo, teclado).",RIGHT:"Move o cursor nas grades (escolha de dispositivo, teclado).",
+      L1:"Sem função nos popups.",R1:"Sem função nos popups.",L2:"Sem função nos popups.",R2:"Sem função nos popups.",
+      SELECT:"Sem função nos popups.",START:"Sem função nos popups.",R3:"Sem função nos popups."}
+  };
+  var ctxName={lista:"Listas de jogos",files:"FILES",popup:"Popups"};
+  var ctx="lista",key="X";
+  var info=document.getElementById("padinfo");
+  function render(){
+    info.innerHTML='<div class="kicker">'+ctxName[ctx]+'</div><h3>'+NAMES[key]+'</h3><p></p><p class="muted">Toque em outro botão do controle para ver a função dele.</p>';
+    info.querySelector("p").textContent=MAP[ctx][key];
+    document.querySelectorAll(".pad .hit").forEach(function(g){g.classList.toggle("sel",g.dataset.k===key);});
+  }
+  document.querySelectorAll(".pad .hit").forEach(function(g){
+    g.setAttribute("tabindex","0");g.setAttribute("role","button");g.setAttribute("aria-label",NAMES[g.dataset.k].replace(/<[^>]+>/g,""));
+    g.addEventListener("click",function(){key=g.dataset.k;render();});
+    g.addEventListener("keydown",function(e){if(e.key==="Enter"||e.key===" "){e.preventDefault();key=g.dataset.k;render();}});
+  });
+  document.querySelectorAll("#ctx button").forEach(function(b){
+    b.addEventListener("click",function(){
+      ctx=b.dataset.ctx;
+      document.querySelectorAll("#ctx button").forEach(function(o){o.setAttribute("aria-pressed",o===b?"true":"false");});
+      render();
+    });
+  });
+  render();
+
+  /* menu ativo conforme a rolagem */
+  var links=[].slice.call(document.querySelectorAll("#navlist a"));
+  var secs=links.map(function(a){return document.querySelector(a.getAttribute("href"));});
+  function onScroll(){
+    var y=window.scrollY+90,idx=0;
+    secs.forEach(function(s,i){if(s&&s.offsetTop<=y)idx=i;});
+    links.forEach(function(a,i){a.classList.toggle("on",i===idx&&window.scrollY>200);});
+  }
+  window.addEventListener("scroll",onScroll,{passive:true});onScroll();
+})();
+</script>
