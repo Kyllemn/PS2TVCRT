@@ -1,0 +1,579 @@
+fastloader + PS1PS2Capas: alterações da fase 10
+30 de set. de 2026 · @LNRD
+Todas as alterações desde o checkpoint da fase 9 (capas funcionando), em ordem, com o ponto do código de cada uma e o jeito de desfazer. O ponto de volta seguro é o CHECKPOINT_fase9.
+Entregas
+Arquivo
+O que é
+fastLoader.elf
+Loader compilado da fase 10 (2.129.460 bytes)
+PS1PS2Capas.exe
+Programa de capas, logos e discos para Windows
+fastloader_fase10_main.c
+main.c completo do loader desta versão
+fastloader_fase10_projeto.zip
+Pasta hdui_mock inteira (stage2, irx, assets) pronta para compilar
+fastloader_fase9_para_fase10.patch
+Diff de tudo que mudou no loader desde o checkpoint da fase 9
+PS1PS2Capas_fonte.zip
+Código-fonte completo do PS1PS2Capas
+pontos_de_restauracao.zip
+Cópias do código antes de cada etapa (veja "Como voltar atrás")
+CHECKPOINT_fase9_capas_ok_fastLoader.elf e _main.c
+Última versão testada e aprovada no console
+Loader (fastLoader.elf / main.c)
+As alterações estão na ordem em que foram feitas. As 1, 2 e 4 já estavam na fase 9, aprovada no console. As outras ainda não foram testadas no console. Para desfazer uma alteração, procure a função no main.c e copie o trecho do arquivo de restauração indicado, que é o código como estava logo antes dela.
+#
+Alteração
+Onde no main.c
+Como desfazer
+1
+Correção do alpha das capas PNG (0 = opaco, 128 = transparente no GS). Foi o que fez a capa aparecer, antes só aparecia a borda
+conversão de pixels ao carregar o PNG
+Faz parte da fase 9. Não recomendado desfazer
+2
+Memória de vídeo das capas reservada no boot, sem alocar a cada troca de jogo. Reorganizada depois em slots ArtSlot (item 14)
+art_ensure_vram
+Faz parte da fase 9
+3
+Capas separadas em fastloader/capas/ps2 e fastloader/capas/ps1
+game_art_try_load
+main_before_ps1covers.c (igual à fase 9)
+4
+Jogos dentro de DVD/ ou CD/ usam só o nome do arquivo para achar a capa
+game_art_try_load (base)
+Faz parte da fase 9, aprovado no console
+5
+Capas também para jogos no MX4SIO e no MMCE
+lista de dispositivos em game_art_try_load
+main_before_ps1covers.c
+6
+Capa de PS1 (quadrada) alinhada embaixo da moldura quando o jogo não tem logo
+game_cover_is_ps1
+main_before_artslots.c
+7
+Boot de disco PS1 pelo CDVD via rom0:PS1DRV, chamado pelo stage2 (run_stage2(1,3,argv))
+cd_read_system_cnf, cd_boot
+main_before_ps1disc.c. Se o PS1 não iniciar, testar primeiro run_stage2(0, ...)
+8
+Mensagem amarela "Inicia CD (PS1 - PS2) e (DVD PS2)" no menu CDVD
+texto do item CDVD
+main_before_ps1disc.c, ou só trocar o texto
+9
+Favoritos acham o jogo mesmo com maiúsculas/minúsculas diferentes
+strcasecmp nos favoritos
+main_before_ps1disc.c, ou voltar para strcmp
+10
+Popup do CDVD detecta o disco (CD PS1, CD PS2, DVD PS2), mostra o nome pelo nomes.txt e tem popups de erro
+cdvd_probe, cdvd_start, show_cdvd_error, nomes_lookup
+main_before_cdvdpopup.c
+11
+FILES: ícone de pasta do tamanho do wLaunchELF, ISO em azul, sem barra no fim, nomes em maiúsculas
+draw_folder_icon, COLOR_TEXT_ISO
+main_before_artslots.c
+12
+Painel translúcido com contorno atrás da lista de jogos
+draw_box_translucent(0x12,0x0A,0x1C,0x4C) + draw_border
+main_before_artslots.c, ou apagar essas duas chamadas
+13
+Nome longo cortado com "..." e rolando no item selecionado (pausa de 60 quadros, passo 8)
+fit_text, marquee
+main_before_artslots.c
+14
+Logo embaixo da capa, disco do jogo no lugar do ícone do dispositivo, capa em tamanho real 1:1
+ArtSlot (art_logo, art_ico), logo_band_h, use_ico
+main_before_artslots.c
+15
+Nesta rodada: a capa desce e fica logo acima da logo (antes ficava alta demais)
+desenho da capa: if (art_logo.has) dy1 = (art_y2 - logo_band_h) - draw_h;
+Apagar essa linha
+16
+Nesta rodada: se o arquivo tiver serial na frente (SLUS_203.12.NOME), o serial é ignorado ao buscar capa, logo e disco
+início de game_art_try_load
+main_before_final_round.c, ou remover o bloco que corta o prefixo
+17
+Nesta rodada: o popup de iniciar do CDVD mostra o disco do próprio jogo (capas/ps1 ou ps2/SERIAIS/<SERIAL>_ICO.png) em vez do ícone de CD, em tamanho real até 64x64
+art_cdvd, cdvd_probe, desenho do popup
+main_before_final_round.c. Sem o arquivo, já volta sozinho ao ícone de CD
+18
+Ícone do menu PS1 incluído no assets.dat
+assets.dat embutido no elf
+Usar o assets.dat anterior
+19
+Fase 10b: painel da lista translúcido de verdade. A white.png sem alpha deixava o painel opaco. Agora usa uma textura 8x8 montada no código, e o alpha da cor vale (0x00 opaco, 0x80 invisível). Lista com 0x4C, escurecimento das abas no FILES com 0x30
+art_tint, draw_box_translucent
+main_before_fase10b.c
+20
+Fase 10b: capa sempre no mesmo lugar, com logo ou sem. A faixa da logo (58 px) fica sempre reservada, vazia quando não há logo
+logo_band_h = 58.0f; dy1 = (art_y2 - logo_band_h) - draw_h
+main_before_fase10b.c
+21
+Fase 10b: popup de iniciar de HD, USB, MX4SIO, MMCE, FILES (ISO) e favoritos mostra o disco do jogo (<NOME>_ICO.png ou SERIAIS/<SERIAL>_ICO.png). Sem disco: ícone de CD. PS1: disco no canto do popup do Ember. APPS e .elf: sem ícone
+art_launch, launch_icon_load, art_strip_serial, popups show_confirm e show_ember_settings
+main_before_fase10b.c
+22
+Segurar cima/baixo faz a lista andar sozinha: após 20 quadros, 1 item a cada 4 quadros; após 120 quadros, a cada 2. Listas das abas e Favoritos
+rep_pad, hold_up/hold_down, REP_DELAY/REP_SLOW/REP_FAST/REP_FAST_AT
+main_before_autorepeat.c
+23
+Painel da lista com ~75% do fundo aparecendo (alpha 0x60; maior = mais transparente)
+draw_box_translucent do painel esquerdo
+Voltar o valor para 0x4C
+24
+FILES etapa 1: Copiar, Colar (progresso em MB, cancelar com círculo, apaga o arquivo pela metade, aviso de 4 GB do FAT32) e Excluir com confirmação, um arquivo por vez. Recortar e pastas avisam "próxima etapa"
+files_copy_file, files_copy_frame, files_clip_full, show_files_del, handler de show_files_menu
+main_before_files_ops.c
+25
+Aba PS1 pergunta o dispositivo de novo sempre que se entra nela
+prev_device_ps1chk, logo após skip_list_input
+main_before_ps1reask.c
+26
+Fase 10c: popups só de aviso fecham apenas no círculo (resultado, disco não reconhecido, créditos); lista com 90% do fundo (0x73); fundo sorteado por "saco embaralhado" em mc0:HDUI-BG.CFG, sem repetir até passar por todos
+show_switch_result, show_cdvd_error, show_credits, bg_pick_index, bg_count_in_pack
+main_before_fase10c.c
+27
+Fase 10c FILES: Recortar (mesmo dispositivo = renomear; entre dispositivos = copia e apaga), popup de dispositivos após Copiar/Recortar com o nome do arquivo, pergunta antes de substituir, rodapé "R1 para ações" com a área de transferência, MX4SIO no FILES (navegar, ISO e ELF)
+files_paste, files_exists, show_files_over, files_picker_paste, files_picker_implemented_now, BOOT_DEV_MX4SIO no FILES
+main_before_fase10c.c
+28
+Fase 10d: ícone de pasta no MX4SIO (driver não informa o tipo; usa atributo FAT 0x10 ou tenta abrir como pasta); MMCE no FILES (primeiro slot com cartão, ISO e ELF, copiar/recortar/colar/excluir); popup do R1 60 px mais largo; excluir pastas inteiras (todos os dispositivos) com confirmação e contagem; avisos de MX4SIO/MMCE em uso agora mandam usar R3
+scan_dir_one_level, files_mmce_slot, files_delete_tree, files_del_frame, files_del_is_dir
+main_before_fase10d.c
+29
+FILES no MMCE travava ~1 min sem cartão: o laço tentava 30 vezes cada slot. Agora uma tentativa por slot, com "Procurando MMCE..." na tela
+handler do show_files_picker, ramo DEV_MMCE
+main_before_mmcefix.c
+30
+Build 12, erro: a aba HD dizia "Nenhum HD exFAT detectado" com o HD funcionando (visível no FILES). Causa: as ISOs estavam em JOGOS/, e a busca só olhava raiz, CD/ e DVD/; com zero ISOs a mensagem culpava o HD. Correção: busca recursiva da raiz até 4 níveis em todas as pastas (HD, USB, MX4SIO, MMCE), pulando pastas do loader, do OPL e do sistema, máx. 48 subpastas por pasta e 256 jogos; caminho maior que 128 caracteres é pulado
+scan_isos_recursive, iso_scan_skip_dir, list_isos_all_dirs
+main_before_isoscan.c
+31
+Build 12: aba HD espera o HD responder (até ~4 s, "Procurando HD..."); X com a lista vazia tenta de novo (HD e USB); mensagens separam "Nenhum HD/USB detectado" de "Nenhuma ISO encontrada no HD/USB"
+hd_rescan, hd_present, handler do X, empty_msg
+main_before_hdfix.c
+32
+Disquinho do tipo antes do nome na lista: azul nas abas HD, USB, MX4SIO e MMCE (PS2), preto com borda prateada na aba PS1. Mesma coluna do ícone de pasta do FILES; fonte, tamanho e altura do nome iguais, o nome só anda 20 px para a direita. Desenhado com draw_box, sem textura nova
+draw_game_type_icon e laço das linhas da lista
+main_before_typeicons.c
+33
+Build 13: furo do disco redondo; DVD dourado para ISO de 800 MB ou mais e CD azul abaixo disso (abas de jogos e FILES), CD preto no PS1; ícone verde de programa nos .elf do FILES e na aba APPS. Tamanho vem da leitura da pasta, sem abrir a ISO; guardado nos 5 últimos bytes da linha do nome (nome máx. 122 caracteres)
+draw_game_type_icon, game_icon_kind_for_mb, draw_elf_icon, iso_meta_set_mb/get_mb, files_real_mb, scan_dir_one_level
+main_before_roundhole.c / main_before_cddvd.c
+34
+Erro do Build 12/13: abas MX4SIO e MMCE pararam de listar. Os drivers deles não informam se a entrada é pasta ou arquivo, e a busca recursiva só entrava em pastas com tipo informado. Correção: tipo desconhecido e nome sem extensão curta é tratado como possível pasta (se não for, o Dopen falha e segue); HD e USB não mudam
+scan_isos_recursive
+main_before_scanfix.c
+35
+MX4SIO "não detectado" na aba: o cartão monta em segundo plano depois de carregar o driver e a aba testava antes; agora espera até ~3 s ("Procurando MX4SIO..."). MMCE não detectado em lugar nenhum: o mmceman do ps2sdk atual só abre a raiz como "mmce0:/" (com barra); todos os caminhos do MMCE passaram a usar a barra, e a detecção tenta 3 rodadas curtas
+wait_device_ready, mx4sio_rescan, mmce_rescan, mmce_list_isos, files_device_prefix, picker do FILES
+main_before_sio2wait.c / main_before_mmceslash.c
+36
+Build 14: MC 1 e MC 2 no popup do FILES (grade 3x2, ícone de memory card desenhado); copiar, recortar e colar pastas inteiras em qualquer dispositivo, com barra de progresso da pasta toda; substituir pasta mescla os arquivos; não deixa colar pasta dentro dela mesma; ISO no memory card não inicia (avisa); MC 2 bloqueado se o MX4SIO estiver em uso
+FILES_DEV_MC0/MC1, draw_memcard_icon, files_copy_tree, files_read_dir, files_tree_size, files_dir_exists, files_paste
+main_before_mcfolders.c
+37
+Build 15 (itens 35 e 36 aprovados no console): FILES esconde $RECYCLE.BIN e System Volume Information; direcional direita avança 10 itens e esquerda volta 10, só no FILES
+files_rescan, entrada do FILES (PAD_RIGHT/PAD_LEFT)
+main_before_files_hide.c
+38
+Build 16: manipulação completa de arquivos no FILES entre qualquer dispositivo (HD, USB, MX4SIO, MMCE, MC 1, MC 2). Vários itens marcados com Círculo. Menu do R1 com 11 opções: Recortar, Copiar, Colar (progresso do conjunto, pergunta uma vez: substituir todos / pular / cancelar, resumo final, cópia na mesma pasta vira "NOME - Copia"), Excluir vários, Renomear de verdade, Nova pasta, Marcar todos, Desmarcar todos, Inverter marcação, Propriedades e Limpar copiados. Teclado com minúsculas (Quadrado ou botão abc), linha de símbolos ( ) [ ] ! & ' + , # e L1/R1 movendo o cursor.
+files_paste_all, files_paste_conflicts, files_delete_selection, files_copy_name, files_clip_forget, files_tree_stats, enum FM_*, files_menu_enabled, kb_mode, kb_lower
+main_before_filesfull.c
+39
+Build 17: jogos de PS1 com vários discos. A lista conta os .cue de cada pasta (ou os .bin, se não houver .cue) e mostra "(N Discos)". O popup do Ember ganhou a linha "Disco: 1 de N" acima das opções. O título do popup mostra só o nome do jogo, com marquee se não couber. Com mais de um disco, o Ember recebe "games/<pasta>/<disco>.cue"; com um disco só, continua recebendo só o nome da pasta.
+ps1_list_discs, ps1_natcmp, ps1_disc_count, ps1_name_with_discs, ember_title_draw, ember_disc_sel, boot_game_via_ember (3º parâmetro)
+main_before_ps1discs.c
+40
+Build 18: correção da escolha de disco. A Build 17 passava ao Ember "games/<pasta>/<disco>.cue", mas o Ember já acrescenta "games/" sozinho e procurava em games/games/. O jogo era recusado e caía no shell da BIOS. Agora passa "<pasta>/<disco>.cue", o formato do README do Ember (Beta 2). Exige o Ember Beta 2 ou mais novo; o Beta 1 só aceita o nome da pasta.
+boot_game_via_ember
+main_before_emberarg.c
+41
+Código escrito em 04/10/2026, ainda NÃO compilado nem testado no console. V2.0.4: versão em START > Créditos, no formato "FastLoader V2.0.4 - dd/mm/aaaa" com a data da compilação. A cada compilação, somar 1 no último dígito de FASTLOADER_VERSION.
+FASTLOADER_VERSION, bloco show_credits
+main_before_v204.c
+42
+Código escrito em 04/10/2026, ainda NÃO compilado nem testado no console. V2.0.4: nova ordem das abas: HD, USB, MX4SIO, MMCE, PS1, CDVD, APPS, FILES. Os valores DEV_* não mudaram; mudou só a ordem de exibição e do L1/R1. APPS ocupa o lugar da futura REDE. SELECT no FILES volta para a aba anterior a FILES (APPS).
+tab_order, tab_pos, DEV_BEFORE_FILES
+main_before_v204.c
+43
+Código escrito em 04/10/2026, ainda NÃO compilado nem testado no console. V2.0.4: o Neutrino também é procurado em ata0:FastLoader/neutrino.elf, por último. Se não achar em lugar nenhum, o X do popup de iniciar mostra o aviso "Neutrino nao encontrado" em vez de voltar calado para a lista.
+NEUTRINO_PATH_HD, find_neutrino, X do show_confirm
+main_before_v204.c
+44
+Código escrito em 04/10/2026, ainda NÃO compilado nem testado no console. V2.0.4: textos das abas MX4SIO e MMCE sem jogos: "Nenhuma ISO encontrada no MX4SIO", "Nenhuma ISO encontrada no MMCE", "Nenhum MMCE detectado".
+mensagens de lista vazia
+main_before_v204.c
+45
+Código escrito em 04/10/2026, ainda NÃO compilado nem testado no console. V2.0.4: memory card virtual (MCV). Arquivo FASTLOADER/MEMORY CARD/<nome>.mcv no mesmo dispositivo do jogo. Nome: nome da ISO sem serial, até o " - ", ou os 30 primeiros caracteres. O popup de iniciar ganhou a linha "MEMORY CARD: FISICO / VIRTUAL"; esquerda e direita trocam; a escolha fica em mc0:HDUI-MCV.CFG. Passa -mc0=mass:<arquivo> ao Neutrino. Vale para HD, USB, MX4SIO, favoritos e ISO pelo FILES; não vale para MMCE. Caminho do jogo + do MCV acima de 250 caracteres: inicia com o físico e avisa "(NOME LONGO)".
+MCV_DIR, MCV_CFG_PATH, mcv_make_name, mcv_args_fit, g_boot_mcv_rel, boot_iso_via_neutrino, show_confirm
+main_before_v204.c
+46
+Código escrito em 04/10/2026, ainda NÃO compilado nem testado no console. V2.0.4: voltar onde parou. Guarda a aba e o jogo em mc0:HDUI-LAST.CFG ao iniciar. Ao abrir, HD, USB e PS1 já carregam a lista e põem o cursor no jogo; MX4SIO e MMCE só trocam de aba e posicionam o cursor depois do X.
+LAST_CFG_PATH, last_save, last_load, restore_tab
+main_before_v204.c
+47
+Código escrito em 04/10/2026, ainda NÃO compilado. V2.0.4: mensagem grande não sai mais do popup. (1) Todo texto centralizado encolhe a fonte até 75% e, se ainda não couber, corta com "..."; texto que já cabe não muda. (2) Os popups "Excluir" e "Já existe" do FILES e o popup de aviso/resultado passam a ter a largura da linha mais larga (título ou mensagem), até 600. (3) Na lista de favoritos, nome comprido é cortado com "...". Origem: "A pasta e TUDO dentro dela serão apagados" passava da caixa quando o nome da pasta era curto.
+print_center, blocos show_files_del, show_files_over, show_switch_result, show_favorites
+main_before_popupfit.c
+48
+Código escrito em 04/10/2026, ainda NÃO compilado. V2.0.4: o Neutrino passa a ser procurado nesta ordem: pendrive (FastLoader/ e depois a raiz), HD (FastLoader/) e, como 4ª e última opção, memory card (mc0:FastLoader/). O memory card perdeu a prioridade, a pedido: com duas cópias do Neutrino, a do memory card ganhava sempre e era a configuração dela que valia. Substitui a ordem do item 43. Se não achar, espera o HD montar uma vez por sessão (até uns 4 s, "Procurando Neutrino...") antes de avisar. Aviso: "Coloque a pasta dele em FastLoader/ (USB, HD ou MC)". Quem só tem o Neutrino no memory card continua funcionando. Manual on-line atualizado com a ordem nova.
+find_neutrino, X do show_confirm
+main_before_neutrino_order.c
+49
+Código escrito em 04/10/2026, ainda NÃO compilado. V2.0.4: o memory card virtual continua liberado no pendrive e no MX4SIO, a pedido, mas com aviso. Quando VIRTUAL está escolhido num jogo desses dispositivos, o popup de iniciar mostra uma linha a mais: "NO PENDRIVE SALVAR PODE LEVAR MINUTOS. NAO DESLIGUE." (ou "NO MX4SIO..."). No HD não aparece. Medido no console: HD rápido; pendrive cerca de 3 min para criar o save e 1 min 15 s para salvar por cima; MX4SIO não medido.
+mcv_slow, mc_warn no bloco show_confirm
+main_before_mcvslow.c
+50
+Código escrito em 04/10/2026, ainda NÃO compilado. V2.0.4, modelo final do memory card virtual: cartão de 8 MB por jogo, no dispositivo de onde o jogo é iniciado. (1) O próprio loader cria o cartão: se o jogo ainda não tem .mcv, o popup oferece "CRIAR VIRTUAL (HD)"; no X grava o arquivo já formatado (tela "Criando memory card virtual") e inicia o jogo com ele. Nunca sobrescreve; se falhar, apaga o arquivo pela metade, avisa "Memory card nao criado" e não inicia. A imagem gerada é idêntica, byte a byte, à do PS1PS2Capas (conferido no PC). (2) O texto diz o dispositivo: "VIRTUAL (HD)", "VIRTUAL (PENDRIVE)", "VIRTUAL (MX4SIO)". (3) O loader só oferece VIRTUAL se a pasta do Neutrino tiver modules/mc_emu.irx e config/emu-mc-file.toml; senão mostra "FISICO (NEUTRINO SEM MC VIRTUAL)". Saiu o texto "FISICO (SEM MCV)". Decisões do dia: cartão único para todos os jogos e tamanhos maiores que 8 MB ficam para depois.
+neutrino_has_mcemu, mcvi_build_head, mcv_create_file, mcv_dev, mcv_devname, bloco show_confirm
+main_before_mcvcreate.c
+51
+Código escrito em 04/10/2026, ainda NÃO compilado. V2.0.4, renomear geral: ao renomear uma ISO pelo FILES (R1 > Renomear), o loader renomeia junto a capa, a logo e o disco (fastloader/capas/ps2), o .mcv (FASTLOADER/MEMORY CARD) e move para o nome novo o nome trocado com o triângulo, os modos, a escolha de MCV, o favorito e o último jogo. Mostra "Renomeado" com o que acompanhou. Proteções: nunca sobrescreve; capa ou .mcv usados por outra ISO da mesma pasta (dois discos do mesmo jogo) ficam onde estão; se o caminho antigo ainda existe em outro dispositivo, os ajustes sem dispositivo são copiados em vez de movidos. Não vale para pastas, para jogos de PS1 nem dentro do memory card. A lógica foi testada no PC; no console ainda não.
+files_rename_follow, kv_move_key, rename_if_free, files_other_iso_shares, iso_art_base; gancho no renomear do FILES
+main_before_renamefollow.c
+52
+Compilações de 05/10/2026, em etapas. Duas chaves no topo do main.c: FL_MCV_CREATE e FL_RENAME_FOLLOW. V2.0.4 (as duas em 0) testada e aprovada no console: jogo no pendrive com MCV ok, jogo no HD com cartão copiado ok, escolha de disco de PS1 ok. V2.0.5 (as duas em 1): CRIAR VIRTUAL e renomear geral; no console a criação funcionou e a barra apareceu mais alta que a padrão. A data do cartão criado pelo loader vem da data da compilação (sem sceCdReadClock, para não tocar no CDVD fora da aba CDVD). Pendências do console: MX4SIO no slot 2 não listou ISOs (cartão não confiável, adiado) e engasgos curtos nos jogos (existem em compilações antigas, adiado).
+FL_MCV_CREATE, FL_RENAME_FOLLOW, mcv_create_file, mcvi_build_head
+main_V2.0.4_compilado.c, main_V2.0.5_compilado.c
+53
+V2.0.6, compilada em 05/10/2026, ainda NÃO testada no console. Barra de "Criando memory card virtual" no tamanho padrão e emendada na barra de iniciar o jogo (ocupa os primeiros 30%).
+MCV_CREATE_BAR_SHARE, mcv_just_created, mcv_create_file
+main_before_mcvbar.c
+54
+V2.0.6, compilada em 05/10/2026, ainda NÃO testada no console: aba REDE no lugar da APPS (programas .elf abrem pelo FILES). X abre o popup do IP do PS2 (guardado em mc0:HDUI-NET.CFG), liga a rede, procura o servidor do PC e lista os jogos; SELECT atualiza; X no jogo inicia pelo Neutrino com -bsd=udpfs -dvd=udpfs:<caminho>. O loader não traz módulo de rede: carrega smap.irx, ministack.irx e udpfs_ioman.irx da pasta do Neutrino (precisa da v1.8.0 ou mais nova). Se o IP escolhido for diferente do que está no bsd-udpfs.toml do Neutrino, o loader grava ao lado a cópia bsd-flnet.toml com o IP novo e inicia com -bsd=flnet -bsdfs=no; o arquivo original não é alterado. Tentar de novo ou trocar o IP reinicia a IOP (mesmo caminho do R3). Na rede: só memory card físico, sem favoritos; capas vêm da pasta compartilhada do PC. Conferido no PC: a leitura e a gravação da config do Neutrino. Não conferido: nada que dependa do console (módulos de rede, placa, popup).
+DEV_REDE, BOOT_DEV_NET, net_connect, net_prepare_bsd, net_rescan, net_alive, net_cfg_load, net_cfg_save, net_error_text, show_net_ip; boot_iso_via_neutrino; switch_sio2_driver
+main_before_rede.c
+55
+V2.0.7, compilada em 05/10/2026, ainda NÃO testada no console. Correção de bug: console ligado só com o HD, HD listado, pendrive plugado depois; a aba USB e o FILES mostravam o conteúdo do HD. Causa: o loader usava "mass0:" fixo como pendrive, mas mass0:, mass1:... seguem a ordem em que os aparelhos montam (sem pendrive ao ligar, o HD vira mass0:). Agora o loader pergunta ao driver qual massN é o pendrive (USBMASS_IOCTL_GET_DRIVERNAME) a cada atualização e usa esse nome em toda parte: lista da aba USB, FILES, PS1, capas, MCV, favoritos, renomear geral e procura do Neutrino. Sem pendrive, nada mais cai no HD por engano. O Neutrino do HD continua sendo entregue no formato massN:. Junto: SELECT e o 1º X de cada aba (HD, USB, MX4SIO, MMCE) mostram a barra padrão andando de verdade: até 45% esperando o aparelho responder, de 50 a 97% uma fatia por pasta da raiz já lida. A aba USB passou a esperar até 2,5 s o pendrive montar. Conferido no PC: a escolha do device em 8 ordens de montagem simuladas.
+usb_dev, usb_dev_refresh, same_root_listing, usb_find, g_usb_dev, g_hd_mass, find_neutrino, usb_rescan, rescan_tab_with_bar, g_scan_label, scan_isos_recursive, wait_device_ready, hd_rescan, mmce_rescan, files_device_prefix, ps1_device_prefix
+main_before_usbname.c
+56
+Barras de progresso padronizadas (continua V2.0.7, sem subir número a pedido). Todas as barras com a mesma largura e 6 px de altura (antes 10 e 12). Mensagem embaixo da barra com letra 0.40 (antes 0.61). Texto depois de ": " desenhado mais perto dos dois-pontos em tudo que passa por print_center. Linha de MB da cópia com um espaço só.
+PBAR_X1, PBAR_X2, PBAR_H, PBAR_TEXT_SCALE; draw_loading_frame; files_copy_frame; COLON_PULL, colon_gaps, colon_pull_px, fontm_print_tight, print_center
+Voltar para main_before_barstyle.c (ELF anterior: fastLoader_V2.0.7_antes_barras.elf). Só o espaço dos dois-pontos: COLON_PULL 0.0f. Só a espessura: PBAR_H. Só a letra: PBAR_TEXT_SCALE.
+Próximas implementações (anotado, ainda não feito)
+Lista do que foi combinado para as próximas versões. Nada daqui está no código ainda. Atualizada em 04/10/2026.
+#
+Item
+O que foi combinado
+Situação
+P1
+Versão nos créditos
+A próxima compilação sai como V2.0.4 e cada compilação seguinte soma 1 no último dígito. Aparece em START > Créditos com a data da compilação, e também no LEIA-ME e no manual
+Feito. Entregue na V2.0.4; build atual V2.0.7. Usuário confirmou "tudo certo" em 05/10/2026
+P2
+Nova ordem das abas
+HD, USB, MX4SIO, MMCE, PS1, CDVD, REDE, FILES. Muda só a ordem
+Feito. Ordem nova entregue na V2.0.4 e aba REDE no lugar da APPS na V2.0.6. Confirmado pelo usuário em 05/10/2026
+P3
+Aba REDE no lugar da aba APPS
+Os programas .elf continuam abrindo pelo FILES. A aba REDE lista e inicia jogos pela rede. No primeiro X da sessão abre o popup de configuração da rede e salva. Depois o popup só volta em outra sessão ou depois de atualizar com SELECT
+Feito na V2.0.6 com UDPFS do Neutrino. No console, confirmados em 05/10/2026: conexão, lista de jogos e artes. Ainda sem retorno explícito: iniciar jogo pela rede, IP diferente de 192.168.1.10 e reconectar depois de parar o servidor. Só memory card físico na rede (ver P15)
+P4
+Memory card virtual (MCV)
+Pasta FASTLOADER/MEMORY CARD no HD e no pendrive. No popup de iniciar, escolher Físico ou Virtual antes de iniciar. Argumento -mc0 do Neutrino
+Levantamento feito. Restrições: MCV no mesmo dispositivo do jogo, só slot 1, arquivo de 8 MB já formatado, nome curto (serial). Decidido em 04/10/2026: um MCV por jogo, criado pelo PS1PS2Capas (item P12). Nome sem serial (ver P12). Feito e confirmado pelo usuário em 05/10/2026 (HD, pendrive e MX4SIO; criação pelo loader com barra na V2.0.6)
+P5
+Neutrino também no HD
+Procurar o Neutrino em ata0:FastLoader/ além do memory card e do pendrive
+Feito. Na V2.0.7 a procura passou a achar o HD mesmo quando o pendrive entra depois. Essa correção da V2.0.7 ainda aguarda confirmação no console
+P6
+Aviso quando falta o Neutrino
+Hoje o loader volta para a lista sem dizer nada. Mostrar "neutrino.elf não encontrado"
+Feito. Usuário confirmou "tudo certo" em 05/10/2026
+P7
+Texto das abas MX4SIO e MMCE sem jogos
+Ainda diz "SEM .ISO NA RAIZ/CD/DVD", mas a busca já olha todas as pastas
+Feito. Usuário confirmou "tudo certo" em 05/10/2026
+P8
+Voltar onde parou
+Guardar a aba e o jogo antes de iniciar e reabrir no mesmo ponto
+Feito (HDUI-LAST.CFG). Usuário confirmou "tudo certo" em 05/10/2026
+P9
+Manual e LEIA-ME
+Atualizar a cada item acima: ordem das abas, aba REDE, MCV e número da versão
+ABERTO (etapa 4). Manual on-line ainda com a V2.0.4 marcada como "em preparação" e a rede como prévia. Falta: tirar essas marcas, reescrever a seção de rede com as telas reais, incluir o destino automático e as artes pela rede, trocar o nome do programa de Windows (P14), escrever o LEIA-ME e montar o pacote completo
+P10
+IGR (voltar ao loader pelo controle)
+O Neutrino oficial não tem IGR. Exigiria manter um Neutrino próprio
+Descartado em 03/10/2026, por custo
+P11
+Ideias antigas em aberto
+Modo 480p; aba PS1 lendo MX4SIO e MMCE; imagens próprias para os ícones de CD
+Sem data
+P12
+PS1PS2Capas: criar os MCVs
+Depois de escanear os jogos, opção para criar o memory card virtual de cada um em FASTLOADER/MEMORY CARD, já formatado, com o serial no nome. Jogo sem serial não impede: cria com o primeiro nome do jogo
+Definido em 04/10/2026. Nome: sem serial e sem nenhuma convenção do OPL (decisão de 04/10/2026). Extensão .mcv. Vale só o nome do jogo até antes do traço ("Phantom Brave - xxx" vira "Phantom Brave") ou os 30 primeiros caracteres se não houver traço. Uma caixa de marcar por jogo: só cria para os marcados. Jogo que já tem MCV aparece com a caixa cinza e o aviso de que já existe; não cria outro, só apagando o arquivo à mão no dispositivo. O loader usa a mesma regra de nome. O traço que vale é o que tem espaço dos dois lados (" - "), para não cortar nomes como "Spider-Man". Feito e confirmado pelo usuário em 05/10/2026
+P13
+PS1PS2Capas: aba de rede
+Usar o PS1PS2Capas como o programa de Windows que serve os jogos ao PS2: aba com a lista de jogos, botões de conexão e log em tempo real da conexão e do funcionamento
+Definido em 04/10/2026: servidor próprio dentro do PS1PS2Capas, para aproveitar os logs. Regra: depois do jogo iniciado, o log mostra "conectado" e "jogo iniciado" e o servidor não envia nada por conta própria ao console (sem ping nem verificação periódica). O log sai só dos pedidos que o PS2 já faz. Feito em 05/10/2026 (itens 20 a 22 da tabela do PS1PS2Capas). Confirmado no console: conexão, lista e artes
+P14
+Novo nome do programa de Windows
+"PS1PS2Capas" passa a se chamar "Gerenciador Fastloader", sempre com as iniciais maiúsculas. Pedido em 05/10/2026 para o próximo build
+ABERTO. Entra no próximo build do programa. A definir com o usuário: nome do arquivo .exe e do .ini (com cópia automática do PS1PS2Capas.ini antigo)
+P15
+MCV nos jogos da rede
+Dúvida do usuário em 05/10/2026. Pelo código do Neutrino é viável: o -mc0 abre o arquivo pelo mesmo driver do jogo e o driver de rede do PS2 tem gravação por setor (BWRITE), nas duas versões (v1.8.0 e master)
+AGUARDANDO DECISÃO. Falta: servidor aceitar gravação só em arquivos .mcv da FASTLOADER\MEMORY CARD; loader liberar "Virtual" na aba REDE com -mc0=udpfs:...; testar gravação com perda de pacotes. Não testado no console
+P16
+Letra da unidade trocada
+Quando a pasta dos jogos salva não existe mais (HD virou outra letra), procurar o mesmo caminho nas outras letras e avisar no log. Oferecido em 05/10/2026
+AGUARDANDO DECISÃO. Hoje é preciso escolher a pasta de novo; o destino e as artes se acertam sozinhos (item 22)
+P17
+Entregas aguardando teste do usuário
+Loader V2.0.7: pendrive inserido depois do HD e barra no SELECT (item 55); barras finas, letra menor e espaço depois dos dois-pontos (item 56). Programa de Windows: destino automático pela regra da FASTLOADER (item 22)
+AGUARDANDO TESTE desde 05/10/2026
+P18
+Adiados pelo usuário
+Investigar os engasgos durante o jogo; MCV compartilhado entre jogos ou maior que 8 MB
+Sem data
+Plano por dificuldade (04/10/2026)
+Etapa
+O que entra
+Onde
+Dificuldade
+Observação
+1
+Versão V2.0.4 nos créditos, somando 1 a cada compilação
+Loader
+Fácil
+
+1
+Nova ordem das abas
+Loader
+Fácil
+A aba APPS fica na posição da REDE até a rede funcionar
+1
+Aviso quando falta o Neutrino; texto das abas MX4SIO e MMCE; Neutrino também no HD; voltar onde parou
+Loader
+Fácil
+Sugestões aguardando ok
+2
+Abas na janela e coluna MCV com caixa de marcar e linha cinza
+PS1PS2Capas
+Médio
+
+2
+Criar o arquivo .mcv formatado
+PS1PS2Capas
+Médio
+Ponto delicado: o formato precisa sair exato. Conferido no PC antes de entregar
+2
+Linha Memory card Físico / Virtual no popup de iniciar, com a escolha guardada por jogo
+Loader
+Médio
+Depende de o MCV funcionar no console
+3
+Rede parte A: módulos de rede, popup do IP, conectar e listar os jogos
+Loader
+Difícil
+Testada com o servidor oficial do Neutrino no PC
+3
+Rede parte B: iniciar o jogo pela rede
+Loader
+Difícil
+
+3
+Rede parte C: servidor próprio
+PS1PS2Capas
+Difícil
+A parte mais trabalhosa
+3
+Rede parte D: aba Rede com situação, log e firewall
+PS1PS2Capas
+Médio
+Depende da parte C
+Todas
+Manual e LEIA-ME
+Documentação
+Fácil
+Atualizados a cada etapa
+Situação em 04/10/2026. As etapas 1 e 2 estão escritas no código do loader e do PS1PS2Capas e passam na verificação de sintaxe, mas nada foi compilado: o fastLoader.elf entregue continua o do Build 18 e o PS1PS2Capas.exe continua o anterior. A etapa 3 (rede) não foi começada.
+O que só o teste no console vai dizer: se o Neutrino aceita o memory card virtual em todos os jogos (a emulação dele usa só o slot 1 e tem a geometria fixa em 8 MB), se o Neutrino inicia a partir do HD, se o "voltar onde parou" carrega a lista certa ao abrir, e se as abas e a coluna de caixas do PS1PS2Capas se comportam bem no Windows.
+Teste do memory card virtual em 04/10/2026 (Build 18 + linha default_mc0 no system.toml do Neutrino). Jogo no pendrive: o cartão virtual foi detectado e gravou, mas devagar: cerca de 3 minutos para criar o save e 1 min 15 s para salvar por cima. A causa está no módulo mc_emu.irx do Neutrino, que grava 512 bytes por vez e ainda apaga cada bloco de 8 KB com outras 16 gravações. Jogo no HD: na primeira tentativa o jogo disse que não havia memory card, porque o Neutrino usado foi a cópia do memory card, sem a linha. Repetido com a cópia certa, o cartão virtual foi reconhecido e gravou rápido. A escolha de disco de PS1 do Build 18 também foi confirmada no console.
+PS1PS2Capas (PS1PS2Capas.exe)
+O programa se chamava CapasPS2. Os itens abaixo foram feitos em sequência e todos foram testados no Wine, não no Windows real. Para voltar à versão anterior a esta rodada, use a pasta ps1ps2capas_before_final_round. Para voltar a antes de logos e discos, use main_ps1ps2_before_art.c. O CapasPS2.exe original também continua na pasta de entregas.
+#
+Recurso
+Arquivo
+Como desfazer
+1
+Janela com 3 painéis: escolher pastas, validar o serial de cada ISO e baixar capas do xlenore com progresso e erros
+main.c, iso_serial.c
+CapasPS2.exe
+2
+Capa própria para jogos sem serial ou sem capa no repositório
+main.c, art.inc.c
+CapasPS2.exe
+3
+Endereços dos repositórios editáveis (botão "Repositórios..."), incluindo o de PS1 (psx-covers 3D)
+main.c
+Voltar o endereço no próprio diálogo
+4
+Capas em capas\PS2 e capas\PS1. PS2 com 220 de altura, PS1 com 226x226
+main.c
+CapasPS2.exe
+5
+Nomes em maiúsculas, inclusive .PNG. Popup Sim/Não para renomear os jogos e volta ao nome original guardado no .ini
+rename.inc.c
+Usar a opção de restaurar os nomes no próprio programa
+6
+Ao renomear, as imagens próprias acompanham o novo nome (5 seções do .ini migradas)
+rename.inc.c
+main_ps1ps2_before_art.c
+7
+Gera fastloader\nomes.txt (serial → nome) a partir do GameIndex do PCSX2 e do gamedb do DuckStation, usando o nome em inglês para títulos japoneses
+nomes.inc.c
+Apagar o nomes.txt: o loader só deixa de mostrar o nome no popup do CDVD
+8
+Logo (_LOGO.PNG, cabe em 184x54) e disco (_ICO.PNG, cabe em 58x58). Ordem: imagem própria, depois pasta ART do OPL, depois download do Luden02
+art.inc.c
+main_ps1ps2_before_art.c
+9
+Remoção de fundo, corte das bordas e ajuste de tamanho de logos e discos
+art.inc.c (make_art)
+Desmarcar "Remover o fundo automaticamente" na prévia
+10
+Teste dos repositórios antes de baixar (máximo 10 s, em paralelo) e desliga o repositório após 3 falhas seguidas, com aviso na tela
+health.inc.c
+main_ps1ps2_before_art.c
+11
+Nesta rodada: logo própria da internet. No navegador, clique com o botão direito na imagem e escolha "Copiar imagem". No programa, clique com o botão direito no jogo e escolha "Colar logo (copiada do navegador)" ou "Colar imagem de disco". Também aceita arquivo copiado no Explorer. A imagem colada fica salva em imagens_proprias ao lado do .exe
+preview.inc.c (paste_clipboard_image)
+ps1ps2capas_before_final_round
+12
+Nesta rodada: prévia antes de aplicar a logo ou o disco, no fundo roxo do loader, em 1x e 2x, com a opção "Remover o fundo automaticamente" (a escolha fica guardada no .ini por jogo)
+preview.inc.c (art_preview_dialog)
+ps1ps2capas_before_final_round
+13
+Nesta rodada: nome com serial na frente (SLUS_203.12.Nome do Jogo) perde o serial e fica em maiúsculas (NOME DO JOGO)
+main.c (strip_serial_prefix)
+ps1ps2capas_before_final_round
+14
+Nesta rodada: o disco (_ICO) também é copiado para SERIAIS<SERIAL>_ICO.PNG, que o loader usa no popup do CDVD
+art.inc.c
+ps1ps2capas_before_final_round. O loader volta ao ícone de CD
+15
+Depois da entrega: basta escolher o HD ou pendrive. O programa cria FASTLOADER\CAPAS (em maiúsculas) e, ao gerar, PS2, PS1 e SERIAIS. Pastas que já existem são reaproveitadas com o nome que têm. Escolher FASTLOADER ou CAPAS também funciona. O nomes.txt vai direto para FASTLOADER, sem perguntar a pasta
+main.c (resolve_dst_dir, make_dir_tree)
+ps1ps2capas_before_autodir
+16
+Painel 2 mostra (PS1), (PS2) ou (?) antes do nome, lido do SYSTEM.CNF. Só na tela, não muda nome de arquivo
+main.c (update_row, iso_checked)
+main_ps1ps2_before_tipo.c
+17
+Em 04/10/2026, código escrito, ainda NÃO compilado nem testado: abas "Capas e MCV" e "Rede" no topo da janela (a Rede só com o aviso de em desenvolvimento). Coluna MCV com caixa de marcar por jogo e coluna "Memory card virtual". Botões "Marcar MCV de todos", "Desmarcar MCV de todos" e "Criar MCV dos jogos marcados". Grava FASTLOADER\MEMORY CARD\<nome>.mcv de 8 MB já formatado e nunca sobrescreve. Jogo que já tem aparece marcado em cinza; jogo de PS1 fica sem caixa. A imagem gerada foi conferida byte a byte contra um cartão formatado por outra ferramenta.
+mcv.inc.c (novo), main.c
+capas_main_before_mcv.c e apagar o mcv.inc.c
+18
+Em 04/10/2026, código escrito, ainda NÃO compilado: todos os textos da janela passaram a dizer "MCV" (antes misturavam com a sigla invertida), a pedido. A aba é "Capas e MCV"; os botões são "Marcar MCV de todos", "Desmarcar MCV de todos" e "Criar MCV dos jogos marcados"; o quadro é "Memory card virtual (MCV)". Nenhuma mudança de funcionamento. Manual, mockup e este histórico trocados junto.
+main.c (textos)
+capas_main_before_mcvlabels.c
+19
+Compilado em 05/10/2026 (etapa 3), rodado só num emulador de Windows: marcar todos, criar os .mcv de 8 MB em FASTLOADER\MEMORY CARD, nomes pela regra, cartão existente não sobrescrito. Ajustes vistos na tela: botão "Usar imagem própria..." encurtado, coluna "Memory card virtual" mostrada logo depois de "Capa", quadro do MCV mais alto.
+main.c, mcv.inc.c
+capas_main_before_btnlabel.c; PS1PS2Capas_antes_mcv.exe
+20
+Compilado em 05/10/2026, ainda NÃO testado no Windows nem com o PS2: aba Rede com servidor próprio. Protocolo UDPFS do Neutrino (porta UDP 62966), somente leitura, um PS2 por vez, nunca envia nada por conta própria. Lista de jogos com as mesmas regras do loader, situação da conexão, log em tempo real com cores, log detalhado opcional, regra do Firewall, ajuda do IP, limpar/copiar/salvar log. Avisa no log se o IP do PS2 não é da mesma rede do PC. Conferido no PC com o código real do lado do PS2 (Neutrino v1.8.0 e o mais novo) compilado como cliente de teste: lista, leitura por arquivo, leitura por setor, jogo acima de 4 GB, e perda de pacotes simulada de 1% a 4% nos dois sentidos sem falha (o servidor oficial falhou com 3%). Reenvios saem sem a marca de confirmação, para o PS2 não confundir uma cópia atrasada com a confirmação de um pedido perdido.
+netsrv.inc.c (servidor), rede.inc.c (aba), main.c, Makefile
+capas_main_before_rede.c, capas_Makefile_before_rede; PS1PS2Capas_sem_rede.exe
+21
+Artes pela rede com a FASTLOADER fora da pasta compartilhada. Causa do defeito: o usuário compartilha F:\JOGOS e as artes ficam em F:\FASTLOADER\CAPAS\PS2; o servidor só enxergava dentro da pasta compartilhada e respondia "não encontrado". Agora, pedido que começa por fastloader/ e não existe na pasta compartilhada é procurado numa FASTLOADER achada (1) subindo pelas pastas acima da compartilhada até a raiz do disco, (2) no destino das capas da aba Capas e MCV. Só leitura e só dentro dessa FASTLOADER. O log mostra a pasta de artes em uso, ou um aviso se não achou.
+netsrv.inc.c: g_ns.art_base, ns_path_resolve_in, ns_rel_is_art, ns_path_resolve_art, uso em abrir arquivo, abrir pasta e getstat. rede.inc.c: net_dir_exists, net_find_art_base, g_net_art_found, linhas "Artes" no log de início.
+Voltar para capas_netsrv_before_artbase.c e capas_rede_before_artbase.c (EXE anterior: PS1PS2Capas_antes_artes_rede.exe). Desligar sem voltar: deixar g_ns.art_base vazio.
+22
+Regra única para achar a FASTLOADER, usada pelas duas abas: (1) dentro da pasta dos jogos, (2) subindo pelas pastas acima até a raiz da unidade. Sem letra de unidade gravada. Aba Capas e MCV: o destino é preenchido sozinho por essa regra ao escolher a pasta das ISOs e, ao abrir o programa, quando não há destino ou a unidade do destino salvo sumiu. Se não existe FASTLOADER em nenhum dos lugares, nada muda (destino pelo botão, como antes). Aba Rede: usa a mesma regra e mantém o destino da aba Capas como último recurso. Confirmado pelo usuário no console: artes pela rede OK (item 21).
+main.c: dir_exists, find_fastloader, dst_auto_from_isos, chamadas em WM_CREATE e ID_BTN_ISO. rede.inc.c: net_find_art_base passou a chamar find_fastloader.
+Voltar para capas_main_before_fastloader_auto.c e capas_rede_before_fastloader_auto.c (EXE anterior: PS1PS2Capas_antes_destino_automatico.exe). Só desligar o destino automático: tirar as duas chamadas de dst_auto_from_isos.
+Opções de linha de comando para diagnóstico: --teste, --renomear, --nomes e --previa.
+Estrutura de pastas no dispositivo
+A mesma estrutura vale na raiz do HD (ata0), USB (mass0), MX4SIO e MMCE. O popup do CDVD procura o disco em ata0, mass0 e mc0, nessa ordem.
+fastloader/
+  nomes.txt
+  capas/
+    ps2/
+      NOME DO JOGO.PNG
+      NOME DO JOGO_LOGO.PNG
+      NOME DO JOGO_ICO.PNG
+      SERIAIS/
+        SLUS-20312_ICO.PNG
+    ps1/
+      (mesma estrutura)
+O FAT32 e o exFAT não diferenciam maiúsculas de minúsculas, então .PNG e .png funcionam igual.
+O PS1PS2Capas cria essa estrutura sozinho: é só escolher o HD ou o pendrive como destino.
+Como voltar atrás
+Cada arquivo guarda o código como estava logo antes de uma etapa. Para voltar tudo de uma vez, basta substituir o main.c pelo arquivo e compilar. Para voltar só uma alteração, compare os dois arquivos e copie apenas o trecho da função citada na tabela do loader. Os arquivos estão em pontos_de_restauracao.zip, exceto o checkpoint.
+Arquivo
+Estado do código
+CHECKPOINT_fase9_capas_ok_main.c + .elf
+Fase 9, testada e aprovada no console
+main_before_ps1covers.c
+Idêntico à fase 9, antes das capas separadas em PS1/PS2
+main_before_ps1disc.c
+Antes do boot de disco PS1, da mensagem do CDVD e dos favoritos sem maiúsculas
+main_before_cdvdpopup.c
+Antes do popup do CDVD com detecção e nomes.txt
+main_before_artslots.c
+Antes de logo, disco no lugar do ícone, painel da lista, FILES e rolagem de nome
+main_before_final_round.c
+Antes desta rodada (itens 15 a 17)
+main_old_zip.c.bak
+Versão do zip original do projeto
+ps1ps2capas_before_final_round/
+Fonte do PS1PS2Capas antes desta rodada (itens 11 a 14)
+main_ps1ps2_before_art.c
+PS1PS2Capas antes de logos, discos e teste dos repositórios
+main_before_v204.c
+Loader no Build 18, antes de todo o código da V2.0.4 (itens 41 a 46)
+capas_main_before_mcv.c
+PS1PS2Capas antes das abas e do memory card virtual (item 17)
+manual_index_before_v204.html
+Página do manual on-line como estava no Build 18
+main_before_popupfit.c
+Loader com o código da V2.0.4 (itens 41 a 46), antes do ajuste das mensagens que saíam dos popups (item 47)
+main_before_neutrino_order.c
+Loader com os itens 41 a 47, ainda procurando o Neutrino no memory card primeiro (antes do item 48, que pôs o memory card por último)
+main_before_mcvslow.c
+Loader com os itens 41 a 48, antes do aviso de gravação lenta no pendrive (item 49)
+main_before_mcvcreate.c
+Loader com os itens 41 a 49, antes de o loader criar o cartão virtual e conferir o Neutrino (item 50)
+main_before_renamefollow.c
+Loader com os itens 41 a 50, antes do renomear geral do FILES (item 51)
+main_V2.0.4_compilado.c / main_V2.0.5_compilado.c
+Loader exatamente como compilado em cada etapa (itens 41 a 52)
+main_before_mcvbar.c
+Loader V2.0.5, antes da barra de criação do MCV (item 53)
+main_before_rede.c
+Loader com a barra nova, antes da aba REDE (item 54)
+main_V2.0.6_compilado.c
+Loader V2.0.6 como compilado em 05/10/2026 (itens 53 e 54)
+capas_main_before_btnlabel.c / PS1PS2Capas_antes_mcv.exe
+PS1PS2Capas antes dos ajustes de tela da etapa 3 / programa sem MCV
+capas_main_before_rede.c, capas_Makefile_before_rede / PS1PS2Capas_sem_rede.exe
+PS1PS2Capas com MCV, antes da aba Rede (item 20) / programa da etapa 3
+capas_main_rede_compilado.c, capas_rede_inc_compilado.c, capas_netsrv_inc_compilado.c, capas_Makefile_rede_compilado
+PS1PS2Capas com a aba Rede, como compilado em 05/10/2026
+teste_rede/ (client.c, shim/, loop.sh)
+Cliente de teste do servidor: roda no PC o código do lado do PS2 do Neutrino
+main_before_usbname.c
+Loader V2.0.6 (com a aba REDE), antes da correção do nome do pendrive e da barra do SELECT (item 55)
+main_V2.0.7_compilado.c
+Loader V2.0.7 como compilado em 05/10/2026 (item 55)
+main_before_barstyle.c / main_V2.0.7_barras_compilado.c
+Loader antes e depois da padronização das barras (item 56). ELFs: fastLoader_V2.0.7_antes_barras.elf (md5 31c46347…) e fastLoader.elf (md5 4f4d69ab…), os dois mostram V2.0.7.
+capas_netsrv_before_artbase.c, capas_rede_before_artbase.c / capas_netsrv_artes_compilado.c, capas_rede_artes_compilado.c
+PS1PS2Capas antes e depois das artes pela rede fora da pasta compartilhada (item 21). EXEs: PS1PS2Capas_antes_artes_rede.exe (md5 b0f82182…) e PS1PS2Capas.exe (md5 ad4a7e55…).
+capas_main_before_fastloader_auto.c, capas_rede_before_fastloader_auto.c / capas_main_destino_auto_compilado.c, capas_rede_destino_auto_compilado.c
+PS1PS2Capas antes e depois da regra única da FASTLOADER (item 22). EXEs: PS1PS2Capas_antes_destino_automatico.exe (md5 ad4a7e55…) e PS1PS2Capas.exe (md5 8efdbea4…).
+O arquivo fastloader_fase9_para_fase10.patch mostra, linha por linha, tudo o que mudou no loader entre a fase 9 e esta versão.
+Ordem de teste no console
+Teste nesta ordem, assim um problema aparece isolado:
+[ ] Capas no HD e no USB: a capa deve ficar encostada logo acima da logo
+[ ] Jogo PS1: capa quadrada, logo e disco no lugar do ícone
+[ ] Jogo com serial no nome do arquivo: a capa ainda deve aparecer
+[ ] CDVD com disco PS2 (CD e DVD): nome e disco do jogo no popup
+[ ] CDVD com disco PS1: o jogo deve iniciar. Se não iniciar, anote a mensagem e teste run_stage2(0, ...)
+[ ] Capas no MX4SIO
+[ ] Capas no MMCE
+Se tudo passar, esta versão vira o checkpoint da fase 10.
