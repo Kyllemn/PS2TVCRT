@@ -30,9 +30,9 @@ Se você usa HD em exFAT, pendrive ou cartão SD e quer ligar e jogar, continue 
 
 ## Comece em 3 passos
 
-1. Baixe o `fastLoader2.1.8.elf` nas [Releases](https://github.com/Kyllemn/PS2TVCRT/releases) e copie para o memory card ou pendrive.
+1. Baixe o `fastLoader2.0.8.elf` nas [Releases](https://github.com/Kyllemn/PS2TVCRT/releases) e copie para o memory card ou pendrive.
 2. Copie a pasta inteira do [Neutrino](https://github.com/rickgaiser/neutrino) para `FastLoader/` no pendrive, no HD ou no memory card.
-3. Abra o `fastLoader2.1.8.elf` pelo seu launcher (FreeMcBoot, PS2BBL e outros), escolha a aba e aperte X.
+3. Abra o `fastLoader2.0.8.elf` pelo seu launcher (FreeMcBoot, PS2BBL e outros), escolha a aba e aperte X.
 
 Pronto. Suas ISOs já estão na lista, onde quer que estejam.
 
