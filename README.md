@@ -227,20 +227,9 @@ Use sempre a versão mais nova do Neutrino e troque a pasta inteira de uma vez. 
 
 ```
 DISPOSITIVO:/
-├── Jogo.iso                          ISOs na raiz ou em qualquer pasta,
-├── JOGOS/PS2/Luta/Tekken 5.iso       até 4 níveis abaixo da raiz
-├── FastLoader/                       Neutrino: neutrino.elf + config/ + modules/
-├── EMBER/
-│   ├── ember.elf
-│   ├── bios.bin
-│   └── games/
-│       └── Final Fantasy VII/        um jogo por pasta, todos os discos juntos
-└── FASTLOADER/                       criada pelo Gerenciador Fastloader
-    ├── nomes.txt
-    ├── MEMORY CARD/                  memory cards virtuais
-    └── CAPAS/
-        ├── PS2/                      NOME.PNG, NOME_LOGO.PNG, NOME_ICO.PNG
-        └── PS1/
+    RETROVOLT/
+        FASTLOADER/ - fasrloader.elf (rename to this)
+        EXTRAS/
 ```
 
 No memory card do slot 1 ficam os seus ajustes: favoritos, nomes trocados, modos de cada jogo, escolha de memory card, último jogo e IP da rede.
