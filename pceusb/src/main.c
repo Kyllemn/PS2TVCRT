@@ -36,8 +36,9 @@
 #include "cdusb_ee.h"
 #include "cdcache.h"
 #include "diag.h"
+#include "ui.h"
 
-#define VERSAO		"p04"
+#define VERSAO		"p05"
 #define LOG_FILE	"mass:/PCEUSB.TXT"
 #define DISC_PATH	"ps2disc:/disco.cue"
 
@@ -157,7 +158,8 @@ void screen_title(const char *sub)
 /* ------------------------------------------------------------------ controle */
 static char pad_area[256] __attribute__((aligned(64)));
 static int pad_ok;
-static u16 pad_now, pad_prev = 0xffff;
+u16 pad_now;
+static u16 pad_prev = 0xffff;
 
 static void pad_start(void)
 {
@@ -165,7 +167,7 @@ static void pad_start(void)
 	pad_ok = padPortOpen(0, 0, pad_area) != 0;
 }
 
-static void pad_poll(void)
+void pad_poll(void)
 {
 	struct padButtonStatus b;
 	int s;
@@ -386,7 +388,7 @@ static void RETRO_CALLCONV audio_sample_cb(int16_t l, int16_t r)
 #define FB_W	512
 #define FB_H	243
 
-static GSGLOBAL *gs;
+GSGLOBAL *gs;
 static GSTEXTURE tex;
 static u16 fbuf[FB_W * 256] __attribute__((aligned(128)));
 static unsigned frames_drawn;
@@ -420,6 +422,7 @@ static void video_start(void)
 	tex.PSM = GS_PSM_CT16;
 	tex.Mem = (u32 *)fbuf;
 	tex.Filter = GS_FILTER_NEAREST;
+	ui_start();
 	text_mode = 0;
 }
 
@@ -448,11 +451,15 @@ static void RETRO_CALLCONV video_cb(const void *data, unsigned width, unsigned h
 	gsKit_TexManager_invalidate(gs, &tex);
 	gsKit_TexManager_bind(gs, &tex);
 
-	/* largura toda da tela; linhas 1:1 centralizadas (240p) */
-	y0 = (float)((240 - (int)height) / 2);
-	y1 = y0 + height;
-	gsKit_prim_sprite_texture(gs, &tex, 0.0f, y0, 0.0f, 0.0f, 640.0f, y1, (float)width, (float)height, 2,
+	/* convergencia (ui.c): tamanho, posicao e barras pretas sao so o
+	 * retangulo no GS; linhas 1:1 (240p), cortadas so se passarem de V% */
+	{
+	float x0, x1, v0, v1;
+	tela_rect(height, &x0, &y0, &x1, &y1, &v0, &v1);
+	gsKit_clear(gs, GS_SETREG_RGBAQ(0, 0, 0, 0x80, 0));
+	gsKit_prim_sprite_texture(gs, &tex, x0, y0, 0.0f, v0, x1, y1, (float)width, v1, 2,
 				  GS_SETREG_RGBAQ(0x80, 0x80, 0x80, 0x80, 0x00));
+	}
 	gsKit_queue_exec(gs);
 	gsKit_sync_flip(gs);
 	gsKit_TexManager_nextFrame(gs);
@@ -896,6 +903,8 @@ int main(int argc, char *argv[])
 		Exit(0);
 	}
 	bram_load();
+	if (log_ok)
+		tela_load();
 	STEP("jogo carregado; ligando o video (gsKit 240p)");
 	video_start();
 	STEP("video ligado; primeiro quadro");
@@ -931,6 +940,24 @@ int main(int argc, char *argv[])
 			STEP("primeiro quadro emulado (%u ms)", (unsigned)(rt / 1000));
 		else if (run_count == 60)
 			STEP("60 quadros emulados");
+
+		/* L1 + R1 + L2 + R2 = menu (o jogo pausa) */
+		if ((pad_now & (PAD_L1 | PAD_R1 | PAD_L2 | PAD_R2)) == (PAD_L1 | PAD_R1 | PAD_L2 | PAD_R2)) {
+			int m = ui_menu();
+			if (m == 1)
+				break;
+			if (m == 2) {
+				L("[MENU] jogo reiniciado");
+				retro_reset();
+			}
+			bram_check(1);
+			last_flip_us = 0;		/* a pausa nao conta como retraco perdido */
+			last_stat = ee_now_us();	/* a pausa nao entra no desempenho */
+			last_frames = frames_drawn;
+			last_runs = run_count;
+			run_us_sum = run_us_max = 0;
+			continue;
+		}
 
 		/* SELECT + START (segurar ~1 s) = sair */
 		if ((pad_now & (PAD_SELECT | PAD_START)) == (PAD_SELECT | PAD_START)) {

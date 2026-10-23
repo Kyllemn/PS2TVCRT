@@ -32,7 +32,7 @@ CORE_SRCS = \
 
 IRX_NAMES = iomanx filexio usbd bdm bdmfs_fatfs usbmass_bd audsrv cdusb
 GEN_OBJS = build/gen/syscard.o $(patsubst %,build/gen/irx_%.o,$(IRX_NAMES))
-EE_OBJS = $(patsubst %.c,build/%.o,$(CORE_SRCS)) build/src/main.o build/src/ps2_cd.o \
+EE_OBJS = $(patsubst %.c,build/%.o,$(CORE_SRCS)) build/src/main.o build/src/ps2_cd.o build/src/ui.o \
 	  build/cdusb/cdusb_ee.o build/cdusb/cdcache.o $(GEN_OBJS)
 
 EE_INCS := -I$(C) -I$(M) -I$(M)/include -I$(M)/hw_sound -I$(M)/hw_cpu -I$(M)/hw_misc \
@@ -62,7 +62,7 @@ build/cdusb/%.o: $(CDUSB)/ee/%.c $(CDUSB)/ee/cdcache.h $(CDUSB)/ee/cdusb_ee.h
 	@mkdir -p $(dir $@)
 	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
 
-build/src/main.o build/src/ps2_cd.o: $(CDUSB)/ee/cdcache.h $(CDUSB)/ee/cdusb_ee.h $(CDUSB)/common/cdusb_rpc.h
+build/src/main.o build/src/ps2_cd.o build/src/ui.o: src/ui.h $(CDUSB)/ee/cdcache.h $(CDUSB)/ee/cdusb_ee.h $(CDUSB)/common/cdusb_rpc.h
 
 build/gen/%.o: build/gen/%.c
 	$(EE_CC) $(EE_CFLAGS) -c $< -o $@
