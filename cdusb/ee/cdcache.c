@@ -100,13 +100,32 @@ static int cmd(const u8 *c, int dir, void *data, int len, int tmo, cdusb_scsi_re
 	return cdusb_scsi(dev, c, cdb_len(c[0]), dir, data, len, tmo, r);
 }
 
+/* dados pelo mesmo comando da musica (READ CD): o leitor mudava de rotacao
+ * ao trocar READ CD (musica) por READ(10) (dados), ate 3,8 s no PCE. Se o
+ * leitor recusar o READ CD de dados, volta para o READ(10). */
+static int data_r10;
+
 static int read_sectors(int lba, int n, int data, void *dst)
 {
 	u8 c[12];
 	cdusb_scsi_resp r;
+	int res;
 
 	memset(c, 0, sizeof(c));
 	c[2] = lba >> 24; c[3] = lba >> 16; c[4] = lba >> 8; c[5] = lba;
+	if (data && !data_r10) {
+		c[0] = 0xBE; c[1] = 0x08;		/* READ CD, modo 1 */
+		c[6] = n >> 16; c[7] = n >> 8; c[8] = n;
+		c[9] = 0x10;				/* so os 2048 bytes de dados */
+		res = cmd(c, 1, dst, n * 2048, TMO_READ, &r);
+		if (res == CDUSB_CHECK && ((r.sense >> 16) & 0x0f) == 5) {
+			data_r10 = 1;
+			L("[CDCACHE] leitor recusou READ CD de dados (codigo %06X): usando READ(10)", r.sense);
+		} else
+			return res;
+		memset(c, 0, sizeof(c));
+		c[2] = lba >> 24; c[3] = lba >> 16; c[4] = lba >> 8; c[5] = lba;
+	}
 	if (data) {
 		c[0] = 0x28;
 		c[7] = n >> 8; c[8] = n;
@@ -116,6 +135,23 @@ static int read_sectors(int lba, int n, int data, void *dst)
 	c[6] = n >> 16; c[7] = n >> 8; c[8] = n;
 	c[9] = 0x10;
 	return cmd(c, 1, dst, n * 2352, TMO_READ, &r);
+}
+
+/* velocidade que o leitor diz estar usando (pagina 2A), -1 = nao lida */
+static int cur_speed_kbs(void)
+{
+	static u8 pg[64] __attribute__((aligned(64)));	/* o tmp ainda guarda a leitura */
+	u8 c[12] = {0x5A, 0x08, 0x2A, 0, 0, 0, 0, 0, 32, 0, 0, 0};
+	cdusb_scsi_resp r;
+	int off;
+
+	memset(pg, 0, 32);
+	if (cmd(c, 1, pg, 32, TMO_CMD, &r) != CDUSB_OK)
+		return -1;
+	off = 8 + (pg[6] << 8 | pg[7]);
+	if (off + 16 > 32)
+		return -1;
+	return pg[off + 14] << 8 | pg[off + 15];
 }
 
 static int read_toc(void)
@@ -320,6 +356,9 @@ static void reader(void *arg)
 				L("[CDCACHE] pulo para o setor %d: 1a leitura %d ms", f, st.last_ms);
 			else if (st.last_ms > 300)
 				L("[CDCACHE] LENTO: setor %d x%d em %d ms", f, n, st.last_ms);
+			if (st.last_ms > 1000)
+				L("[CDCACHE] leitura de %s em %d ms; o leitor diz estar a %d KB/s", data ? "DADOS" : "MUSICA",
+				  st.last_ms, cur_speed_kbs());
 			after_jump = 0;
 		}
 		if (r != CDUSB_OK) {
@@ -516,6 +555,25 @@ int cdcd_read(int lba, int n, void *dst, int timeout_ms)
 		WaitSemaEx(data_sema, 1, &w);
 	}
 	return got;
+}
+
+int cdcd_ready(int lba)
+{
+	int ok;
+
+	if (!running || lba < 0 || lba >= toc.lba[100])
+		return 1;			/* fora do disco: o nucleo trata */
+	lock();
+	ok = tag[lba % SLOTS] == lba;
+	if (!ok && !coming(lba)) {
+		consumer = lba;
+		restart = 1;
+	} else if (!ok && lba > consumer)
+		consumer = lba;
+	unlock();
+	if (!ok)
+		SignalSema(kick_sema);
+	return ok;
 }
 
 void cdcd_seek(int lba)

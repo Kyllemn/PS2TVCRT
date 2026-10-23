@@ -51,6 +51,10 @@ int cdcd_read_nb(int lba, int n, void *dst);
  * "toca"); quando o "toca" chegar, a musica ja esta no buffer. */
 void cdcd_seek(int lba);
 
+/* o setor ja esta na memoria? (sem esperar; se nao estiver, a leitura vai
+ * buscar). Para o CD emulado adiar a entrega em vez de parar a emulacao. */
+int cdcd_ready(int lba);
+
 void cdcd_get_stats(cdcd_stats *s);
 
 #endif

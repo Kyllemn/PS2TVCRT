@@ -36,7 +36,7 @@
 #include "cdcache.h"
 #include "diag.h"
 
-#define VERSAO		"p01"
+#define VERSAO		"p02"
 #define LOG_FILE	"mass:/PCEUSB.TXT"
 #define DISC_PATH	"ps2disc:/disco.cue"
 
@@ -54,7 +54,10 @@ IRX(irx_audsrv);
 unsigned prof_cyc[16], prof_cnt[16], prof_last;
 int prof_cur, prof_stack[16], prof_sp;
 
-void ps2_cd_stats(unsigned *data_miss, unsigned *audio_miss);
+void ps2_cd_stats(unsigned *data_miss, unsigned *audio_miss, unsigned *postponed);
+
+/* pular a imagem do proximo quadro (lido pelo nucleo em retro_run) */
+int ps2_skip_next;
 extern const unsigned int ps2_syscard3_size;
 extern const unsigned char ps2_syscard3[];
 
@@ -276,8 +279,10 @@ static void audio_thread(void *arg)
 			unsigned w = ring_w, r = ring_r, have = w - r;
 			int16_t *o = (int16_t *)a_out;
 			n = avail > 2048 ? 2048 : avail;
-			if (have == 0) {
-				/* o jogo atrasou: silencio, nunca deixar o audsrv vazio */
+			if (have == 0 || (under && have < 1470)) {
+				/* o jogo atrasou: silencio, nunca deixar o audsrv vazio; depois
+				 * de uma falta so volta com 2 quadros de som juntos (um silencio
+				 * curto no lugar de varios estalos) */
 				memset(a_out, 0, n * 4);
 				if (!under)
 					a_under++;
@@ -666,7 +671,9 @@ int main(int argc, char *argv[])
 	struct retro_game_info info;
 	cdcd_stats cs;
 	int cd, r, hold = 0, audio_ready = 0;
-	u64 last_stat, last_save_us = 0, run_us_sum = 0, run_us_max = 0;
+	u64 last_stat, last_save_us = 0, run_us_sum = 0, run_us_max = 0, frame_t;
+	unsigned skipped = 0, last_skipped = 0, pp;
+	int skip_row = 0;
 	unsigned last_frames = 0, dm, am, run_count = 0, last_runs = 0, saves = 0;
 	(void)argc;
 	(void)argv;
@@ -778,6 +785,7 @@ int main(int argc, char *argv[])
 	video_start();
 	STEP("video ligado; primeiro quadro");
 	last_stat = ee_now_us();
+	frame_t = ee_now_us();
 	for (;;) {
 		u64 r0 = ee_now_us(), rt;
 		vid_last_us = 0;
@@ -788,6 +796,25 @@ int main(int argc, char *argv[])
 		run_us_sum += rt;
 		if (rt > run_us_max)
 			run_us_max = rt;
+		/* pular quadros: o PC Engine faz 59,826 quadros/s (16715 us). Se o
+		 * relogio passou do quadro esperado por mais de meio quadro, a
+		 * imagem do proximo e pulada (no maximo 2 seguidos): o jogo e o som
+		 * seguem na velocidade certa e a tela nao cai para 30 */
+		{
+			u64 now = ee_now_us();
+			if (vid_last_us == 0 && run_count > 1)
+				skipped++;
+			frame_t += 16715;
+			if (now > frame_t + 200000 || frame_t > now + 100000)
+				frame_t = now;		/* depois de uma pausa longa: recomeca a conta */
+			if (now > frame_t + 8000 && skip_row < 2) {
+				ps2_skip_next = 1;
+				skip_row++;
+			} else {
+				ps2_skip_next = 0;
+				skip_row = 0;
+			}
+		}
 		if (run_count == 1)
 			STEP("primeiro quadro emulado (%u ms)", (unsigned)(rt / 1000));
 		else if (run_count == 60)
@@ -807,7 +834,7 @@ int main(int argc, char *argv[])
 			int pl = 0;
 
 			cdcd_get_stats(&cs);
-			ps2_cd_stats(&dm, &am);
+			ps2_cd_stats(&dm, &am, &pp);
 			for (i = 0; i < 10; i++)
 				tot += prof_cyc[i] / 1000;
 			for (i = 0; i < 10 && tot; i++)
@@ -820,12 +847,14 @@ int main(int argc, char *argv[])
 			  runs ? (unsigned)(run_us_sum / runs / 1000) : 0, (unsigned)(run_us_max / 1000),
 			  shown ? (unsigned)(vid_us_sum / shown / 1000) : 0, (unsigned)(vid_us_max / 1000), late_frames,
 			  worst_gap_ms);
+			L("[DESEMPENHO] imagens puladas %u (o jogo seguiu na velocidade certa)", skipped - last_skipped);
 			L("[DESEMPENHO] onde o tempo foi: %s", pbuf);
+			last_skipped = skipped;
 			L("[SOM] faltas %u, sobras %u, buffer %u de %u", a_under, a_drop, ring_w - ring_r, RING_FRAMES);
 			L("[CD] leituras %d, ultima %d ms, pior %d ms, pulos %d, erros %d, manter girando %d (pior %d ms), "
-			  "buffer %d setores; dados atrasados %u, musica sem chegar %u",
+			  "buffer %d setores; dados atrasados %u, musica sem chegar %u, setores de dados adiados %u",
 			  cs.cmds, cs.last_ms, cs.max_ms, cs.repositions, cs.errors, cs.keepalives, cs.keep_max_ms, cs.ahead,
-			  dm, am);
+			  dm, am, pp);
 			memset(prof_cyc, 0, sizeof(prof_cyc));
 			memset(prof_cnt, 0, sizeof(prof_cnt));
 			run_us_sum = run_us_max = 0;

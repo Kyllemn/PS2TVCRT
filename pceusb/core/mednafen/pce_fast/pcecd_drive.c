@@ -938,6 +938,10 @@ static INLINE void RunCDDA(uint32 system_timestamp, int32 run_time)
  }
 }
 
+#ifdef PS2
+int ps2_cd_data_ready(int lba);	/* src/ps2_cd.c: setor ja na memoria? */
+#endif
+
 static INLINE void RunCDRead(uint32 system_timestamp, int32 run_time)
 {
    if(CDReadTimer > 0)
@@ -950,6 +954,15 @@ static INLINE void RunCDRead(uint32 system_timestamp, int32 run_time)
          {
             CDReadTimer += (uint64) 1 * 2048 * System_Clock / CD_DATA_TRANSFER_RATE;
          }
+#ifdef PS2
+         /* PS2 (leitor USB): setor ainda nao chegou do leitor. Em vez de parar
+          * a emulacao esperando, o drive emulado demora mais (como um CD lento
+          * de verdade) e o jogo continua rodando. */
+         else if(!cd.TrayOpen && SectorAddr < toc.tracks[100].lba && !ps2_cd_data_ready(SectorAddr))
+         {
+            CDReadTimer += (uint64) 1 * 2048 * System_Clock / CD_DATA_TRANSFER_RATE;
+         }
+#endif
          else
          {
             uint8 tmp_read_buf[2352 + 96];

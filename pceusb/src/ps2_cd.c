@@ -143,14 +143,25 @@ CDAccess *CDAccess_PS2_New(const char *path)
 	return a;
 }
 
+/* CD emulado (pcecd_drive.c): o setor de dados ja chegou do leitor? */
+static unsigned st_postponed;
+int ps2_cd_data_ready(int lba)
+{
+	if (cdcd_ready(lba))
+		return 1;
+	st_postponed++;
+	return 0;
+}
+
 /* busca do jogo (CDIF_HintReadSector): o leitor ja comeca a ler ali */
 void ps2_cd_hint(int lba)
 {
 	cdcd_seek(lba);
 }
 
-void ps2_cd_stats(unsigned *data_miss, unsigned *audio_miss)
+void ps2_cd_stats(unsigned *data_miss, unsigned *audio_miss, unsigned *postponed)
 {
 	*data_miss = st_data_miss;
 	*audio_miss = st_audio_miss;
+	*postponed = st_postponed;
 }

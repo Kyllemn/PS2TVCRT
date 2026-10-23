@@ -2541,6 +2541,16 @@ void retro_run(void)
          frameskip_counter++;
    }
 
+#ifdef PS2
+   /* PS2: a interface decide pular a imagem deste quadro quando a emulacao
+    * esta atrasada (o jogo segue na velocidade certa; so a tela pula) */
+   {
+      extern int ps2_skip_next;
+      if (video_frames && ps2_skip_next)
+         skip_frame = 1;
+   }
+#endif
+
    /* If frameskip settings have changed, update
     * frontend audio latency */
    if (update_audio_latency)
