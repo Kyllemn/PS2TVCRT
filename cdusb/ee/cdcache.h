@@ -46,6 +46,11 @@ int cdcd_read(int lba, int n, void *dst, int timeout_ms);
  * pronto; a leitura antecipada vai buscar) */
 int cdcd_read_nb(int lba, int n, void *dst);
 
+/* aviso de busca sem esperar: o leitor ja comeca a ler em lba. Para o
+ * emulador chamar quando o jogo manda posicionar (PC Engine: busca antes do
+ * "toca"); quando o "toca" chegar, a musica ja esta no buffer. */
+void cdcd_seek(int lba);
+
 void cdcd_get_stats(cdcd_stats *s);
 
 #endif

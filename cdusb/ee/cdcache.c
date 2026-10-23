@@ -45,9 +45,6 @@ static int lock_sema = -1, kick_sema = -1, data_sema = -1, thread_id = -1;
 static cdcd_stats st;
 static u64 last_io;			/* ultimo comando de leitura no leitor */
 static int keep_flip;
-#define PRE_N		64		/* comeco da proxima faixa de musica (0,85 s) */
-static u8 pre[PRE_N][2352] __attribute__((aligned(64)));
-static volatile int pre_lba = -1, pre_n;	/* pre-carga (-1 = nada) */
 static int after_jump;			/* 1 = proxima leitura e a primeira depois de um pulo */
 static u8 reader_stack[16 * 1024] __attribute__((aligned(16)));
 extern void *_gp;
@@ -222,80 +219,27 @@ static void unlock(void)
 }
 
 /* proxima faixa de musica depois de t (-1 = nenhuma) */
-static int next_audio_track(int t)
-{
-	for (t++; t <= toc.last; t++)
-		if (!cdcd_is_data(t))
-			return t;
-	return -1;
-}
-
-/* musica atual toda lida e a faixa seguinte e de dados (PC Engine: faixa 2)?
- * devolve a proxima faixa de musica (-1 = nao) */
-static int boundary_next(int c, int f)
-{
-	int t = cdcd_track_of(c), n;
-
-	if (!cdcd_is_data(t) && t < toc.last && cdcd_is_data(t + 1) && f >= cdcd_track_end(t) &&
-	    (n = next_audio_track(t)) > 0)
-		return n;
-	return -1;
-}
-
-/* le os primeiros PRE_N setores da faixa n para a pre-carga: quando a musica
- * pular para la, o som sai da memoria na hora */
-static void prefetch(int n)
-{
-	int lba = toc.lba[n], cnt = PRE_N, got = 0, k, r;
-	u64 t0 = ee_now_us();
-
-	if (cdcd_track_end(n) - lba < cnt)
-		cnt = cdcd_track_end(n) - lba;
-	lock();
-	pre_lba = -1;
-	pre_n = 0;
-	unlock();
-	while (got < cnt && !restart && !quit) {
-		k = cnt - got > CHUNK ? CHUNK : cnt - got;
-		r = read_sectors(lba + got, k, 0, tmp);
-		if (r != CDUSB_OK)
-			break;
-		memcpy(pre[got], tmp, k * 2352);
-		got += k;
-	}
-	last_io = ee_now_us();
-	lock();
-	if (got > 0) {
-		pre_lba = lba;
-		pre_n = got;
-	}
-	unlock();
-	L("[CDCACHE] pre-carga da faixa %d: %d setores em %d ms", n, got, (int)((ee_now_us() - t0) / 1000));
-}
-
 /*
- * Manter girando: 1 setor, sem guardar. Se a musica atual ja foi toda lida e
- * a faixa seguinte e de dados (PC Engine: faixa 2), le no comeco da proxima
- * faixa de musica: o leitor ja fica la e a troca de faixa e imediata.
- * Senao le perto da posicao de leitura, alternando +256 (setor novo: o
- * leitor tem que ir ao disco e nao ao buffer dele).
+ * Manter girando: 1 setor, sem guardar, PERTO de onde o leitor ja esta
+ * (busca longa faz o leitor mudar de rotacao). Alterna 16 setores para a
+ * frente: setor novo, o leitor tem que ir ao disco e nao ao buffer dele.
  */
 static void keepalive(void)
 {
-	int c = consumer, f = fill, t = cdcd_track_of(c), lba, n, data, r, ms;
+	int f = fill, t, lba, end, data, r, ms;
 	u64 t0;
 
-	if ((n = boundary_next(c, f)) > 0) {
-		/* logo depois da pre-carga: o leitor continua dali sem buscar */
-		lba = (pre_lba == toc.lba[n] ? pre_lba + pre_n : toc.lba[n]) + (keep_flip ? 8 : 0);
-		if (lba >= cdcd_track_end(n))
-			lba = toc.lba[n];
-	} else {
-		lba = f < toc.lba[100] ? f : toc.lba[100] - 1;
-		t = cdcd_track_of(lba);
-		if (keep_flip && lba + 256 < (cdcd_is_data(t) ? safe_end(t) : cdcd_track_end(t)))
-			lba += 256;
-	}
+	lba = f > 0 ? f - 1 : 0;
+	if (lba >= toc.lba[100])
+		lba = toc.lba[100] - 1;
+	t = cdcd_track_of(lba);
+	data = cdcd_is_data(t);
+	end = data ? safe_end(t) : cdcd_track_end(t);
+	/* na pausa antes de uma faixa de dados (silencio sem ler): o ultimo setor de musica */
+	if (!data && t < toc.last && cdcd_is_data(t + 1) && lba >= end - 150 && end - 151 > toc.lba[t])
+		lba = end - 151;
+	if (keep_flip && lba + 16 < end)
+		lba += 16;
 	keep_flip ^= 1;
 	t = cdcd_track_of(lba);
 	data = cdcd_is_data(t);
@@ -321,19 +265,7 @@ static void reader(void *arg)
 	while (!quit) {
 		lock();
 		if (restart) {
-			int c = consumer;
-			if (pre_lba >= 0 && c >= pre_lba && c < pre_lba + pre_n) {
-				/* pulo para a pre-carga: passa para a memoria principal */
-				for (i = c - pre_lba; i < pre_n; i++) {
-					slot = (pre_lba + i) % SLOTS;
-					memcpy(cache[slot], pre[i], 2352);
-					bad[slot] = 0;
-					tag[slot] = pre_lba + i;
-				}
-				fill = pre_lba + pre_n;
-				pre_lba = -1;
-			} else
-				fill = c;
+			fill = consumer;
 			restart = 0;
 			st.repositions++;
 			after_jump = 1;
@@ -346,10 +278,7 @@ static void reader(void *arg)
 		if (f >= 0 && f < toc.lba[100] && cdcd_is_data(cdcd_track_of(f)) != cdcd_is_data(cdcd_track_of(consumer)))
 			f = target;
 		if (f >= target || f >= toc.lba[100] || f < 0) {
-			int nb = boundary_next(consumer, fill);
-			if (nb > 0 && pre_lba != toc.lba[nb])
-				prefetch(nb);
-			else if (ee_now_us() - last_io > (u64)KEEP_IDLE_MS * 1000)
+			if (ee_now_us() - last_io > (u64)KEEP_IDLE_MS * 1000)
 				keepalive();
 			wait_us = 10000;
 			WaitSemaEx(kick_sema, 1, &wait_us);
@@ -468,8 +397,6 @@ int cdcd_open(int d, int sb, int (*abort)(void))
 		data_sema = new_sema(0);
 	}
 	consumer = fill = toc.lba[toc.first];
-	pre_lba = -1;
-	pre_n = 0;
 	last_io = ee_now_us();
 	keep_flip = 0;
 	restart = 0;
@@ -517,14 +444,8 @@ static int take(int lba, int n, u8 *dst, int *badp)
 
 	for (i = 0; i < n; i++) {
 		slot = (lba + i) % SLOTS;
-		if (tag[slot] != lba + i) {
-			/* pre-carga (so musica) */
-			if (pre_lba >= 0 && lba + i >= pre_lba && lba + i < pre_lba + pre_n) {
-				memcpy(dst + i * 2352, pre[lba + i - pre_lba], 2352);
-				continue;
-			}
+		if (tag[slot] != lba + i)
 			break;
-		}
 		data = cdcd_is_data(cdcd_track_of(lba + i));
 		size = data ? 2048 : 2352;
 		memcpy(dst + i * size, cache[slot], size);
@@ -548,18 +469,15 @@ int cdcd_read_nb(int lba, int n, void *dst)
 		return 0;
 	lock();
 	k = take(lba, n, dst, NULL);
-	if (k > 0) {
+	if (k > 0)
 		consumer = lba + k;
-		/* veio da pre-carga (longe da leitura): a thread vai para la */
-		if (consumer > fill + 2 * CHUNK || consumer < fill - SLOTS + CHUNK)
-			restart = 1;
-	} else if (!coming(lba)) {
+	else if (!coming(lba)) {
 		consumer = lba;
 		restart = 1;
 	} else if (lba > consumer)
 		consumer = lba;
 	unlock();
-	if (k == 0 || restart)
+	if (k == 0)
 		SignalSema(kick_sema);
 	return k;
 }
@@ -577,8 +495,6 @@ int cdcd_read(int lba, int n, void *dst, int timeout_ms)
 		k = take(lba + got, n - got, p, &bad_hit);
 		if (k > 0) {
 			consumer = lba + got + k;
-			if (consumer > fill + 2 * CHUNK || consumer < fill - SLOTS + CHUNK)
-				restart = 1;
 			p += k * (cdcd_is_data(cdcd_track_of(lba + got)) ? 2048 : 2352);
 			got += k;
 		} else if (!coming(lba + got)) {
@@ -598,6 +514,19 @@ int cdcd_read(int lba, int n, void *dst, int timeout_ms)
 		WaitSemaEx(data_sema, 1, &w);
 	}
 	return got;
+}
+
+void cdcd_seek(int lba)
+{
+	if (!running || lba < 0 || lba >= toc.lba[100])
+		return;
+	lock();
+	if (tag[lba % SLOTS] != lba && !coming(lba)) {
+		consumer = lba;
+		restart = 1;
+	}
+	unlock();
+	SignalSema(kick_sema);
 }
 
 void cdcd_get_stats(cdcd_stats *s)
