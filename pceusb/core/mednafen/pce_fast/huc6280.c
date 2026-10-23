@@ -218,13 +218,40 @@ static uint8 ZNTable[256];
 #define X_ZN_BIT(opres, argie)	{ HU_P &= ~(Z_FLAG | N_FLAG); HU_P |= ZNTable[opres] & Z_FLAG; HU_P |= argie & N_FLAG; }
 #endif
 
+#ifdef PCE_IDLE_SKIP
+/* PS2 (p10): espera ociosa. Desvio para tras curto: ve se o jogo esta so
+ * esperando (ver idle_check). Se estiver, avanca o relogio de uma vez. */
+#define IDLE_CHECK(rel)	\
+   if((int8)(rel) < 0 && (int8)(rel) >= -IDLE_MAXLEN && ps2_idle_on)	\
+   {	\
+      uintptr_t e_ = HU_PC + 1;	\
+      uint32 r_ = HU_A | (HU_X << 8) | (HU_Y << 16) | ((uint32)HU_P << 24);	\
+      if(e_ == idle_end && r_ == idle_regs)	\
+      {	\
+         int32 sk = idle_check(e_, HU_X, HU_Y, HU_P, next_event);	\
+         if(sk > 0)	\
+            HuCPU.timestamp += sk;	\
+      }	\
+      else	\
+      {	\
+         idle_end = e_;	\
+         idle_regs = r_;	\
+         idle_seen = 0;	\
+      }	\
+   }
+#else
+#define IDLE_CHECK(rel)
+#endif
+
 #define JR(cond)        \
 {               \
    if(cond)       \
    {      \
       int32 disp;   \
-      disp = 1 + (int8)RdAtPC();      \
+      uint8 rel_ = RdAtPC();	\
+      disp = 1 + (int8)rel_;      \
       ADDCYC(2);    \
+      IDLE_CHECK(rel_);	\
       HU_PC+=disp;    \
    }      \
    else IncPC();  \
@@ -233,7 +260,9 @@ static uint8 ZNTable[256];
 #define BRA            \
 {                      \
    int32 disp;           \
-   disp = 1 + (int8)RdAtPC();      \
+   uint8 rel_ = RdAtPC();	\
+   disp = 1 + (int8)rel_;      \
+   IDLE_CHECK(rel_);	\
    HU_PC+=disp;            \
 }
 
@@ -583,6 +612,155 @@ void HuC6280_Power(void)
    }  
    HuC6280_Reset();
 }
+
+#ifdef PCE_IDLE_SKIP
+/*
+ * PS2 (p10): pulo da espera ociosa (o jogo parado num laco esperando a
+ * interrupcao do retraco). Exato, sem mudar o resultado da emulacao:
+ *  - o laco e curto e so tem instrucoes que leem (LDA, CMP, BIT, AND,
+ *    TST, desvios...): nao grava memoria, nao mexe na pilha nem em I/O;
+ *  - o desvio para tras foi visto 3 vezes seguidas com os mesmos
+ *    registradores e o mesmo custo em ciclos (nenhuma interrupcao no meio).
+ * Entao cada volta seguinte faz exatamente a mesma coisa ate o proximo
+ * evento (linha do VDC, timer, CD): o relogio avanca as voltas inteiras
+ * que cabem antes dele, como se a CPU as tivesse executado.
+ */
+#define IDLE_MAXLEN 16
+
+int ps2_idle_on = 1;			/* 0 = desligado (teste de igualdade) */
+unsigned ps2_idle_cycles;		/* ciclos pulados (para o log) */
+unsigned ps2_idle_skips;
+uint8 ps2_idle_reject[8];		/* ultimo laco recusado (para o log) */
+unsigned ps2_idle_reject_pc, ps2_idle_reject_n;
+
+static uintptr_t idle_end, idle_ok_end, idle_bad_end;
+static uint32 idle_regs, idle_zn;
+static int32 idle_ts, idle_len;
+static int idle_seen;
+
+/* tamanho da instrucao se ela so le memoria comum; 0 = recusa */
+static int idle_insn(const uint8 *p, uint8 x, uint8 y)
+{
+   unsigned op = p[0], ea = 0x10000;
+   int len;
+
+   switch(op)
+   {
+      /* imediato / implicito */
+      case 0xA9: case 0xA2: case 0xA0: case 0xC9: case 0xE0: case 0xC0:
+      case 0x29: case 0x09: case 0x49: case 0x89:
+         return 2;
+      case 0xEA: case 0x18: case 0x38: case 0xB8:
+      case 0xAA: case 0xA8: case 0x8A: case 0x98:
+         return 1;
+      /* pagina zero (RAM) */
+      case 0xA5: case 0xA6: case 0xA4: case 0xC5: case 0xE4: case 0xC4:
+      case 0x25: case 0x05: case 0x45: case 0x24:
+      case 0xB5: case 0xB6: case 0xB4: case 0xD5: case 0x35: case 0x15: case 0x55: case 0x34:
+         return 2;
+      case 0x83: case 0xA3:		/* TST #,zp / TST #,zp,X */
+         return 3;
+      /* desvios */
+      case 0x10: case 0x30: case 0x50: case 0x70: case 0x90: case 0xB0:
+      case 0xD0: case 0xF0: case 0x80:
+         return 2;
+      /* absoluto: so se o endereco for memoria comum (ROM/RAM) */
+      case 0xAD: case 0xAE: case 0xAC: case 0xCD: case 0xEC: case 0xCC:
+      case 0x2D: case 0x0D: case 0x4D: case 0x2C:
+         ea = p[1] | (p[2] << 8); len = 3; break;
+      case 0xBD: case 0xBC: case 0xDD: case 0x3D: case 0x1D: case 0x5D: case 0x3C:
+         ea = (p[1] | (p[2] << 8)) + x; len = 3; break;
+      case 0xB9: case 0xBE: case 0xD9: case 0x39: case 0x19: case 0x59:
+         ea = (p[1] | (p[2] << 8)) + y; len = 3; break;
+      case 0x93:			/* TST #,abs */
+         ea = p[2] | (p[3] << 8); len = 4; break;
+      case 0xB3:			/* TST #,abs,X */
+         ea = (p[2] | (p[3] << 8)) + x; len = 4; break;
+      default:
+         if((op & 0x0F) == 0x0F)	/* BBRi / BBSi zp */
+            return 3;
+         return 0;
+   }
+   ea &= 0xFFFF;
+   if(!HuCPU.FastRd[HuCPU.MPR[ea >> 13]])
+      return 0;
+   return len;
+}
+
+/* o laco [inicio, fim) so tem instrucoes da lista? */
+static int idle_body_ok(uintptr_t start, uintptr_t end, uint8 x, uint8 y)
+{
+   uintptr_t p = start;
+
+   if(!HuCPU.FastRd[HuCPU.MPR[1]])
+      return 0;
+   while(p < end)
+   {
+      int n = idle_insn((const uint8 *)p, x, y);
+      if(!n)
+         return 0;
+      p += n;
+   }
+   return p == end;
+}
+
+static int32 idle_check(uintptr_t end, uint8 x, uint8 y, uint8 p, int32 next_event)
+{
+   int32 ts = HuCPU.timestamp, len, rem, k;
+   int8 rel = (int8)((const uint8 *)end)[-1];
+   uintptr_t start = end + rel;
+
+   /* (o desvio e os registradores ja conferem: ver IDLE_CHECK) */
+   if(!(idle_seen & 2) || HuCPU.ZNFlags != idle_zn || HuCPU.S != (uint8)(idle_seen >> 8))
+   {
+      idle_zn = HuCPU.ZNFlags;
+      idle_ts = ts;
+      idle_seen = (HuCPU.S << 8) | 2;
+      idle_ok_end = idle_bad_end = 0;	/* a analise so vale nesta sequencia */
+      return 0;
+   }
+   len = ts - idle_ts;
+   idle_ts = ts;
+   if(!(idle_seen & 1) || len != idle_len)
+   {
+      idle_len = len;
+      idle_seen |= 1;
+      idle_ok_end = idle_bad_end = 0;
+      return 0;
+   }
+   /* 3 voltas iguais seguidas */
+   if(len <= 0 || len > 256 || (p & T_FLAG))
+      return 0;
+   if(HuCPU.IRQlow && !(p & I_FLAG))	/* interrupcao para entrar */
+      return 0;
+   if(end != idle_ok_end)
+   {
+      uintptr_t real = start - HuCPU.PC_base;
+
+      if(end == idle_bad_end)
+         return 0;
+      if(((real ^ (real + (end - start) - 1)) >> 13) != 0 || !idle_body_ok(start, end, x, y))
+      {
+         int i;
+         idle_bad_end = end;
+         ps2_idle_reject_pc = (unsigned)real & 0xFFFF;
+         ps2_idle_reject_n = (unsigned)(end - start);
+         for(i = 0; i < 8; i++)
+            ps2_idle_reject[i] = i < (int)(end - start) ? ((const uint8 *)start)[i] : 0;
+         return 0;
+      }
+      idle_ok_end = end;
+   }
+   rem = next_event - ts;
+   if(rem <= len)
+      return 0;
+   k = (rem - 1) / len;			/* voltas inteiras antes do evento */
+   idle_ts = ts + k * len;		/* a proxima volta segue a conta */
+   ps2_idle_cycles += k * len;
+   ps2_idle_skips++;
+   return k * len;
+}
+#endif
 
 static void HuC6280_Run_inner(int32 cycles)
 {

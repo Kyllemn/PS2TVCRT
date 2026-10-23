@@ -38,7 +38,7 @@
 #include "diag.h"
 #include "ui.h"
 
-#define VERSAO		"p09"
+#define VERSAO		"p10"
 #define LOG_FILE	"mass:/PCEUSB.TXT"
 #define DISC_PATH	"ps2disc:/disco.cue"
 
@@ -62,6 +62,10 @@ void ps2_cd_stats(unsigned *data_miss, unsigned *audio_miss, unsigned *postponed
 int ps2_skip_next;
 extern const unsigned int ps2_syscard3_size;
 extern const unsigned char ps2_syscard3[];
+
+/* p10: pulo da espera ociosa da CPU do PC Engine (huc6280.c) */
+extern unsigned ps2_idle_cycles, ps2_idle_skips, ps2_idle_reject_pc, ps2_idle_reject_n;
+extern unsigned char ps2_idle_reject[8];
 
 static const char *prof_name[10] = {
 	"outros", "CPU", "fundo", "sprites", "spr-decod", "mistura", "VRAM", "PSG", "CD", "fim-som"
@@ -458,11 +462,17 @@ static unsigned late_frames, worst_gap_ms;
 /*
  * p08: a troca de imagem e feita na interrupcao do retraco. O EE desenha o
  * quadro, pede a troca e segue emulando: nao fica parado esperando o
- * retraco (com quadros de 16,5 a 17 ms, esperar o retraco derrubava a tela
- * para 30). So espera se estiver adiantado (o quadro anterior ainda nao foi
- * para a tela), o que limita a 1 quadro por retraco.
+ * retraco.
+ * p10: 3 telas no GS (uma na TV, uma na fila, uma sendo desenhada). O
+ * quadro novo e desenhado sem esperar; so espera para entrar na fila se a
+ * anterior ainda nao foi para a TV. Um quadro mais pesado (17-20 ms) entre
+ * leves nao repete imagem: a fila segura a diferenca. Cada imagem fica
+ * exatamente 1 retraco na TV.
  */
-static volatile int flip_pending, flip_buf;
+#define NSB 3
+static unsigned sb[NSB];			/* enderecos das telas no GS */
+static int nsb = 2;
+static volatile int disp_idx, queue_idx = -1;	/* na TV / na fila (-1 = vazia) */
 static volatile unsigned vs_count, vs_repeat;
 static int vs_id = -1;
 
@@ -470,9 +480,10 @@ static int vsync_isr(int cause)
 {
 	(void)cause;
 	vs_count++;
-	if (flip_pending) {
-		GS_SET_DISPFB2(gs->ScreenBuffer[flip_buf] / 8192, gs->Width / 64, gs->PSM, 0, 0);
-		flip_pending = 0;
+	if (queue_idx >= 0) {
+		GS_SET_DISPFB2(sb[queue_idx] / 8192, gs->Width / 64, gs->PSM, 0, 0);
+		disp_idx = queue_idx;
+		queue_idx = -1;
 	} else
 		vs_repeat++;			/* este retraco repetiu a imagem */
 	ExitHandler();
@@ -483,8 +494,47 @@ static int vsync_isr(int cause)
 static void video_settle(void)
 {
 	u64 t0 = ee_now_us();
-	while (flip_pending && ee_now_us() - t0 < 100000)
+	while (queue_idx >= 0 && ee_now_us() - t0 < 100000)
 		;
+}
+
+/* tela livre para desenhar: nem na TV nem na fila */
+static int video_free_idx(void)
+{
+	int i, d, q, on;
+	on = DIntr();				/* foto da TV e da fila sem a interrupcao no meio */
+	d = disp_idx;
+	q = queue_idx;
+	if (on)
+		EIntr();
+	for (i = 0; i < nsb; i++)
+		if (i != d && i != q)
+			return i;
+	return -1;
+}
+
+/* o menu (ui.c) usa o gsKit_sync_flip com as 2 telas do gsKit: entrega as
+ * duas que nao estao na TV */
+static void video_menu_begin(void)
+{
+	int a = (disp_idx + 1) % nsb, b = (disp_idx + 2) % nsb;
+	video_settle();
+	if (nsb == 2)
+		b = disp_idx;
+	gs->ScreenBuffer[0] = sb[a];
+	gs->ScreenBuffer[1] = sb[b];
+	gs->ActiveBuffer = 0;
+	gsKit_setactive(gs);
+}
+
+static void video_menu_end(void)
+{
+	unsigned on_tv = gs->ScreenBuffer[(gs->ActiveBuffer ^ 1) & 1];	/* ultimo mostrado */
+	int i;
+	for (i = 0; i < nsb; i++)
+		if (sb[i] == on_tv)
+			disp_idx = i;
+	queue_idx = -1;
 }
 
 static void video_start(void)
@@ -505,6 +555,12 @@ static void video_start(void)
 		    1 << DMA_CHANNEL_GIF);
 	dmaKit_chan_init(DMA_CHANNEL_GIF);
 	gsKit_init_screen(gs);
+	sb[0] = gs->ScreenBuffer[0];
+	sb[1] = gs->ScreenBuffer[1];
+	sb[2] = gsKit_vram_alloc(gs, gsKit_texture_size(gs->Width, gs->Height, gs->PSM), GSKIT_ALLOC_SYSBUFFER);
+	nsb = sb[2] != GSKIT_ALLOC_ERROR ? 3 : 2;
+	disp_idx = 0;
+	queue_idx = -1;
 	gsKit_TexManager_init(gs);
 	/* p07: a imagem vai para o GS pelo DMA direto da memoria (o modo
 	 * padrao copiava os 245 KB do quadro com o EE para a fila de desenho) */
@@ -519,7 +575,7 @@ static void video_start(void)
 	tex.Filter = GS_FILTER_NEAREST;
 	ui_start();
 	vs_id = gsKit_add_vsync_handler(vsync_isr);
-	L("[VIDEO] troca de imagem na interrupcao do retraco (%d)", vs_id);
+	L("[VIDEO] troca de imagem na interrupcao do retraco (%d), %d telas no GS", vs_id, nsb);
 	text_mode = 0;
 }
 
@@ -542,9 +598,15 @@ static void RETRO_CALLCONV video_cb(const void *data, unsigned width, unsigned h
 	}
 	{
 	u64 t0 = ee_now_us(), t1;
-	/* nao desenhar no quadro que ainda esta na tela: espera a troca anterior */
-	while (flip_pending && ee_now_us() - t0 < 50000)
-		;
+	int di = video_free_idx();
+	/* com 2 telas: a livre so aparece depois da troca anterior */
+	while (di < 0 && ee_now_us() - t0 < 50000)
+		di = video_free_idx();
+	if (di < 0)
+		di = (disp_idx + 1) % nsb;
+	gs->ScreenBuffer[0] = sb[di];
+	gs->ActiveBuffer = 0;
+	gsKit_setactive(gs);
 	tex.Mem = (u32 *)src;
 	tex.Height = height;
 	FlushCache(0);
@@ -562,10 +624,10 @@ static void RETRO_CALLCONV video_cb(const void *data, unsigned width, unsigned h
 	}
 	gsKit_queue_exec(gs);
 	dmaKit_wait_fast();			/* desenho entregue ao GS */
-	flip_buf = gs->ActiveBuffer & 1;
-	flip_pending = 1;			/* a interrupcao do retraco troca */
-	gs->ActiveBuffer ^= 1;
-	gsKit_setactive(gs);			/* o proximo quadro vai para o outro */
+	/* entra na fila (espera se a anterior ainda nao foi para a TV) */
+	while (queue_idx >= 0 && ee_now_us() - t0 < 50000)
+		;
+	queue_idx = di;				/* a interrupcao do retraco mostra */
 	gsKit_TexManager_nextFrame(gs);
 	frames_drawn++;
 	t1 = ee_now_us();
@@ -1068,8 +1130,9 @@ int main(int argc, char *argv[])
 		/* L1 + R1 + L2 + R2 = menu (o jogo pausa) */
 		if ((pad_now & (PAD_L1 | PAD_R1 | PAD_L2 | PAD_R2)) == (PAD_L1 | PAD_R1 | PAD_L2 | PAD_R2)) {
 			int m;
-			video_settle();
+			video_menu_begin();
 			m = ui_menu();
+			video_menu_end();
 			if (m == 1)
 				break;
 			if (m == 2) {
@@ -1121,6 +1184,12 @@ int main(int argc, char *argv[])
 			L("[DESEMPENHO] processador (EE) ocupado com a emulacao: %u%% do tempo",
 			  (unsigned)(run_us_sum * 100 / span));
 			L("[DESEMPENHO] onde o tempo foi: %s", pbuf);
+			/* ~119318 ciclos da CPU do PC Engine por quadro */
+			L("[DESEMPENHO] CPU do PC Engine esperando (pulado): %u%% dos ciclos, %u pulos; ultimo laco recusado %04X (%u bytes: %02X %02X %02X %02X %02X %02X)",
+			  runs ? (unsigned)((u64)ps2_idle_cycles * 100 / ((u64)runs * 119318)) : 0, ps2_idle_skips,
+			  ps2_idle_reject_pc, ps2_idle_reject_n, ps2_idle_reject[0], ps2_idle_reject[1], ps2_idle_reject[2],
+			  ps2_idle_reject[3], ps2_idle_reject[4], ps2_idle_reject[5]);
+			ps2_idle_cycles = ps2_idle_skips = 0;
 			last_skipped = skipped;
 			L("[SOM] faltas %u, sobras %u, buffer %u de %u (alvo %u); ajuste fino: %u descartadas, %u repetidas",
 			  a_under, a_drop, ring_w - ring_r, RING_FRAMES, RING_TARGET, a_adj_drop, a_adj_dup);

@@ -39,7 +39,7 @@ EE_INCS := -I$(C) -I$(M) -I$(M)/include -I$(M)/hw_sound -I$(M)/hw_cpu -I$(M)/hw_
 	   -I$(LC)/include -Isrc -I$(CDUSB)/common -I$(CDUSB)/ee -I$(GSKIT)/include
 CORE_FLAGS = -DPS2 -DMEDNAFEN_VERSION_NUMERIC=931 -DWANT_PCE_FAST_EMU -DSTDC_HEADERS \
 	     -D__STDC_LIMIT_MACROS -D__LIBRETRO__ -D_LOW_ACCURACY_ -DINLINE=inline \
-	     -DNEED_CD -DNEED_TREMOR -DNDEBUG
+	     -DNEED_CD -DNEED_TREMOR -DNDEBUG -DPCE_IDLE_SKIP
 EE_CFLAGS := $(CORE_FLAGS) -std=gnu99 -w -Werror=implicit-function-declaration
 EE_LDFLAGS := -L$(GSKIT)/lib
 EE_LIBS = -lgskit -ldmakit -ldebug -lpad -laudsrv -lfileXio -lpatches -lm
