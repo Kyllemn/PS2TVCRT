@@ -1,0 +1,6 @@
+*.o
+*.elf
+*.ELF
+*.irx
+iop/obj/
+ee/irx_*.c
