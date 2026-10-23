@@ -1,0 +1,5 @@
+# BIOS e protegida: nunca vai para o git
+res/syscard3.pce
+build/
+*.ELF
+*.elf
