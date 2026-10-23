@@ -36,7 +36,7 @@
 #include "cdcache.h"
 #include "diag.h"
 
-#define VERSAO		"p02"
+#define VERSAO		"p03"
 #define LOG_FILE	"mass:/PCEUSB.TXT"
 #define DISC_PATH	"ps2disc:/disco.cue"
 
@@ -259,8 +259,10 @@ static void wait_pendrive(void)
 /* ------------------------------------------------------------------ som */
 #define AUDIO_PRIO	0x28		/* acima da leitura (0x30) e do jogo (0x40) */
 #define RING_FRAMES	8192		/* ~186 ms de folga entre o jogo e o audsrv */
+#define RING_TARGET	2048		/* nivel desejado (~46 ms): colchao contra tropecos */
 
 static int16_t ring[RING_FRAMES * 2] __attribute__((aligned(64)));
+static unsigned a_adj_drop, a_adj_dup;	/* ajuste fino do ritmo do som */
 static volatile unsigned ring_w, ring_r;	/* em quadros de som (L+R) */
 static volatile int a_quit, a_done;
 static volatile unsigned a_under, a_drop;
@@ -270,7 +272,7 @@ extern void *_gp;
 
 static void audio_thread(void *arg)
 {
-	int avail, n, i, under = 0;
+	int avail, n, i, under = 1;		/* comeca enchendo o colchao */
 	(void)arg;
 
 	while (!a_quit) {
@@ -279,10 +281,9 @@ static void audio_thread(void *arg)
 			unsigned w = ring_w, r = ring_r, have = w - r;
 			int16_t *o = (int16_t *)a_out;
 			n = avail > 2048 ? 2048 : avail;
-			if (have == 0 || (under && have < 1470)) {
-				/* o jogo atrasou: silencio, nunca deixar o audsrv vazio; depois
-				 * de uma falta so volta com 2 quadros de som juntos (um silencio
-				 * curto no lugar de varios estalos) */
+			if (have == 0 || (under && have < RING_TARGET)) {
+				/* o jogo atrasou: silencio, nunca deixar o audsrv vazio; no
+				 * comeco e depois de uma falta so volta com o colchao cheio */
 				memset(a_out, 0, n * 4);
 				if (!under)
 					a_under++;
@@ -337,15 +338,34 @@ static int audio_start(void)
 	return 1;
 }
 
+/*
+ * Ajuste fino: o PC Engine faz 59,826 quadros/s e a TV NTSC 59,94; preso no
+ * retraco, o jogo produz um pouco mais de som do que o audsrv toca. Com o
+ * colchao acima do alvo, 1 amostra em 200 e descartada; abaixo, 1 em 200 e
+ * repetida (+-0,5%, inaudivel). Sem isso o buffer enche ou esvazia aos poucos.
+ */
 static size_t RETRO_CALLCONV audio_batch_cb(const int16_t *data, size_t frames)
 {
+	static unsigned adj;
 	size_t i;
-	unsigned w = ring_w;
+	unsigned w = ring_w, level = w - ring_r;
+	int mode = level > RING_TARGET + 1024 ? 1 : (level < RING_TARGET - 1024 && level > 0) ? -1 : 0;
 
 	for (i = 0; i < frames; i++) {
-		if (w - ring_r >= RING_FRAMES - 1) {
+		if (w - ring_r >= RING_FRAMES - 2) {
 			a_drop++;			/* buffer cheio: o jogo esta adiantado */
 			break;
+		}
+		if (mode && ++adj >= 200) {
+			adj = 0;
+			if (mode > 0) {
+				a_adj_drop++;
+				continue;		/* descarta esta amostra */
+			}
+			ring[(w % RING_FRAMES) * 2] = data[i * 2];	/* repete esta amostra */
+			ring[(w % RING_FRAMES) * 2 + 1] = data[i * 2 + 1];
+			w++;
+			a_adj_dup++;
 		}
 		ring[(w % RING_FRAMES) * 2] = data[i * 2];
 		ring[(w % RING_FRAMES) * 2 + 1] = data[i * 2 + 1];
@@ -796,24 +816,19 @@ int main(int argc, char *argv[])
 		run_us_sum += rt;
 		if (rt > run_us_max)
 			run_us_max = rt;
-		/* pular quadros: o PC Engine faz 59,826 quadros/s (16715 us). Se o
-		 * relogio passou do quadro esperado por mais de meio quadro, a
-		 * imagem do proximo e pulada (no maximo 2 seguidos): o jogo e o som
-		 * seguem na velocidade certa e a tela nao cai para 30 */
+		/* pular imagem: so quando um quadro sozinho fica pesado demais */
 		{
 			u64 now = ee_now_us();
 			if (vid_last_us == 0 && run_count > 1)
 				skipped++;
-			frame_t += 16715;
-			if (now > frame_t + 200000 || frame_t > now + 100000)
-				frame_t = now;		/* depois de uma pausa longa: recomeca a conta */
-			if (now > frame_t + 8000 && skip_row < 2) {
-				ps2_skip_next = 1;
-				skip_row++;
-			} else {
-				ps2_skip_next = 0;
-				skip_row = 0;
-			}
+			(void)now;
+			(void)frame_t;
+			(void)skip_row;
+			/* p03: preso no retraco, um quadro emulado por retraco. A conta
+			 * pelo relogio (p02) nunca zerava depois de um retraco perdido e
+			 * ficava pulando uma imagem sim, outra nao. Agora so pula a imagem
+			 * do proximo quadro se ESTE passou de 20 ms (nunca 2 seguidas) */
+			ps2_skip_next = (rt > 20000 && !ps2_skip_next) ? 1 : 0;
 		}
 		if (run_count == 1)
 			STEP("primeiro quadro emulado (%u ms)", (unsigned)(rt / 1000));
@@ -850,7 +865,8 @@ int main(int argc, char *argv[])
 			L("[DESEMPENHO] imagens puladas %u (o jogo seguiu na velocidade certa)", skipped - last_skipped);
 			L("[DESEMPENHO] onde o tempo foi: %s", pbuf);
 			last_skipped = skipped;
-			L("[SOM] faltas %u, sobras %u, buffer %u de %u", a_under, a_drop, ring_w - ring_r, RING_FRAMES);
+			L("[SOM] faltas %u, sobras %u, buffer %u de %u (alvo %u); ajuste fino: %u descartadas, %u repetidas",
+			  a_under, a_drop, ring_w - ring_r, RING_FRAMES, RING_TARGET, a_adj_drop, a_adj_dup);
 			L("[CD] leituras %d, ultima %d ms, pior %d ms, pulos %d, erros %d, manter girando %d (pior %d ms), "
 			  "buffer %d setores; dados atrasados %u, musica sem chegar %u, setores de dados adiados %u",
 			  cs.cmds, cs.last_ms, cs.max_ms, cs.repositions, cs.errors, cs.keepalives, cs.keep_max_ms, cs.ahead,
@@ -867,7 +883,8 @@ int main(int argc, char *argv[])
 		/* log no pendrive: 1 s, 10 s e depois a cada 60 s (pode dar um tranco) */
 		{
 			u64 now = ee_now_us();
-			if ((saves == 0 && run_count >= 600) || (saves >= 1 && now - last_save_us > 60000000)) {
+			/* p03: 10 s e depois a cada 5 min (cada gravacao trava ~300 ms) */
+			if ((saves == 0 && run_count >= 600) || (saves >= 1 && now - last_save_us > 300000000)) {
 				L("[LOG] gravando o log no pendrive (pode dar um tranco)");
 				log_save();
 				last_save_us = ee_now_us();
