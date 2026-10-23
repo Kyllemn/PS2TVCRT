@@ -38,7 +38,7 @@
 #include "diag.h"
 #include "ui.h"
 
-#define VERSAO		"p05"
+#define VERSAO		"p06"
 #define LOG_FILE	"mass:/PCEUSB.TXT"
 #define DISC_PATH	"ps2disc:/disco.cue"
 
@@ -126,15 +126,23 @@ static void STEP(const char *fmt, ...)
 	log_save();
 }
 
+/* p06: a primeira gravacao cria o arquivo; as outras so acrescentam as
+ * linhas novas (rapido: nao regrava o log inteiro) */
+static int log_saved;
+
 void log_save(void)
 {
-	int fd;
-	if (!log_ok)
+	int fd, len = loglen;
+	if (!log_ok || len == log_saved)
 		return;
-	fd = fileXioOpen(LOG_FILE, FIO_O_WRONLY | FIO_O_CREAT | FIO_O_TRUNC, 0666);
+	if (!log_saved)
+		fd = fileXioOpen(LOG_FILE, FIO_O_WRONLY | FIO_O_CREAT | FIO_O_TRUNC, 0666);
+	else
+		fd = fileXioOpen(LOG_FILE, FIO_O_WRONLY | FIO_O_APPEND, 0666);
 	if (fd < 0)
 		return;
-	fileXioWrite(fd, logbuf, loglen);
+	if (fileXioWrite(fd, logbuf + log_saved, len - log_saved) == len - log_saved)
+		log_saved = len;
 	fileXioClose(fd);
 }
 
@@ -928,11 +936,14 @@ int main(int argc, char *argv[])
 			(void)now;
 			(void)frame_t;
 			(void)skip_row;
-			/* p03: preso no retraco, um quadro emulado por retraco. A conta
-			 * pelo relogio (p02) nunca zerava depois de um retraco perdido e
-			 * ficava pulando uma imagem sim, outra nao. Agora so pula a imagem
-			 * do proximo quadro se ESTE passou de 20 ms (nunca 2 seguidas) */
-			ps2_skip_next = (rt > 20000 && !ps2_skip_next) ? 1 : 0;
+			/* p06: decisao quadro a quadro, sem memoria. Se o quadro que
+			 * acabou de ser DESENHADO levou mais de 15 ms (com o envio da
+			 * imagem nao caberia no retraco), a imagem do proximo e pulada:
+			 * o pulado e mais leve (~12 ms) e os dois cabem em 2 retracos,
+			 * o jogo segue a 60. Abaixo de 15 ms nunca pula (a p02 contava
+			 * pelo relogio e ficava devendo; a p05 so pulava acima de 20 ms
+			 * e o jogo inteiro caia para 30) */
+			ps2_skip_next = (vid_last_us != 0 && rt > 15000) ? 1 : 0;
 		}
 		if (run_count % 120 == 0)
 			bram_check(0);		/* a cada ~2 s */
@@ -1009,8 +1020,8 @@ int main(int argc, char *argv[])
 		/* log no pendrive: 1 s, 10 s e depois a cada 60 s (pode dar um tranco) */
 		{
 			u64 now = ee_now_us();
-			/* p03: 10 s e depois a cada 5 min (cada gravacao trava ~300 ms) */
-			if ((saves == 0 && run_count >= 600) || (saves >= 1 && now - last_save_us > 300000000)) {
+			/* p06: 10 s e depois a cada 30 s (so as linhas novas) */
+			if ((saves == 0 && run_count >= 600) || (saves >= 1 && now - last_save_us > 30000000)) {
 				L("[LOG] gravando o log no pendrive (pode dar um tranco)");
 				log_save();
 				last_save_us = ee_now_us();
