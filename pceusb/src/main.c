@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
+#include <strings.h>
 #include <kernel.h>
 #include <delaythread.h>
 #include <sifrpc.h>
@@ -36,7 +37,7 @@
 #include "cdcache.h"
 #include "diag.h"
 
-#define VERSAO		"p03"
+#define VERSAO		"p04"
 #define LOG_FILE	"mass:/PCEUSB.TXT"
 #define DISC_PATH	"ps2disc:/disco.cue"
 
@@ -553,6 +554,99 @@ static bool RETRO_CALLCONV environ_cb(unsigned cmd, void *data)
 	}
 }
 
+/* ------------------------------------------------------------------ BRAM */
+/*
+ * BRAM do PC Engine CD (2 KB, os saves dos jogos) em mass:/PCE. Usa o
+ * PCECD.BRM se existir; senao o primeiro .BRM ou .SAV da pasta; senao cria
+ * PCECD.BRM. Grava so quando o jogo mudou a BRAM e ela ficou parada por uma
+ * checagem (2 s), e sempre ao sair.
+ */
+#define BRAM_DIR	"mass:/PCE"
+#define BRAM_SIZE	2048
+
+static char bram_file[300];
+static u8 bram_copy[BRAM_SIZE];
+static int bram_ok, bram_dirty;
+
+static int ends_with(const char *n, const char *ext)
+{
+	int a = strlen(n), b = strlen(ext);
+	return a > b && !strcasecmp(n + a - b, ext);
+}
+
+static void bram_find(void)
+{
+	static iox_dirent_t de;
+	char first[256] = "";
+	int fd = fileXioDopen(BRAM_DIR);
+
+	if (fd < 0) {
+		fileXioMkdir(BRAM_DIR, 0777);
+		snprintf(bram_file, sizeof(bram_file), BRAM_DIR "/PCECD.BRM");
+		L("[BRAM] pasta %s criada", BRAM_DIR);
+		return;
+	}
+	while (fileXioDread(fd, &de) > 0) {
+		if (!strcasecmp(de.name, "PCECD.BRM")) {
+			strcpy(first, de.name);
+			break;
+		}
+		if (!first[0] && (ends_with(de.name, ".brm") || ends_with(de.name, ".sav")))
+			snprintf(first, sizeof(first), "%s", de.name);
+	}
+	fileXioDclose(fd);
+	snprintf(bram_file, sizeof(bram_file), BRAM_DIR "/%s", first[0] ? first : "PCECD.BRM");
+}
+
+static void bram_load(void)
+{
+	u8 *ram = retro_get_memory_data(RETRO_MEMORY_SAVE_RAM);
+	int fd, n;
+
+	if (!log_ok) {
+		L("[BRAM] sem pendrive: os saves nao serao lidos nem gravados");
+		return;
+	}
+	if (!ram || retro_get_memory_size(RETRO_MEMORY_SAVE_RAM) != BRAM_SIZE) {
+		L("[BRAM] o nucleo nao entregou a BRAM de 2 KB");
+		return;
+	}
+	bram_find();
+	fd = fileXioOpen(bram_file, FIO_O_RDONLY);
+	if (fd >= 0) {
+		n = fileXioRead(fd, ram, BRAM_SIZE);
+		fileXioClose(fd);
+		L("[BRAM] lida de %s (%d bytes)", bram_file, n);
+	} else
+		L("[BRAM] %s ainda nao existe: sera criada quando o jogo gravar", bram_file);
+	memcpy(bram_copy, ram, BRAM_SIZE);
+	bram_ok = 1;
+}
+
+static void bram_check(int force)
+{
+	u8 *ram = retro_get_memory_data(RETRO_MEMORY_SAVE_RAM);
+	u64 t0;
+	int fd, n;
+
+	if (!bram_ok || !ram)
+		return;
+	if (!memcmp(ram, bram_copy, BRAM_SIZE)) {
+		bram_dirty = 0;
+		return;
+	}
+	if (!force && !bram_dirty++)
+		return;			/* espera a BRAM parar de mudar */
+	memcpy(bram_copy, ram, BRAM_SIZE);
+	t0 = ee_now_us();
+	fd = fileXioOpen(bram_file, FIO_O_WRONLY | FIO_O_CREAT | FIO_O_TRUNC, 0666);
+	n = fd >= 0 ? fileXioWrite(fd, bram_copy, BRAM_SIZE) : fd;
+	if (fd >= 0)
+		fileXioClose(fd);
+	bram_dirty = 0;
+	L("[BRAM] gravada em %s (%d bytes, %u ms)", bram_file, n, (unsigned)((ee_now_us() - t0) / 1000));
+}
+
 /* ------------------------------------------------------------------ telas */
 static void wait_key(u16 keys)
 {
@@ -801,6 +895,7 @@ int main(int argc, char *argv[])
 			Exit(0);
 		Exit(0);
 	}
+	bram_load();
 	STEP("jogo carregado; ligando o video (gsKit 240p)");
 	video_start();
 	STEP("video ligado; primeiro quadro");
@@ -830,6 +925,8 @@ int main(int argc, char *argv[])
 			 * do proximo quadro se ESTE passou de 20 ms (nunca 2 seguidas) */
 			ps2_skip_next = (rt > 20000 && !ps2_skip_next) ? 1 : 0;
 		}
+		if (run_count % 120 == 0)
+			bram_check(0);		/* a cada ~2 s */
 		if (run_count == 1)
 			STEP("primeiro quadro emulado (%u ms)", (unsigned)(rt / 1000));
 		else if (run_count == 60)
@@ -863,6 +960,8 @@ int main(int argc, char *argv[])
 			  shown ? (unsigned)(vid_us_sum / shown / 1000) : 0, (unsigned)(vid_us_max / 1000), late_frames,
 			  worst_gap_ms);
 			L("[DESEMPENHO] imagens puladas %u (o jogo seguiu na velocidade certa)", skipped - last_skipped);
+			L("[DESEMPENHO] processador (EE) ocupado com a emulacao: %u%% do tempo",
+			  (unsigned)(run_us_sum * 100 / span));
 			L("[DESEMPENHO] onde o tempo foi: %s", pbuf);
 			last_skipped = skipped;
 			L("[SOM] faltas %u, sobras %u, buffer %u de %u (alvo %u); ajuste fino: %u descartadas, %u repetidas",
@@ -895,6 +994,7 @@ int main(int argc, char *argv[])
 	}
 
 	STEP("saindo (SELECT + START)");
+	bram_check(1);
 	a_quit = 1;
 	retro_unload_game();
 	retro_deinit();
