@@ -23,6 +23,7 @@
 #define EE_HZ_MS	294912u
 #define BENCH_MS	4000
 #define MOTOR_WAIT_MS	15000
+#define PACE_SECS	15
 
 static int dev, sub;
 static diag_result *res;
@@ -477,14 +478,15 @@ static void test_reads(void)
 	res->subraw_ok = r == CDUSB_OK;
 }
 
-/* leitura em sequencia por ms; devolve bytes por segundo (-1 = falhou) */
-static int bench(int audio, int t, int per, int ms, int *ms_max)
+/* leitura em sequencia por ms; devolve bytes por segundo (-1 = falhou).
+ * Comandos acima de 300 ms vao para o log (setor e tempo). */
+static int bench(int audio, int t, int per, int ms, int *ms_max, int *slow)
 {
 	int start = trk[t].lba, end = audio ? track_end(t) : safe_end(t);
 	int lba, r, n = 0, mx = 0, mn = 1 << 30, c, wraps = 0;
 	int bytes_per = audio ? 2352 : 2048;
-	u32 last, now, c0;
-	u64 acc = 0, bytes = 0, limit = (u64)ms * EE_HZ_MS;
+	u64 t0, c0, bytes = 0;
+	u32 total_ms;
 	char what[48];
 
 	snprintf(what, sizeof(what), "%s, %d setores por comando", audio ? "musica" : "dados", per);
@@ -494,28 +496,32 @@ static int bench(int audio, int t, int per, int ms, int *ms_max)
 	}
 	/* primeira leitura fora da conta (busca + motor) */
 	lba = start;
+	c0 = ee_now_us();
 	r = audio ? readcd(lba, per, 1, 0x10, 0) : read10(lba, per);
+	L("[BENCH] %s: primeira leitura (posiciona) %d ms", what, (int)((ee_now_us() - c0) / 1000));
 	if (r != CDUSB_OK) {
 		lcmd(what, r);
 		return -1;
 	}
 	lba += per;
-	last = ee_ticks();
-	while (acc < limit) {
+	t0 = ee_now_us();
+	while (ee_now_us() - t0 < (u64)ms * 1000) {
 		if (lba + per > end) {
 			lba = start;
 			wraps++;
 		}
-		c0 = ee_ticks();
+		c0 = ee_now_us();
 		r = audio ? readcd(lba, per, 1, 0x10, 0) : read10(lba, per);
-		c = ee_ms(c0);
-		now = ee_ticks();
-		acc += (u32)(now - last);
-		last = now;
+		c = (int)((ee_now_us() - c0) / 1000);
 		if (r != CDUSB_OK) {
 			lcmd(what, r);
 			L("[BENCH] %s: falhou no setor %d depois de %d comandos", what, lba, n);
 			return -1;
+		}
+		if (c > 300) {
+			if (slow)
+				(*slow)++;
+			L("[BENCH] %s: LENTO setor %d em %d ms (comando %d)", what, lba, c, n);
 		}
 		bytes += (u64)per * bytes_per;
 		n++;
@@ -523,8 +529,8 @@ static int bench(int audio, int t, int per, int ms, int *ms_max)
 		if (c < mn) mn = c;
 		lba += per;
 	}
+	total_ms = (u32)((ee_now_us() - t0) / 1000);
 	{
-		u32 total_ms = (u32)(acc / EE_HZ_MS);
 		int bps = (int)(bytes * 1000 / (total_ms ? total_ms : 1));
 		L("[BENCH] %s: %d comandos, %d KB em %d ms = %d KB/s; comando min %d ms, media %d ms, pior %d ms; "
 		  "voltas %d",
@@ -534,6 +540,89 @@ static int bench(int audio, int t, int per, int ms, int *ms_max)
 			*ms_max = mx;
 		return bps;
 	}
+}
+
+/* maior faixa de musica (-1 = nenhuma) */
+static int longest_audio(void)
+{
+	int t, best = -1;
+	for (t = t_first; t <= t_last; t++)
+		if (!is_data_t(t) && (best < 0 || track_end(t) - trk[t].lba > track_end(best) - trk[best].lba))
+			best = t;
+	return best;
+}
+
+/*
+ * Musica em tempo real: o emulador consome 75 setores por segundo (1x) e a
+ * leitura antecipada tenta manter 1 s (75 setores) a frente, lendo 16 por vez.
+ * Mede a menor folga e quantas vezes o buffer teria esvaziado (= corte).
+ */
+#define PACE_AHEAD	75
+static void pace(int t, int secs, speed_result *s)
+{
+	int start = trk[t].lba + 150, end = track_end(t), lba, r, c, cmds = 0;
+	int produced = 0, before, consumed, ahead, min_ahead = 1 << 30, in_cut = 0;
+	u64 t0, now, c0;
+
+	s->pace_min_ms = s->pace_cuts = s->pace_max_ms = -1;
+	if (end - start < 75 * secs + 160) {
+		L("[TEMPO REAL] faixa curta demais");
+		return;
+	}
+	/* enche o buffer antes de "tocar" */
+	lba = start;
+	while (produced < PACE_AHEAD) {
+		r = readcd(lba, 16, 1, 0x10, 0);
+		if (r != CDUSB_OK) {
+			lcmd("TEMPO REAL (enchendo)", r);
+			return;
+		}
+		lba += 16;
+		produced += 16;
+	}
+	s->pace_cuts = 0;
+	s->pace_max_ms = 0;
+	t0 = ee_now_us();
+	for (;;) {
+		now = ee_now_us();
+		if (now - t0 >= (u64)secs * 1000000)
+			break;
+		consumed = (int)((now - t0) * 75 / 1000000);
+		if (produced - consumed >= PACE_AHEAD) {
+			ee_wait_ms(2);
+			continue;
+		}
+		before = produced;
+		c0 = ee_now_us();
+		r = readcd(lba, 16, 1, 0x10, 0);
+		now = ee_now_us();
+		c = (int)((now - c0) / 1000);
+		if (r != CDUSB_OK) {
+			lcmd("TEMPO REAL", r);
+			s->pace_cuts = -1;
+			return;
+		}
+		cmds++;
+		lba += 16;
+		produced += 16;
+		/* folga no pior momento: logo antes deste comando terminar */
+		ahead = before - (int)((now - t0) * 75 / 1000000);
+		if (ahead < min_ahead)
+			min_ahead = ahead;
+		if (ahead < 0) {
+			if (!in_cut)
+				s->pace_cuts++;
+			in_cut = 1;
+		} else
+			in_cut = 0;
+		if (c > s->pace_max_ms)
+			s->pace_max_ms = c;
+		if (c > 300)
+			L("[TEMPO REAL] LENTO setor %d em %d ms (folga %d ms)", lba - 16, c, ahead * 1000 / 75);
+	}
+	s->pace_min_ms = min_ahead * 1000 / 75;
+	L("[TEMPO REAL] %d s, %d comandos: menor folga %d ms (de 1000), cortes %d, pior comando %d ms", secs, cmds,
+	  s->pace_min_ms, s->pace_cuts, s->pace_max_ms);
 }
 
 static int pick_far(void)
@@ -547,12 +636,12 @@ static int pick_near(void)
 	return trk[t_first].lba + 300;
 }
 
-static void test_seek(void)
+static void test_seek(speed_result *s, int shift)
 {
-	int near = pick_near(), far = pick_far(), i, r, ms, sum = 0, cnt = 0;
-	u32 t0;
+	int near = pick_near() + shift, far = pick_far() - shift, i, r, ms, sum = 0, cnt = 0;
+	u64 t0;
 
-	res->seek_avg = res->seek_max = -1;
+	s->seek_avg = s->seek_max = -1;
 	if (far < 0 || far - near < 20000) {
 		L("[SEEK] disco curto demais para medir a busca");
 		return;
@@ -560,9 +649,9 @@ static void test_seek(void)
 	for (i = 0; i < 7; i++) {
 		int lba = (i & 1) ? far : near;
 		lba += i * 8;			/* setores novos: nada no cache do leitor */
-		t0 = ee_ticks();
+		t0 = ee_now_us();
 		r = read_one(lba);
-		ms = ee_ms(t0);
+		ms = (int)((ee_now_us() - t0) / 1000);
 		L("[SEEK] setor %d: %s em %d ms", lba, rtxt(r), ms);
 		if (r != CDUSB_OK)
 			return;
@@ -570,33 +659,74 @@ static void test_seek(void)
 			continue;		/* a primeira so posiciona */
 		sum += ms;
 		cnt++;
-		if (ms > res->seek_max)
-			res->seek_max = ms;
+		if (ms > s->seek_max)
+			s->seek_max = ms;
 	}
-	res->seek_avg = sum / cnt;
-	L("[SEEK] busca media %d ms, pior %d ms", res->seek_avg, res->seek_max);
+	s->seek_avg = sum / cnt;
+	L("[SEEK] busca media %d ms, pior %d ms", s->seek_avg, s->seek_max);
+}
+
+/*
+ * Velocidade do leitor USB (autorizado pelo usuario, SO no leitor USB).
+ * kbs: KB/s do padrao MMC (1x = 176); 0xFFFF = maxima. Manda SET CD SPEED e
+ * SET STREAMING (leitores novos so obedecem a este). restore = volta ao padrao.
+ */
+static void set_speed(int kbs, int restore, speed_result *s)
+{
+	u8 c[12], pd[28];
+	int r, end = trk[100].lba > 0 ? trk[100].lba - 1 : 0;
+
+	memset(c, 0, sizeof(c));
+	c[0] = 0xBB;
+	c[2] = kbs >> 8; c[3] = kbs;
+	c[4] = 0xFF; c[5] = 0xFF;		/* gravacao: sem mudanca */
+	r = cmd(c, 0, 0, TMO_CMD);
+	lcmd(restore ? "SET CD SPEED (padrao)" : "SET CD SPEED", r);
+	if (r == CDUSB_OK && s)
+		s->set_ok |= 1;
+
+	memset(pd, 0, sizeof(pd));
+	if (restore) {
+		pd[0] = 0x04;			/* RDD: volta ao padrao do leitor */
+	} else {
+		pd[8] = end >> 24; pd[9] = end >> 16; pd[10] = end >> 8; pd[11] = end;
+		pd[14] = kbs >> 8; pd[15] = kbs;		/* KB de leitura */
+		pd[18] = 1000 >> 8; pd[19] = 1000 & 0xff;	/* a cada 1000 ms */
+		pd[22] = kbs >> 8; pd[23] = kbs;
+		pd[26] = 1000 >> 8; pd[27] = 1000 & 0xff;
+	}
+	memset(c, 0, sizeof(c));
+	c[0] = 0xB6;
+	c[10] = sizeof(pd);
+	r = cdusb_scsi(dev, c, 12, 2, pd, sizeof(pd), TMO_CMD, &R);
+	if (r == CDUSB_E_EE_TIMEOUT)
+		res->stuck = 1;
+	lcmd(restore ? "SET STREAMING (padrao)" : "SET STREAMING", r);
+	if (r == CDUSB_OK && s)
+		s->set_ok |= 2;
+	log_save();				/* se o leitor travar aqui, o log ja esta gravado */
 }
 
 static void test_motor(void)
 {
 	int lba = pick_near() + 2000, r, ms;
-	u32 t0;
+	u64 t0;
 
 	res->spinup_ms = -1;
 	if (lba >= trk[100].lba)
 		return;
 	S("   TESTE DO MOTOR: 15 S SEM LER NADA...  (O = PULAR)");
-	t0 = ee_ticks();
-	while (ee_ms(t0) < MOTOR_WAIT_MS) {
+	t0 = ee_now_us();
+	while (ee_now_us() - t0 < (u64)MOTOR_WAIT_MS * 1000) {
 		if (pad_new() & PAD_CIRCLE) {
 			L("[MOTOR] pulado pelo usuario");
 			return;
 		}
 		ee_wait_ms(16);
 	}
-	t0 = ee_ticks();
+	t0 = ee_now_us();
 	r = read_one(lba);
-	ms = ee_ms(t0);
+	ms = (int)((ee_now_us() - t0) / 1000);
 	L("[MOTOR] depois de 15 s parado: setor %d %s em %d ms", lba, rtxt(r), ms);
 	if (r == CDUSB_OK)
 		res->spinup_ms = ms;
@@ -605,16 +735,22 @@ static void test_motor(void)
 /* ------------------------------------------------------------------ roteiro */
 #define STOP_IF_DEAD() do { log_save(); if (res->stuck || res->gone) return; } while (0)
 
+static const struct {
+	const char *name;
+	int kbs;
+} speeds[DIAG_SPEEDS] = {
+	{"MAXIMA", 0}, {"8X", 1411}, {"4X", 706}, {"2X", 353},
+};
+
 void diag_run(int d, const cdusb_dev_info *info, diag_result *r)
 {
-	int fd, fa;
+	int fd, fa, i;
 
 	dev = d;
 	sub = info->sub;
 	res = r;
 	memset(r, 0, sizeof(*r));
-	r->kbs_data8 = r->kbs_data16 = r->kbs_audio = -1;
-	r->seek_avg = r->seek_max = r->spinup_ms = -1;
+	r->spinup_ms = -1;
 	r->vid = info->vid;
 	r->pid = info->pid;
 	r->port = info->port;
@@ -655,27 +791,43 @@ void diag_run(int d, const cdusb_dev_info *info, diag_result *r)
 	STOP_IF_DEAD();
 
 	fd = first_of(1);
-	fa = first_of(0);
-	if (fd >= 0 && r->data_ok) {
-		S("   MEDINDO A VELOCIDADE DOS DADOS...");
-		r->kbs_data8 = bench(0, fd, 8, BENCH_MS / 2, NULL);
+	fa = longest_audio();
+	for (i = 0; i < DIAG_SPEEDS; i++) {
+		speed_result *s = &r->sp[i];
+
+		memset(s, 0, sizeof(*s));
+		s->name = speeds[i].name;
+		s->kbs = speeds[i].kbs;
+		s->data_bps = s->audio_bps = s->data_max_ms = s->audio_max_ms = -1;
+		s->pace_min_ms = s->pace_cuts = s->pace_max_ms = s->seek_avg = s->seek_max = -1;
+		r->nsp = i + 1;
+
+		S("   VELOCIDADE %s: MEDINDO (~30 S)...", s->name);
+		L("[VELOC] ================ %s ================", s->name);
+		if (s->kbs)
+			set_speed(s->kbs, 0, s);
 		STOP_IF_DEAD();
-		r->kbs_data16 = bench(0, fd, 16, BENCH_MS, &r->ms_max_data);
+		get_caps();
+		s->cur_kbs = r->cur_kbs;
 		STOP_IF_DEAD();
-	}
-	if (fa >= 0 && r->audio_ok) {
-		/* a maior faixa de musica (a 1a pode ser curta) */
-		int t, best = fa;
-		for (t = t_first; t <= t_last; t++)
-			if (!is_data_t(t) && track_end(t) - trk[t].lba > track_end(best) - trk[best].lba)
-				best = t;
-		S("   MEDINDO A VELOCIDADE DA MUSICA...");
-		r->kbs_audio = bench(1, best, 16, BENCH_MS, &r->ms_max_audio);
+
+		if (fd >= 0 && r->data_ok) {
+			s->data_bps = bench(0, fd, 16, BENCH_MS, &s->data_max_ms, &s->slow);
+			STOP_IF_DEAD();
+		}
+		if (fa >= 0 && r->audio_ok) {
+			s->audio_bps = bench(1, fa, 16, BENCH_MS, &s->audio_max_ms, &s->slow);
+			STOP_IF_DEAD();
+			pace(fa, PACE_SECS, s);
+			STOP_IF_DEAD();
+		}
+		test_seek(s, i * 1000);
 		STOP_IF_DEAD();
 	}
 
-	S("   MEDINDO A BUSCA (PULOS NO DISCO)...");
-	test_seek();
+	S("   VOLTANDO O LEITOR PARA A VELOCIDADE PADRAO...");
+	set_speed(0xFFFF, 1, NULL);
+	get_caps();
 	STOP_IF_DEAD();
 
 	test_motor();
@@ -690,77 +842,63 @@ static int times10(int bps, int audio)
 	return (int)((u64)bps * 10 / (audio ? 176400 : 153600));
 }
 
-static const char *grade(int x10)
-{
-	return x10 >= 15 ? "OK" : x10 >= 10 ? "NO LIMITE" : "LENTO";
-}
-
 void diag_summary(const diag_result *r, const char *log_file)
 {
-	int ok = 1, x;
+	int i, x;
+	char d[16], a[16], p[24], k[16];
 
 	screen_title("RESULTADO");
 	S("   LEITOR:   %s %s %s", r->vendor, r->product, r->rev);
 	S("             USB %04X:%04X, PORTA %d, SUBCLASSE %02X", r->vid, r->pid, r->port, r->sub);
-	if (r->aborted) {
+	if (r->aborted)
 		S("   TESTE INTERROMPIDO ANTES DO DISCO");
-		ok = 0;
-	}
 	if (r->gone) {
 		S("   O LEITOR DESCONECTOU NO MEIO DO TESTE: FALTA DE ENERGIA?");
 		S("   LIGUE O SEGUNDO PLUGUE DO CABO Y NUM CARREGADOR.");
-		ok = 0;
 	}
-	if (r->stuck) {
+	if (r->stuck)
 		S("   O LEITOR TRAVOU (SEM RESPOSTA). DESLIGUE E LIGUE O LEITOR.");
-		ok = 0;
-	}
 	if (!r->disc) {
 		if (!r->aborted && !r->gone && !r->stuck)
 			S("   NAO CONSEGUI LER O DISCO");
-		ok = 0;
 	} else {
 		S("   DISCO:    %s", r->system);
 		S("             %d FAIXAS: %d DE DADOS, %d DE MUSICA", r->last - r->first + 1, r->data_tracks,
 		  r->audio_tracks);
-		if (r->data_tracks) {
-			if (r->kbs_data16 > 0) {
-				x = times10(r->kbs_data16, 0);
-				S("   DADOS:    %d KB/S = %d,%dx  (PRECISA 1x)  %s", r->kbs_data16 / 1024, x / 10, x % 10,
-				  grade(x));
-				if (x < 10)
-					ok = 0;
-			} else {
-				S("   DADOS:    NAO CONSEGUI MEDIR");
-				ok = 0;
-			}
+		if (r->audio_tracks && !r->audio_ok)
+			S("   MUSICA:   O LEITOR NAO ENTREGA A MUSICA PELO USB");
+		else if (r->audio_tracks && r->audio_silent)
+			S("   MUSICA:   VEIO SO SILENCIO (CONFERIR NO LOG)");
+		S("   SUBCANAL: Q %s, P-W %s", r->subq_ok ? "OK" : "NAO", r->subraw_ok ? "OK" : "NAO");
+		S(" ");
+		S("   VELOC.  LEITOR   DADOS   MUSICA  TEMPO REAL 1X     BUSCA");
+		for (i = 0; i < r->nsp; i++) {
+			const speed_result *s = &r->sp[i];
+			if (s->cur_kbs > 0)
+				snprintf(k, sizeof(k), "%dX", (s->cur_kbs + 88) / 176);
+			else
+				snprintf(k, sizeof(k), "?");
+			if (s->data_bps > 0) {
+				x = times10(s->data_bps, 0);
+				snprintf(d, sizeof(d), "%d,%dx", x / 10, x % 10);
+			} else
+				snprintf(d, sizeof(d), "-");
+			if (s->audio_bps > 0) {
+				x = times10(s->audio_bps, 1);
+				snprintf(a, sizeof(a), "%d,%dx", x / 10, x % 10);
+			} else
+				snprintf(a, sizeof(a), "-");
+			if (s->pace_cuts >= 0)
+				snprintf(p, sizeof(p), "%d CORTES/%dMS", s->pace_cuts, s->pace_min_ms);
+			else
+				snprintf(p, sizeof(p), "-");
+			S("   %-6s  %-7s  %-6s  %-6s  %-16s  %d/%d MS", s->name, k, d, a, p, s->seek_avg, s->seek_max);
 		}
-		if (r->audio_tracks) {
-			if (!r->audio_ok) {
-				S("   MUSICA:   O LEITOR NAO ENTREGA A MUSICA PELO USB");
-				ok = 0;
-			} else if (r->audio_silent) {
-				S("   MUSICA:   VEIO SO SILENCIO (CONFERIR NO LOG)");
-				ok = 0;
-			} else if (r->kbs_audio > 0) {
-				x = times10(r->kbs_audio, 1);
-				S("   MUSICA:   %d KB/S = %d,%dx  (PRECISA 1x)  %s", r->kbs_audio / 1024, x / 10, x % 10,
-				  grade(x));
-				if (x < 10)
-					ok = 0;
-			} else {
-				S("   MUSICA:   NAO CONSEGUI MEDIR");
-				ok = 0;
-			}
-			S("   SUBCANAL: Q %s, P-W %s", r->subq_ok ? "OK" : "NAO", r->subraw_ok ? "OK" : "NAO");
-		}
-		if (r->seek_avg >= 0)
-			S("   BUSCA:    MEDIA %d MS, PIOR %d MS", r->seek_avg, r->seek_max);
+		S("   (TEMPO REAL: CORTES DE MUSICA / MENOR FOLGA DO BUFFER DE 1000 MS)");
 		if (r->spinup_ms >= 0)
 			S("   MOTOR:    DEPOIS DE 15 S PARADO, %d MS PARA VOLTAR A LER", r->spinup_ms);
 	}
 	S(" ");
-	S("   VEREDITO: %s", ok ? "SERVE PARA PCE-CD, SEGA CD E NEO GEO CD" : "AINDA NAO SERVE (VER ACIMA)");
 	if (log_file)
 		S("   LOG: %s", log_file);
 	else

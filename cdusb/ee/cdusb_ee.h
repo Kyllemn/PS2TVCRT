@@ -17,6 +17,7 @@ u32 ee_ticks(void);
 u32 ee_ms(u32 t0);			/* ms desde t0 (ate ~14 s) */
 u32 ee_us(u32 t0);			/* us desde t0 (ate ~14 s) */
 void ee_wait_ms(int ms);
+u64 ee_now_us(void);			/* relogio continuo (chamar a cada < 14 s) */
 
 int cdusb_bind(void);			/* 0 = conectado ao cdusb.irx */
 int cdusb_stuck(void);			/* 1 = o IOP deixou de responder */

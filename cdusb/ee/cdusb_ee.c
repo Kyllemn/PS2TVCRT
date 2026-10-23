@@ -35,6 +35,23 @@ u32 ee_us(u32 t0)
 	return (u32)(((u64)(ee_ticks() - t0) * 1000) / EE_HZ_MS);
 }
 
+/* o contador volta a zero a cada ~14,5 s: soma os pedacos */
+u64 ee_now_us(void)
+{
+	static u32 last;
+	static u64 acc;
+	static int init;
+	u32 n = ee_ticks();
+
+	if (!init) {
+		last = n;
+		init = 1;
+	}
+	acc += (u32)(n - last);
+	last = n;
+	return acc * 1000 / EE_HZ_MS;
+}
+
 void ee_wait_ms(int ms)
 {
 	while (ms > 0) {

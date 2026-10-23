@@ -24,7 +24,7 @@
 #include "cdusb_ee.h"
 #include "diag.h"
 
-#define VERSAO		"c01"
+#define VERSAO		"c02"
 #define LOG_FILE	"mass:/CDUSB.TXT"
 
 #define IRX(n)	extern unsigned char n[]; extern unsigned int size_##n

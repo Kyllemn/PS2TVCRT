@@ -16,6 +16,23 @@ int log_ready(void);
 void screen_title(const char *sub);
 u16 pad_new(void);
 
+#define DIAG_SPEEDS	4
+
+/* resultado de uma velocidade (-1 = nao testado) */
+typedef struct {
+	const char *name;
+	int kbs;			/* pedido ao leitor (0 = sem pedido) */
+	int set_ok;			/* leitor aceitou SET CD SPEED / SET STREAMING (bits 1/2) */
+	int cur_kbs;			/* velocidade que o leitor diz estar usando */
+	int data_bps, audio_bps;		/* medicao continua */
+	int data_max_ms, audio_max_ms;	/* pior comando */
+	int slow;			/* comandos acima de 300 ms */
+	int pace_min_ms;		/* tempo real 1x: menor folga do buffer de 1 s */
+	int pace_cuts;			/* vezes que o buffer teria esvaziado */
+	int pace_max_ms;		/* pior comando no tempo real */
+	int seek_avg, seek_max;
+} speed_result;
+
 typedef struct {
 	char vendor[9], product[17], rev[5];
 	int vid, pid, port, sub;
@@ -26,9 +43,8 @@ typedef struct {
 	int profile;
 	int max_kbs, cur_kbs, caps;	/* pagina 2A (caps: byte 5) */
 	int data_ok, raw_ok, audio_ok, audio_silent, subq_ok, subraw_ok;
-	int kbs_data8, kbs_data16, kbs_audio;	/* -1 = nao testado */
-	int ms_max_data, ms_max_audio;
-	int seek_avg, seek_max;			/* -1 = nao testado */
+	int nsp;				/* velocidades testadas */
+	speed_result sp[DIAG_SPEEDS];
 	int spinup_ms;				/* -1 = nao testado */
 	int gone;			/* leitor desconectou */
 	int stuck;			/* IOP parou de responder */
