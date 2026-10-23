@@ -49,8 +49,10 @@ all: $(EE_BIN)
 clean:
 	rm -rf build $(EE_BIN)
 
-# p02: o video do PC Engine (fundo, sprites, mistura) com -O3 (so este arquivo)
-build/$(P)/vdc.o: $(P)/vdc.c
+# p02/p07: as partes pesadas do nucleo com -O3: video (fundo, sprites,
+# mistura), CPU, CD e som. O resto (libretro.c, arquivos, CD de imagem) -O2.
+O3_OBJS = build/$(P)/vdc.o build/$(P)/huc6280.o build/$(P)/pcecd.o build/$(P)/pcecd_drive.o build/$(P)/psg.o
+$(O3_OBJS): build/$(P)/%.o: $(P)/%.c
 	@mkdir -p $(dir $@)
 	$(EE_CC) $(EE_CFLAGS) -O3 $(EE_INCS) -c $< -o $@
 

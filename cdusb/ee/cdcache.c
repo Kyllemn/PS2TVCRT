@@ -20,12 +20,12 @@
 #include "cdcache.h"
 #include "diag.h"
 
-#define SLOTS		512
+#define SLOTS		1024		/* p07: 2,4 MB */
 #define CHUNK		16
-#define AHEAD		300
+#define AHEAD		600		/* p07: 8 s de musica adiante */
 #define TMO_CMD		5000
 #define TMO_READ	10000
-#define LOCK_KBS	706		/* pede 4x */
+#define LOCK_KBS	2822		/* p07: pede 16x (o leitor arredonda) */
 #define READER_PRIO	0x30
 #define KEEP_IDLE_MS	2000		/* sem ler ha 2 s: le 1 setor (o leitor desacelera em ~3 s) */
 
@@ -35,6 +35,13 @@ static cdcd_toc toc;
 static u8 cache[SLOTS][2352] __attribute__((aligned(64)));
 static int tag[SLOTS];			/* setor guardado (-1 = nada) */
 static u8 bad[SLOTS];			/* 1 = leitura falhou */
+
+/* p07: cache dos dados ja lidos (8 MB, 4096 setores de 2048). Quando o jogo
+ * volta a carregar algo que ja leu (titulo, menus), vem da RAM na hora. */
+#define DSLOTS		4096
+static u8 dcache[DSLOTS][2048] __attribute__((aligned(64)));
+static int dtag[DSLOTS];
+static unsigned st_dhits;
 static u8 tmp[CHUNK * 2352] __attribute__((aligned(64)));
 
 static volatile int consumer;		/* proximo setor que o emulador quer */
@@ -375,6 +382,11 @@ static void reader(void *arg)
 				slot = (f + i) % SLOTS;
 				if (r == CDUSB_OK) {
 					memcpy(cache[slot], tmp + i * (data ? 2048 : 2352), data ? 2048 : 2352);
+					if (data) {
+						int ds = (f + i) % DSLOTS;
+						memcpy(dcache[ds], tmp + i * 2048, 2048);
+						dtag[ds] = f + i;
+					}
 					bad[slot] = 0;
 				} else {
 					memset(cache[slot], 0, 2352);	/* musica: silencio */
@@ -411,6 +423,9 @@ int cdcd_open(int d, int sb, int (*abort)(void))
 	dev = d;
 	sub = sb;
 	memset(&st, 0, sizeof(st));
+	for (i = 0; i < DSLOTS; i++)
+		dtag[i] = -1;
+	st_dhits = 0;
 	for (i = 0; i < SLOTS; i++)
 		tag[i] = -1;
 
@@ -425,6 +440,7 @@ int cdcd_open(int d, int sb, int (*abort)(void))
 	L("[CDCACHE] disco: faixas %d a %d, fim %d", toc.first, toc.last, toc.lba[100]);
 
 	set_speed(LOCK_KBS, 0);
+	L("[CDCACHE] pedido %d KB/s; o leitor diz estar a %d KB/s", LOCK_KBS, cur_speed_kbs());
 	/* aquecimento: a troca de rotacao (ate ~4 s) acontece agora */
 	t0 = ee_now_us();
 	a = read_sectors(toc.lba[toc.first], 1, cdcd_is_data(toc.first), tmp);
@@ -474,8 +490,9 @@ void cdcd_close(void)
 	running = 0;
 	if (!cdusb_stuck())
 		set_speed(0xFFFF, 1);
-	L("[CDCACHE] fechado: %d leituras, pior %d ms, %d pulos, %d erros; manter girando %d (pior %d ms)",
-	  st.cmds, st.max_ms, st.repositions, st.errors, st.keepalives, st.keep_max_ms);
+	L("[CDCACHE] fechado: %d leituras, pior %d ms, %d pulos, %d erros; manter girando %d (pior %d ms); "
+	  "setores de dados servidos do cache de 8 MB: %u",
+	  st.cmds, st.max_ms, st.repositions, st.errors, st.keepalives, st.keep_max_ms, st_dhits);
 }
 
 /* setores prontos a partir de lba, copiados (o lock ja esta pego) */
@@ -485,8 +502,15 @@ static int take(int lba, int n, u8 *dst, int *badp)
 
 	for (i = 0; i < n; i++) {
 		slot = (lba + i) % SLOTS;
-		if (tag[slot] != lba + i)
+		if (tag[slot] != lba + i) {
+			int ds = (lba + i) % DSLOTS;
+			if (dtag[ds] == lba + i) {	/* dado ja lido antes */
+				memcpy(dst + i * 2048, dcache[ds], 2048);
+				st_dhits++;
+				continue;
+			}
 			break;
+		}
 		data = cdcd_is_data(cdcd_track_of(lba + i));
 		size = data ? 2048 : 2352;
 		memcpy(dst + i * size, cache[slot], size);
@@ -564,7 +588,7 @@ int cdcd_ready(int lba)
 	if (!running || lba < 0 || lba >= toc.lba[100])
 		return 1;			/* fora do disco: o nucleo trata */
 	lock();
-	ok = tag[lba % SLOTS] == lba;
+	ok = tag[lba % SLOTS] == lba || dtag[lba % DSLOTS] == lba;
 	if (!ok && !coming(lba)) {
 		consumer = lba;
 		restart = 1;
@@ -593,6 +617,7 @@ void cdcd_get_stats(cdcd_stats *s)
 {
 	lock();
 	st.ahead = (running && !restart && fill > consumer) ? fill - consumer : 0;
+	st.dhits = st_dhits;
 	*s = st;
 	unlock();
 }

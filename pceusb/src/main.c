@@ -38,7 +38,7 @@
 #include "diag.h"
 #include "ui.h"
 
-#define VERSAO		"p06"
+#define VERSAO		"p07"
 #define LOG_FILE	"mass:/PCEUSB.TXT"
 #define DISC_PATH	"ps2disc:/disco.cue"
 
@@ -422,6 +422,9 @@ static void video_start(void)
 	dmaKit_chan_init(DMA_CHANNEL_GIF);
 	gsKit_init_screen(gs);
 	gsKit_TexManager_init(gs);
+	/* p07: a imagem vai para o GS pelo DMA direto da memoria (o modo
+	 * padrao copiava os 245 KB do quadro com o EE para a fila de desenho) */
+	gsKit_TexManager_setmode(gs, ETM_DIRECT);
 	gsKit_mode_switch(gs, GS_ONESHOT);
 
 	memset(&tex, 0, sizeof(tex));
@@ -869,7 +872,7 @@ int main(int argc, char *argv[])
 		screen_title("ESPERANDO O DISCO...  (O = SAIR)");
 		S("   LEITOR: %.8s %.16s %.4s", st.dev[cd].inquiry + 8, st.dev[cd].inquiry + 16,
 		  st.dev[cd].inquiry + 32);
-		S("   TRAVANDO O LEITOR EM 10X...");
+		S("   TRAVANDO A VELOCIDADE DO LEITOR...");
 		STEP("leitor %d encontrado; abrindo o disco", cd);
 		r = cdcd_open(cd, st.dev[cd].sub, abort_o);
 		STEP("disco: cdcd_open = %d", r);
@@ -1005,9 +1008,10 @@ int main(int argc, char *argv[])
 			L("[SOM] faltas %u, sobras %u, buffer %u de %u (alvo %u); ajuste fino: %u descartadas, %u repetidas",
 			  a_under, a_drop, ring_w - ring_r, RING_FRAMES, RING_TARGET, a_adj_drop, a_adj_dup);
 			L("[CD] leituras %d, ultima %d ms, pior %d ms, pulos %d, erros %d, manter girando %d (pior %d ms), "
-			  "buffer %d setores; dados atrasados %u, musica sem chegar %u, setores de dados adiados %u",
+			  "buffer %d setores; dados atrasados %u, musica sem chegar %u, setores de dados adiados %u, "
+			  "dados do cache de 8 MB %u",
 			  cs.cmds, cs.last_ms, cs.max_ms, cs.repositions, cs.errors, cs.keepalives, cs.keep_max_ms, cs.ahead,
-			  dm, am, pp);
+			  dm, am, pp, cs.dhits);
 			memset(prof_cyc, 0, sizeof(prof_cyc));
 			memset(prof_cnt, 0, sizeof(prof_cnt));
 			run_us_sum = run_us_max = 0;
