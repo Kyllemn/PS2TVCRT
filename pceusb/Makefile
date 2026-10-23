@@ -49,9 +49,11 @@ all: $(EE_BIN)
 clean:
 	rm -rf build $(EE_BIN)
 
-# p02/p07: as partes pesadas do nucleo com -O3: video (fundo, sprites,
-# mistura), CPU, CD e som. O resto (libretro.c, arquivos, CD de imagem) -O2.
-O3_OBJS = build/$(P)/vdc.o build/$(P)/huc6280.o build/$(P)/pcecd.o build/$(P)/pcecd_drive.o build/$(P)/psg.o
+# p02/p09: so o video (fundo, sprites, mistura) com -O3. Na p07 a CPU, o CD
+# e o som tambem foram para -O3 e ficaram MAIS LENTOS (a CPU do PC Engine
+# passou de ~28% para ~40%: o codigo maior nao cabe no cache de instrucoes do
+# PS2). Voltaram para -O2.
+O3_OBJS = build/$(P)/vdc.o
 $(O3_OBJS): build/$(P)/%.o: $(P)/%.c
 	@mkdir -p $(dir $@)
 	$(EE_CC) $(EE_CFLAGS) -O3 $(EE_INCS) -c $< -o $@

@@ -38,9 +38,10 @@ static u8 cache[SLOTS][2352] __attribute__((aligned(64)));
 static int tag[SLOTS];			/* setor guardado (-1 = nada) */
 static u8 bad[SLOTS];			/* 1 = leitura falhou */
 
-/* p07/p08: cache dos dados ja lidos (2 MB, 1024 setores de 2048). Quando o jogo
+/* p07/p09: cache dos dados (4 MB, 2048 setores de 2048): o comeco da faixa
+ * de dados e lido em segundo plano na abertura, e o que o jogo le fica. Quando o jogo
  * volta a carregar algo que ja leu (titulo, menus), vem da RAM na hora. */
-#define DSLOTS		1024		/* p08: 2 MB (a RAM vai para o comeco das musicas) */
+#define DSLOTS		2048		/* p09: 4 MB; o comeco da faixa de dados e pre-carregado */
 static u8 dcache[DSLOTS][2048] __attribute__((aligned(64)));
 static int dtag[DSLOTS];
 static unsigned st_dhits;
@@ -57,6 +58,7 @@ static u8 *head_buf[100];
 static volatile int head_have[100];	/* setores ja guardados */
 static int head_n[100];			/* setores que cabem */
 static unsigned st_hhits, st_heads_done;
+static int dpre_next = -1, dpre_end;	/* p09: pre-carga do comeco da faixa de dados */
 static u8 tmp[CHUNK * 2352] __attribute__((aligned(64)));
 
 static volatile int consumer;		/* proximo setor que o emulador quer */
@@ -326,6 +328,41 @@ static void keepalive(void)
 		L("[CDCACHE] manter girando: setor %d %s em %d ms", lba, r == CDUSB_OK ? "OK" : "FALHOU", ms);
 }
 
+/* p09: le adiantado o comeco da faixa de dados para o cache de 4 MB (128
+ * setores por chamada). O jogo carrega dados no meio da fase e o leitor
+ * leva ate 4 s para trocar de musica para dados: assim vem da RAM. */
+static int fill_data(void)
+{
+	int k, r, i, n = 0;
+
+	if (dpre_next < 0 || dpre_next >= dpre_end)
+		return 0;
+	if (fill - consumer < AHEAD - 100 && !cdcd_is_data(cdcd_track_of(consumer)))
+		return 0;			/* musica tocando sem folga */
+	while (n < 128 && dpre_next < dpre_end && !restart && !quit) {
+		k = dpre_end - dpre_next > CHUNK ? CHUNK : dpre_end - dpre_next;
+		r = read_sectors(dpre_next, k, 1, tmp);
+		if (r != CDUSB_OK) {
+			L("[CDCACHE] pre-carga de dados parou no setor %d (%d, codigo %06X)", dpre_next, r, last_sense);
+			dpre_next = -1;
+			return 1;
+		}
+		lock();
+		for (i = 0; i < k; i++) {
+			int ds = (dpre_next + i) % DSLOTS;
+			memcpy(dcache[ds], tmp + i * 2048, 2048);
+			dtag[ds] = dpre_next + i;
+		}
+		unlock();
+		dpre_next += k;
+		n += k;
+	}
+	last_io = ee_now_us();
+	if (dpre_next >= dpre_end)
+		L("[CDCACHE] comeco da faixa de dados na RAM ate o setor %d", dpre_end);
+	return 1;
+}
+
 /* completa o comeco de uma faixa (uma faixa por chamada). Devolve 1 se leu.
  * So quando ha folga: com musica tocando, o buffer adiante tem que estar
  * quase cheio (a ida e a volta do leitor custam ~0,5 s). */
@@ -398,7 +435,7 @@ static void reader(void *arg)
 		if (f >= 0 && f < toc.lba[100] && cdcd_is_data(cdcd_track_of(f)) != cdcd_is_data(cdcd_track_of(consumer)))
 			f = target;
 		if (f >= target || f >= toc.lba[100] || f < 0) {
-			if (!fill_heads() && ee_now_us() - last_io > (u64)KEEP_IDLE_MS * 1000)
+			if (!fill_data() && !fill_heads() && ee_now_us() - last_io > (u64)KEEP_IDLE_MS * 1000)
 				keepalive();
 			wait_us = 10000;
 			WaitSemaEx(kick_sema, 1, &wait_us);
@@ -536,6 +573,17 @@ int cdcd_open(int d, int sb, int (*abort)(void))
 		}
 		L("[CDCACHE] comeco de %d faixas de musica vai para a RAM (%d KB, preenchido em segundo plano)", nh,
 		  used / 1024);
+		dpre_next = -1;
+		for (t = toc.first; t <= toc.last; t++)
+			if (cdcd_is_data(t)) {
+				dpre_next = toc.lba[t];
+				dpre_end = safe_end(t);
+				if (dpre_end - dpre_next > DSLOTS)
+					dpre_end = dpre_next + DSLOTS;
+				L("[CDCACHE] comeco da faixa de dados (%d a %d) vai para a RAM em segundo plano",
+				  dpre_next, dpre_end);
+				break;
+			}
 	}
 
 	set_speed(LOCK_KBS, 0);

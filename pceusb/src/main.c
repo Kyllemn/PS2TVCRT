@@ -38,7 +38,7 @@
 #include "diag.h"
 #include "ui.h"
 
-#define VERSAO		"p08"
+#define VERSAO		"p09"
 #define LOG_FILE	"mass:/PCEUSB.TXT"
 #define DISC_PATH	"ps2disc:/disco.cue"
 
@@ -128,13 +128,15 @@ static void STEP(const char *fmt, ...)
 
 /* p06: a primeira gravacao cria o arquivo; as outras so acrescentam as
  * linhas novas (rapido: nao regrava o log inteiro) */
-static int log_saved;
+static int log_saved, log_lock = -1;
 
 void log_save(void)
 {
 	int fd, len = loglen;
 	if (!log_ok || len == log_saved)
 		return;
+	if (log_lock >= 0)
+		WaitSema(log_lock);
 	if (!log_saved)
 		fd = fileXioOpen(LOG_FILE, FIO_O_WRONLY | FIO_O_CREAT | FIO_O_TRUNC, 0666);
 	else
@@ -144,6 +146,56 @@ void log_save(void)
 	if (fileXioWrite(fd, logbuf + log_saved, len - log_saved) == len - log_saved)
 		log_saved = len;
 	fileXioClose(fd);
+	if (log_lock >= 0)
+		SignalSema(log_lock);
+}
+
+/*
+ * p09: no jogo o log vai para o pendrive numa thread propria. Gravar na
+ * thread do jogo parava a emulacao de 100 a 425 ms (eram as travadas no
+ * meio da fase). A thread dorme enquanto o IOP grava; o jogo segue.
+ */
+static int logw_sema = -1, logw_tid = -1;
+static u8 logw_stack[8 * 1024] __attribute__((aligned(16)));
+
+static void log_thread(void *arg)
+{
+	(void)arg;
+	for (;;) {
+		WaitSema(logw_sema);
+		log_save();
+	}
+}
+
+static void log_thread_start(void)
+{
+	ee_sema_t sm;
+	ee_thread_t th;
+	extern void *_gp;
+
+	memset(&sm, 0, sizeof(sm));
+	sm.init_count = 1;
+	sm.max_count = 1;
+	log_lock = CreateSema(&sm);
+	sm.init_count = 0;
+	logw_sema = CreateSema(&sm);
+	memset(&th, 0, sizeof(th));
+	th.func = (void *)log_thread;
+	th.stack = logw_stack;
+	th.stack_size = sizeof(logw_stack);
+	th.gp_reg = &_gp;
+	th.initial_priority = 0x38;	/* acima do jogo: acorda, pede ao IOP e dorme */
+	logw_tid = CreateThread(&th);
+	if (logw_tid >= 0)
+		StartThread(logw_tid, NULL);
+}
+
+static void log_save_async(void)
+{
+	if (logw_tid >= 0)
+		SignalSema(logw_sema);
+	else
+		log_save();
 }
 
 int log_ready(void)
@@ -961,6 +1013,7 @@ int main(int argc, char *argv[])
 	STEP("jogo carregado; ligando o video (gsKit 240p)");
 	video_start();
 	STEP("video ligado; primeiro quadro");
+	log_thread_start();
 	vs_base = vs_count;
 	run_base = 0;
 	last_stat = ee_now_us();
@@ -1090,10 +1143,8 @@ int main(int argc, char *argv[])
 			u64 now = ee_now_us();
 			/* p06: 10 s e depois a cada 30 s (so as linhas novas) */
 			if ((saves == 0 && run_count >= 600) || (saves >= 1 && now - last_save_us > 30000000)) {
-				L("[LOG] gravando o log no pendrive (pode dar um tranco)");
-				log_save();
-				last_save_us = ee_now_us();
-				L("[LOG] gravado em %u ms", (unsigned)((last_save_us - now) / 1000));
+				log_save_async();	/* p09: em outra thread, sem tranco */
+				last_save_us = now;
 				saves++;
 			}
 		}
