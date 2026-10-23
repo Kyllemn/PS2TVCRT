@@ -235,9 +235,11 @@ static void keepalive(void)
 	t = cdcd_track_of(lba);
 	data = cdcd_is_data(t);
 	end = data ? safe_end(t) : cdcd_track_end(t);
-	/* na pausa antes de uma faixa de dados (silencio sem ler): o ultimo setor de musica */
-	if (!data && t < toc.last && cdcd_is_data(t + 1) && lba >= end - 150 && end - 151 > toc.lba[t])
-		lba = end - 151;
+	/* musica antes de faixa de dados: a pausa dela (150 setores) nao e lida */
+	if (!data && t < toc.last && cdcd_is_data(t + 1) && end - 150 > toc.lba[t])
+		end -= 150;
+	if (lba >= end)
+		lba = end - 1;
 	if (keep_flip && lba + 16 < end)
 		lba += 16;
 	keep_flip ^= 1;
