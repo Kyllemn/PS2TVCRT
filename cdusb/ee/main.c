@@ -25,7 +25,7 @@
 #include "diag.h"
 #include "play.h"
 
-#define VERSAO		"c05"
+#define VERSAO		"c06"
 #define LOG_FILE	"mass:/CDUSB.TXT"
 
 #define IRX(n)	extern unsigned char n[]; extern unsigned int size_##n

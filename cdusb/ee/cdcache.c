@@ -45,6 +45,7 @@ static int lock_sema = -1, kick_sema = -1, data_sema = -1, thread_id = -1;
 static cdcd_stats st;
 static u64 last_io;			/* ultimo comando de leitura no leitor */
 static int keep_flip;
+static int after_jump;			/* 1 = proxima leitura e a primeira depois de um pulo */
 static u8 reader_stack[16 * 1024] __attribute__((aligned(16)));
 extern void *_gp;
 
@@ -275,6 +276,7 @@ static void reader(void *arg)
 			fill = consumer;
 			restart = 0;
 			st.repositions++;
+			after_jump = 1;
 		}
 		f = fill;
 		target = consumer + AHEAD;
@@ -320,6 +322,11 @@ static void reader(void *arg)
 				st.max_ms = st.last_ms;
 			st.cmds++;
 			last_io = ee_now_us();
+			if (after_jump)
+				L("[CDCACHE] pulo para o setor %d: 1a leitura %d ms", f, st.last_ms);
+			else if (st.last_ms > 300)
+				L("[CDCACHE] LENTO: setor %d x%d em %d ms", f, n, st.last_ms);
+			after_jump = 0;
 		}
 		if (r != CDUSB_OK) {
 			st.errors++;
