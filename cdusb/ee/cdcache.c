@@ -216,7 +216,7 @@ static void unlock(void)
 
 static void reader(void *arg)
 {
-	int f, target, t, end, n, data, r, i, slot;
+	int f, target, t, end, n, data, r, i, slot, gap;
 	u64 t0, wait_us;
 
 	(void)arg;
@@ -230,6 +230,10 @@ static void reader(void *arg)
 		f = fill;
 		target = consumer + AHEAD;
 		unlock();
+		/* nao le adiante outro tipo de faixa (tocando musica, a faixa de dados
+		 * seguinte nao interessa; o emulador pula para ela se precisar) */
+		if (f >= 0 && f < toc.lba[100] && cdcd_is_data(cdcd_track_of(f)) != cdcd_is_data(cdcd_track_of(consumer)))
+			f = target;
 		if (f >= target || f >= toc.lba[100] || f < 0) {
 			wait_us = 10000;
 			WaitSemaEx(kick_sema, 1, &wait_us);
@@ -238,21 +242,33 @@ static void reader(void *arg)
 		t = cdcd_track_of(f);
 		data = cdcd_is_data(t);
 		end = data ? safe_end(t) : cdcd_track_end(t);
+		gap = 0;
 		if (data && f >= end)
 			n = 1;				/* pausa antes da musica: um por vez */
 		else {
 			n = end - f;
 			if (n > CHUNK)
 				n = CHUNK;
+			/* musica seguida de faixa de dados: os ultimos 150 setores sao a
+			 * pausa da faixa de dados (nao e musica): silencio sem ler */
+			if (!data && t < toc.last && cdcd_is_data(t + 1) && end - f <= 150)
+				gap = 1;
+			else if (!data && t < toc.last && cdcd_is_data(t + 1) && f + n > end - 150)
+				n = end - 150 - f;
 		}
-		t0 = ee_now_us();
-		r = read_sectors(f, n, data, tmp);
-		if (r != CDUSB_OK)
-			r = read_sectors(f, n, data, tmp);	/* uma segunda tentativa */
-		st.last_ms = (int)((ee_now_us() - t0) / 1000);
-		if (st.last_ms > st.max_ms)
-			st.max_ms = st.last_ms;
-		st.cmds++;
+		if (gap) {
+			memset(tmp, 0, n * 2352);
+			r = CDUSB_OK;
+		} else {
+			t0 = ee_now_us();
+			r = read_sectors(f, n, data, tmp);
+			if (r != CDUSB_OK)
+				r = read_sectors(f, n, data, tmp);	/* uma segunda tentativa */
+			st.last_ms = (int)((ee_now_us() - t0) / 1000);
+			if (st.last_ms > st.max_ms)
+				st.max_ms = st.last_ms;
+			st.cmds++;
+		}
 		if (r != CDUSB_OK) {
 			st.errors++;
 			L("[CDCACHE] leitura falhou: setor %d x%d (%d)", f, n, r);

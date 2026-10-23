@@ -42,15 +42,20 @@ IRX(irx_audsrv);
 static char logbuf[256 * 1024];
 static int loglen, log_ok;
 
+/* chamado pela tela, pela leitura do disco e pelo audio: sem interrupcoes */
 static void log_add(const char *s)
 {
-	int n = strlen(s);
-	if (loglen + n + 2 >= (int)sizeof(logbuf))
-		return;
-	memcpy(logbuf + loglen, s, n);
-	loglen += n;
-	logbuf[loglen++] = '\r';
-	logbuf[loglen++] = '\n';
+	int n = strlen(s), on;
+
+	on = DIntr();
+	if (loglen + n + 2 < (int)sizeof(logbuf)) {
+		memcpy(logbuf + loglen, s, n);
+		loglen += n;
+		logbuf[loglen++] = '\r';
+		logbuf[loglen++] = '\n';
+	}
+	if (on)
+		EIntr();
 }
 
 void L(const char *fmt, ...)
