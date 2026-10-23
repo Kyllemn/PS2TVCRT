@@ -12,6 +12,8 @@
  *   antes da 1a faixa de musica num CD misto sao lidos um a um.
  */
 #include <string.h>
+#include <stdlib.h>
+#include <malloc.h>
 #include <kernel.h>
 #include <kernel_util.h>
 #include <delaythread.h>
@@ -25,7 +27,7 @@
 #define AHEAD		600		/* p07: 8 s de musica adiante */
 #define TMO_CMD		5000
 #define TMO_READ	10000
-#define LOCK_KBS	2822		/* p07: pede 16x (o leitor arredonda) */
+#define LOCK_KBS	706		/* pede 4x -> o ASUS fica em 10x (16x desestabilizou o leitor na p07) */
 #define READER_PRIO	0x30
 #define KEEP_IDLE_MS	2000		/* sem ler ha 2 s: le 1 setor (o leitor desacelera em ~3 s) */
 
@@ -36,12 +38,25 @@ static u8 cache[SLOTS][2352] __attribute__((aligned(64)));
 static int tag[SLOTS];			/* setor guardado (-1 = nada) */
 static u8 bad[SLOTS];			/* 1 = leitura falhou */
 
-/* p07: cache dos dados ja lidos (8 MB, 4096 setores de 2048). Quando o jogo
+/* p07/p08: cache dos dados ja lidos (2 MB, 1024 setores de 2048). Quando o jogo
  * volta a carregar algo que ja leu (titulo, menus), vem da RAM na hora. */
-#define DSLOTS		4096
+#define DSLOTS		1024		/* p08: 2 MB (a RAM vai para o comeco das musicas) */
 static u8 dcache[DSLOTS][2048] __attribute__((aligned(64)));
 static int dtag[DSLOTS];
 static unsigned st_dhits;
+
+/*
+ * p08: comeco de cada faixa de musica na RAM (3 s = 225 setores, ~530 KB por
+ * faixa, lidos em segundo plano quando o leitor estaria parado). Quando o
+ * jogo manda tocar a faixa, o som sai da RAM na hora e o leitor vai buscar o
+ * resto a partir dali (a busca do leitor levava ate 3,5 s).
+ */
+#define HEAD_SECT	225
+#define HEAD_BUDGET	(11 * 1024 * 1024)
+static u8 *head_buf[100];
+static volatile int head_have[100];	/* setores ja guardados */
+static int head_n[100];			/* setores que cabem */
+static unsigned st_hhits, st_heads_done;
 static u8 tmp[CHUNK * 2352] __attribute__((aligned(64)));
 
 static volatile int consumer;		/* proximo setor que o emulador quer */
@@ -102,9 +117,19 @@ static int cdb_len(u8 op)
 	return 12;
 }
 
+/* p08: codigo da ultima recusa; depois de prazo estourado ou erro de
+ * protocolo o IOP reinicia o leitor, que perde a trava de velocidade
+ * (p07: voltou a 24x sozinho): a trava e reaplicada antes da proxima leitura */
+static int last_sense;
+static volatile int relock;
+
 static int cmd(const u8 *c, int dir, void *data, int len, int tmo, cdusb_scsi_resp *r)
 {
-	return cdusb_scsi(dev, c, cdb_len(c[0]), dir, data, len, tmo, r);
+	int res = cdusb_scsi(dev, c, cdb_len(c[0]), dir, data, len, tmo, r);
+	last_sense = res == CDUSB_CHECK ? r->sense : 0;
+	if (res == CDUSB_E_TIMEOUT || res == CDUSB_PHASE || res == CDUSB_E_USB)
+		relock = 1;
+	return res;
 }
 
 /* dados pelo mesmo comando da musica (READ CD): o leitor mudava de rotacao
@@ -301,6 +326,46 @@ static void keepalive(void)
 		L("[CDCACHE] manter girando: setor %d %s em %d ms", lba, r == CDUSB_OK ? "OK" : "FALHOU", ms);
 }
 
+/* completa o comeco de uma faixa (uma faixa por chamada). Devolve 1 se leu.
+ * So quando ha folga: com musica tocando, o buffer adiante tem que estar
+ * quase cheio (a ida e a volta do leitor custam ~0,5 s). */
+static int fill_heads(void)
+{
+	int t, got, k, r, lba;
+	u64 t0;
+
+	if (fill - consumer < AHEAD - 100 && !cdcd_is_data(cdcd_track_of(consumer)))
+		return 0;
+	for (t = toc.first; t <= toc.last; t++)
+		if (head_buf[t] && head_have[t] < head_n[t])
+			break;
+	if (t > toc.last)
+		return 0;
+	t0 = ee_now_us();
+	got = head_have[t];
+	while (got < head_n[t] && !restart && !quit) {
+		k = head_n[t] - got > CHUNK ? CHUNK : head_n[t] - got;
+		lba = toc.lba[t] + got;
+		r = read_sectors(lba, k, 0, tmp);
+		if (r != CDUSB_OK) {
+			L("[CDCACHE] comeco da faixa %d: leitura falhou no setor %d (%d, codigo %06X)", t, lba, r,
+			  last_sense);
+			head_n[t] = got;	/* fica com o que deu */
+			break;
+		}
+		memcpy(head_buf[t] + got * 2352, tmp, k * 2352);
+		got += k;
+		head_have[t] = got;
+	}
+	last_io = ee_now_us();
+	if (head_have[t] >= head_n[t]) {
+		st_heads_done++;
+		L("[CDCACHE] comeco da faixa %d na RAM: %d setores (%d s) em %d ms", t, head_have[t], head_have[t] / 75,
+		  (int)((ee_now_us() - t0) / 1000));
+	}
+	return 1;
+}
+
 static void reader(void *arg)
 {
 	int f, target, t, end, n, data, r, i, slot, gap;
@@ -308,9 +373,19 @@ static void reader(void *arg)
 
 	(void)arg;
 	while (!quit) {
+		if (relock) {
+			relock = 0;
+			L("[CDCACHE] leitor reiniciado: reaplicando a trava de velocidade");
+			set_speed(LOCK_KBS, 0);
+		}
 		lock();
 		if (restart) {
-			fill = consumer;
+			int c = consumer, ht = cdcd_track_of(c);
+			fill = c;
+			/* pulo para o comeco guardado de uma musica: o leitor continua
+			 * logo depois do que ja esta na RAM */
+			if (head_buf[ht] && c >= toc.lba[ht] && c < toc.lba[ht] + head_have[ht])
+				fill = toc.lba[ht] + head_have[ht];
 			restart = 0;
 			st.repositions++;
 			after_jump = 1;
@@ -323,7 +398,7 @@ static void reader(void *arg)
 		if (f >= 0 && f < toc.lba[100] && cdcd_is_data(cdcd_track_of(f)) != cdcd_is_data(cdcd_track_of(consumer)))
 			f = target;
 		if (f >= target || f >= toc.lba[100] || f < 0) {
-			if (ee_now_us() - last_io > (u64)KEEP_IDLE_MS * 1000)
+			if (!fill_heads() && ee_now_us() - last_io > (u64)KEEP_IDLE_MS * 1000)
 				keepalive();
 			wait_us = 10000;
 			WaitSemaEx(kick_sema, 1, &wait_us);
@@ -370,7 +445,7 @@ static void reader(void *arg)
 		}
 		if (r != CDUSB_OK) {
 			st.errors++;
-			L("[CDCACHE] leitura falhou: setor %d x%d (%d)", f, n, r);
+			L("[CDCACHE] leitura falhou: setor %d x%d (%d, codigo %06X)", f, n, r, last_sense);
 			if (r == CDUSB_E_EE_TIMEOUT || r == CDUSB_E_NODEV) {
 				DelayThread(100 * 1000);	/* leitor sumiu: nao insiste rapido */
 			}
@@ -425,7 +500,7 @@ int cdcd_open(int d, int sb, int (*abort)(void))
 	memset(&st, 0, sizeof(st));
 	for (i = 0; i < DSLOTS; i++)
 		dtag[i] = -1;
-	st_dhits = 0;
+	st_dhits = st_hhits = st_heads_done = 0;
 	for (i = 0; i < SLOTS; i++)
 		tag[i] = -1;
 
@@ -438,6 +513,30 @@ int cdcd_open(int d, int sb, int (*abort)(void))
 		return -2;
 	}
 	L("[CDCACHE] disco: faixas %d a %d, fim %d", toc.first, toc.last, toc.lba[100]);
+	{
+		int t, used = 0, nh = 0;
+		for (t = toc.first; t <= toc.last; t++) {
+			int len;
+			if (cdcd_is_data(t))
+				continue;
+			len = cdcd_track_end(t) - toc.lba[t];
+			if (t < toc.last && cdcd_is_data(t + 1))
+				len -= 150;		/* pausa da faixa de dados (nota #pce) */
+			if (len > HEAD_SECT)
+				len = HEAD_SECT;
+			if (len <= 0 || used + len * 2352 > HEAD_BUDGET)
+				continue;
+			head_buf[t] = memalign(64, len * 2352);
+			if (!head_buf[t])
+				break;
+			head_n[t] = len;
+			head_have[t] = 0;
+			used += len * 2352;
+			nh++;
+		}
+		L("[CDCACHE] comeco de %d faixas de musica vai para a RAM (%d KB, preenchido em segundo plano)", nh,
+		  used / 1024);
+	}
 
 	set_speed(LOCK_KBS, 0);
 	L("[CDCACHE] pedido %d KB/s; o leitor diz estar a %d KB/s", LOCK_KBS, cur_speed_kbs());
@@ -488,11 +587,17 @@ void cdcd_close(void)
 		DeleteThread(thread_id);
 	thread_id = -1;
 	running = 0;
+	for (i = 0; i < 100; i++) {
+		free(head_buf[i]);
+		head_buf[i] = NULL;
+		head_have[i] = head_n[i] = 0;
+	}
 	if (!cdusb_stuck())
 		set_speed(0xFFFF, 1);
 	L("[CDCACHE] fechado: %d leituras, pior %d ms, %d pulos, %d erros; manter girando %d (pior %d ms); "
-	  "setores de dados servidos do cache de 8 MB: %u",
-	  st.cmds, st.max_ms, st.repositions, st.errors, st.keepalives, st.keep_max_ms, st_dhits);
+	  "dados do cache: %u setores; musica do comeco na RAM: %u setores, %u faixas guardadas",
+	  st.cmds, st.max_ms, st.repositions, st.errors, st.keepalives, st.keep_max_ms, st_dhits, st_hhits,
+	  st_heads_done);
 }
 
 /* setores prontos a partir de lba, copiados (o lock ja esta pego) */
@@ -508,6 +613,14 @@ static int take(int lba, int n, u8 *dst, int *badp)
 				memcpy(dst + i * 2048, dcache[ds], 2048);
 				st_dhits++;
 				continue;
+			}
+			{
+				int ht = cdcd_track_of(lba + i), off = lba + i - toc.lba[ht];
+				if (head_buf[ht] && off >= 0 && off < head_have[ht]) {	/* comeco da musica */
+					memcpy(dst + i * 2352, head_buf[ht] + off * 2352, 2352);
+					st_hhits++;
+					continue;
+				}
 			}
 			break;
 		}
@@ -618,6 +731,8 @@ void cdcd_get_stats(cdcd_stats *s)
 	lock();
 	st.ahead = (running && !restart && fill > consumer) ? fill - consumer : 0;
 	st.dhits = st_dhits;
+	st.hhits = st_hhits;
+	st.heads = st_heads_done;
 	*s = st;
 	unlock();
 }

@@ -38,7 +38,7 @@
 #include "diag.h"
 #include "ui.h"
 
-#define VERSAO		"p07"
+#define VERSAO		"p08"
 #define LOG_FILE	"mass:/PCEUSB.TXT"
 #define DISC_PATH	"ps2disc:/disco.cue"
 
@@ -403,6 +403,38 @@ static unsigned frames_drawn;
 static u64 vid_us_sum, vid_us_max, last_flip_us, vid_last_us;
 static unsigned late_frames, worst_gap_ms;
 
+/*
+ * p08: a troca de imagem e feita na interrupcao do retraco. O EE desenha o
+ * quadro, pede a troca e segue emulando: nao fica parado esperando o
+ * retraco (com quadros de 16,5 a 17 ms, esperar o retraco derrubava a tela
+ * para 30). So espera se estiver adiantado (o quadro anterior ainda nao foi
+ * para a tela), o que limita a 1 quadro por retraco.
+ */
+static volatile int flip_pending, flip_buf;
+static volatile unsigned vs_count, vs_repeat;
+static int vs_id = -1;
+
+static int vsync_isr(int cause)
+{
+	(void)cause;
+	vs_count++;
+	if (flip_pending) {
+		GS_SET_DISPFB2(gs->ScreenBuffer[flip_buf] / 8192, gs->Width / 64, gs->PSM, 0, 0);
+		flip_pending = 0;
+	} else
+		vs_repeat++;			/* este retraco repetiu a imagem */
+	ExitHandler();
+	return 0;
+}
+
+/* espera a ultima troca acontecer (antes do menu e ao sair) */
+static void video_settle(void)
+{
+	u64 t0 = ee_now_us();
+	while (flip_pending && ee_now_us() - t0 < 100000)
+		;
+}
+
 static void video_start(void)
 {
 	gs = gsKit_init_global();
@@ -434,6 +466,8 @@ static void video_start(void)
 	tex.Mem = (u32 *)fbuf;
 	tex.Filter = GS_FILTER_NEAREST;
 	ui_start();
+	vs_id = gsKit_add_vsync_handler(vsync_isr);
+	L("[VIDEO] troca de imagem na interrupcao do retraco (%d)", vs_id);
 	text_mode = 0;
 }
 
@@ -456,6 +490,9 @@ static void RETRO_CALLCONV video_cb(const void *data, unsigned width, unsigned h
 	}
 	{
 	u64 t0 = ee_now_us(), t1;
+	/* nao desenhar no quadro que ainda esta na tela: espera a troca anterior */
+	while (flip_pending && ee_now_us() - t0 < 50000)
+		;
 	tex.Mem = (u32 *)src;
 	tex.Height = height;
 	FlushCache(0);
@@ -472,7 +509,11 @@ static void RETRO_CALLCONV video_cb(const void *data, unsigned width, unsigned h
 				  GS_SETREG_RGBAQ(0x80, 0x80, 0x80, 0x80, 0x00));
 	}
 	gsKit_queue_exec(gs);
-	gsKit_sync_flip(gs);
+	dmaKit_wait_fast();			/* desenho entregue ao GS */
+	flip_buf = gs->ActiveBuffer & 1;
+	flip_pending = 1;			/* a interrupcao do retraco troca */
+	gs->ActiveBuffer ^= 1;
+	gsKit_setactive(gs);			/* o proximo quadro vai para o outro */
 	gsKit_TexManager_nextFrame(gs);
 	frames_drawn++;
 	t1 = ee_now_us();
@@ -804,6 +845,7 @@ int main(int argc, char *argv[])
 	cdcd_stats cs;
 	int cd, r, hold = 0, audio_ready = 0;
 	u64 last_stat, last_save_us = 0, run_us_sum = 0, run_us_max = 0, frame_t;
+	unsigned vs_base = 0, run_base = 0, last_repeat = 0;
 	unsigned skipped = 0, last_skipped = 0, pp;
 	int skip_row = 0;
 	unsigned last_frames = 0, dm, am, run_count = 0, last_runs = 0, saves = 0;
@@ -919,6 +961,8 @@ int main(int argc, char *argv[])
 	STEP("jogo carregado; ligando o video (gsKit 240p)");
 	video_start();
 	STEP("video ligado; primeiro quadro");
+	vs_base = vs_count;
+	run_base = 0;
 	last_stat = ee_now_us();
 	frame_t = ee_now_us();
 	for (;;) {
@@ -946,7 +990,20 @@ int main(int argc, char *argv[])
 			 * o jogo segue a 60. Abaixo de 15 ms nunca pula (a p02 contava
 			 * pelo relogio e ficava devendo; a p05 so pulava acima de 20 ms
 			 * e o jogo inteiro caia para 30) */
-			ps2_skip_next = (vid_last_us != 0 && rt > 15000) ? 1 : 0;
+			/* p08: ritmo contado em retracos. O PC Engine faz 59,826
+			 * quadros/s e a TV 59,94: esperados = retracos x 59826/59940.
+			 * So pula a imagem se o jogo estiver 2 ou mais quadros atras
+			 * (o EE nao espera mais o retraco, entao o atraso volta a zero) */
+			{
+				unsigned vs = vs_count - vs_base;
+				int behind = (int)((u64)vs * 59826 / 59940) - (int)(run_count - run_base);
+				if (behind > 30) {	/* tranco longo (CD, log): recomeca a conta */
+					vs_base = vs_count;
+					run_base = run_count;
+					behind = 0;
+				}
+				ps2_skip_next = behind >= 2;
+			}
 		}
 		if (run_count % 120 == 0)
 			bram_check(0);		/* a cada ~2 s */
@@ -957,7 +1014,9 @@ int main(int argc, char *argv[])
 
 		/* L1 + R1 + L2 + R2 = menu (o jogo pausa) */
 		if ((pad_now & (PAD_L1 | PAD_R1 | PAD_L2 | PAD_R2)) == (PAD_L1 | PAD_R1 | PAD_L2 | PAD_R2)) {
-			int m = ui_menu();
+			int m;
+			video_settle();
+			m = ui_menu();
 			if (m == 1)
 				break;
 			if (m == 2) {
@@ -966,6 +1025,9 @@ int main(int argc, char *argv[])
 			}
 			bram_check(1);
 			last_flip_us = 0;		/* a pausa nao conta como retraco perdido */
+			vs_base = vs_count;
+			run_base = run_count;
+			last_repeat = vs_repeat;
 			last_stat = ee_now_us();	/* a pausa nao entra no desempenho */
 			last_frames = frames_drawn;
 			last_runs = run_count;
@@ -1000,7 +1062,9 @@ int main(int argc, char *argv[])
 			  runs ? (unsigned)(run_us_sum / runs / 1000) : 0, (unsigned)(run_us_max / 1000),
 			  shown ? (unsigned)(vid_us_sum / shown / 1000) : 0, (unsigned)(vid_us_max / 1000), late_frames,
 			  worst_gap_ms);
-			L("[DESEMPENHO] imagens puladas %u (o jogo seguiu na velocidade certa)", skipped - last_skipped);
+			L("[DESEMPENHO] imagens puladas %u; retracos com imagem repetida %u (de ~%u)", skipped - last_skipped,
+			  vs_repeat - last_repeat, (unsigned)(span * 5994 / 100000000));
+			last_repeat = vs_repeat;
 			L("[DESEMPENHO] processador (EE) ocupado com a emulacao: %u%% do tempo",
 			  (unsigned)(run_us_sum * 100 / span));
 			L("[DESEMPENHO] onde o tempo foi: %s", pbuf);
@@ -1036,6 +1100,9 @@ int main(int argc, char *argv[])
 	}
 
 	STEP("saindo (SELECT + START)");
+	video_settle();
+	if (vs_id >= 0)
+		gsKit_remove_vsync_handler(vs_id);
 	bram_check(1);
 	a_quit = 1;
 	retro_unload_game();
