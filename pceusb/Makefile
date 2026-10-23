@@ -49,6 +49,11 @@ all: $(EE_BIN)
 clean:
 	rm -rf build $(EE_BIN)
 
+# p02: o video do PC Engine (fundo, sprites, mistura) com -O3 (so este arquivo)
+build/$(P)/vdc.o: $(P)/vdc.c
+	@mkdir -p $(dir $@)
+	$(EE_CC) $(EE_CFLAGS) -O3 $(EE_INCS) -c $< -o $@
+
 build/%.o: %.c
 	@mkdir -p $(dir $@)
 	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@

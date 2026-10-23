@@ -742,38 +742,51 @@ static NO_INLINE void DrawSprites(vdc_t *vdc, const int32 end, uint16 *spr_lineb
  */
 typedef uint64 __attribute__((may_alias)) mix_u64;
 
-static INLINE uint32 MixPixelBGSPR(const uint32 bg_pixel, const uint32 spr_pixel)
+/* PS2 (p02): fundo ou sprite sem desvio (mascara): o sprite ganha se tem
+ * prioridade alta ou se o fundo e transparente. Mesmo resultado de antes. */
+static INLINE uint32 MixPixelBGSPR_ct(const uint16 *ct, const uint32 bg_pixel, const uint32 spr_pixel)
 {
-   uint32 pixel = bg_pixel;
+   uint32 m = 0 - (((spr_pixel & SPR_HPMASK) >> 15) | ((bg_pixel & 0x0F) == 0));
 
-   if ((spr_pixel & SPR_HPMASK) || !(bg_pixel & 0x0F))
-      pixel = spr_pixel;
-
-   return vce.color_table_cache[pixel & 0x1FF];
+   return ct[((bg_pixel & ~m) | (spr_pixel & m)) & 0x1FF];
 }
 
-static INLINE void MixBGSPR(const uint32 count_in, const uint8 *bg_linebuf_in, const uint16 *spr_linebuf_in, uint16_t *target_in)
-{   
+static INLINE uint32 MixPixelBGSPR(const uint32 bg_pixel, const uint32 spr_pixel)
+{
+   return MixPixelBGSPR_ct(vce.color_table_cache, bg_pixel, spr_pixel);
+}
+
+#ifdef MSB_FIRST
+#define PACK4(p0, p1, p2, p3) (((uint64)(p0) << 48) | ((uint64)(p1) << 32) | ((uint64)(p2) << 16) | (uint64)(p3))
+#else
+#define PACK4(p0, p1, p2, p3) ((uint64)(p0) | ((uint64)(p1) << 16) | ((uint64)(p2) << 32) | ((uint64)(p3) << 48))
+#endif
+
+static INLINE void MixBGSPR(const uint32 count_in, const uint8 *bg, const uint16 *spr, uint16_t *target)
+{
+   const uint16 *ct = vce.color_table_cache;
    unsigned int x = 0;
 
-   for(; x < count_in && (((uintptr_t)(target_in + x)) & 7); x++)
-      target_in[x] = MixPixelBGSPR(bg_linebuf_in[x], spr_linebuf_in[x]);
+   for(; x < count_in && (((uintptr_t)(target + x)) & 7); x++)
+      target[x] = MixPixelBGSPR_ct(ct, bg[x], spr[x]);
 
-   for(; x + 4 <= count_in; x += 4)
+   /* PS2 (p02): 8 pixels por volta, duas gravacoes de 64 bits */
+   for(; x + 8 <= count_in; x += 8)
    {
-      uint64 p0 = MixPixelBGSPR(bg_linebuf_in[x + 0], spr_linebuf_in[x + 0]);
-      uint64 p1 = MixPixelBGSPR(bg_linebuf_in[x + 1], spr_linebuf_in[x + 1]);
-      uint64 p2 = MixPixelBGSPR(bg_linebuf_in[x + 2], spr_linebuf_in[x + 2]);
-      uint64 p3 = MixPixelBGSPR(bg_linebuf_in[x + 3], spr_linebuf_in[x + 3]);
-#ifdef MSB_FIRST
-      *(mix_u64 *)(target_in + x) = (p0 << 48) | (p1 << 32) | (p2 << 16) | p3;
-#else
-      *(mix_u64 *)(target_in + x) = p0 | (p1 << 16) | (p2 << 32) | (p3 << 48);
-#endif
+      uint32 p0 = MixPixelBGSPR_ct(ct, bg[x + 0], spr[x + 0]);
+      uint32 p1 = MixPixelBGSPR_ct(ct, bg[x + 1], spr[x + 1]);
+      uint32 p2 = MixPixelBGSPR_ct(ct, bg[x + 2], spr[x + 2]);
+      uint32 p3 = MixPixelBGSPR_ct(ct, bg[x + 3], spr[x + 3]);
+      uint32 p4 = MixPixelBGSPR_ct(ct, bg[x + 4], spr[x + 4]);
+      uint32 p5 = MixPixelBGSPR_ct(ct, bg[x + 5], spr[x + 5]);
+      uint32 p6 = MixPixelBGSPR_ct(ct, bg[x + 6], spr[x + 6]);
+      uint32 p7 = MixPixelBGSPR_ct(ct, bg[x + 7], spr[x + 7]);
+      *(mix_u64 *)(target + x) = PACK4(p0, p1, p2, p3);
+      *(mix_u64 *)(target + x + 4) = PACK4(p4, p5, p6, p7);
    }
 
    for(; x < count_in; x++)
-      target_in[x] = MixPixelBGSPR(bg_linebuf_in[x], spr_linebuf_in[x]);
+      target[x] = MixPixelBGSPR_ct(ct, bg[x], spr[x]);
 }
 
 static void MixBGOnly(const uint32 count, const uint8 *bg_linebuf, uint16_t *target)
@@ -784,15 +797,12 @@ static void MixBGOnly(const uint32 count, const uint8 *bg_linebuf, uint16_t *tar
    for(; x < count && (((uintptr_t)(target + x)) & 7); x++)
       target[x] = ct[bg_linebuf[x]];
 
-   for(; x + 4 <= count; x += 4)
+   for(; x + 8 <= count; x += 8)
    {
-      uint64 p0 = ct[bg_linebuf[x + 0]], p1 = ct[bg_linebuf[x + 1]];
-      uint64 p2 = ct[bg_linebuf[x + 2]], p3 = ct[bg_linebuf[x + 3]];
-#ifdef MSB_FIRST
-      *(mix_u64 *)(target + x) = (p0 << 48) | (p1 << 32) | (p2 << 16) | p3;
-#else
-      *(mix_u64 *)(target + x) = p0 | (p1 << 16) | (p2 << 32) | (p3 << 48);
-#endif
+      *(mix_u64 *)(target + x) = PACK4(ct[bg_linebuf[x + 0]], ct[bg_linebuf[x + 1]],
+                                        ct[bg_linebuf[x + 2]], ct[bg_linebuf[x + 3]]);
+      *(mix_u64 *)(target + x + 4) = PACK4(ct[bg_linebuf[x + 4]], ct[bg_linebuf[x + 5]],
+                                            ct[bg_linebuf[x + 6]], ct[bg_linebuf[x + 7]]);
    }
 
    for(; x < count; x++)
@@ -801,10 +811,19 @@ static void MixBGOnly(const uint32 count, const uint8 *bg_linebuf, uint16_t *tar
 
 static void MixSPROnly(const uint32 count, const uint16 *spr_linebuf, uint16_t *target)
 {
-   unsigned x;
+   unsigned x = 0;
+   const uint16 *ct = vce.color_table_cache;
 
-   for(x = 0; x < count; x++)
-      target[x] = vce.color_table_cache[(spr_linebuf[x] | 0x100) & 0x1FF];
+#define SPRC(i) ct[(spr_linebuf[x + (i)] | 0x100) & 0x1FF]
+   for(; x < count && (((uintptr_t)(target + x)) & 7); x++)
+      target[x] = SPRC(0);
+
+   for(; x + 4 <= count; x += 4)
+      *(mix_u64 *)(target + x) = PACK4(SPRC(0), SPRC(1), SPRC(2), SPRC(3));
+
+   for(; x < count; x++)
+      target[x] = SPRC(0);
+#undef SPRC
 }
 
 static void MixNone(const uint32 count, uint16_t *target)
