@@ -23,8 +23,9 @@
 
 #include "cdusb_ee.h"
 #include "diag.h"
+#include "play.h"
 
-#define VERSAO		"c02"
+#define VERSAO		"c03"
 #define LOG_FILE	"mass:/CDUSB.TXT"
 
 #define IRX(n)	extern unsigned char n[]; extern unsigned int size_##n
@@ -35,6 +36,7 @@ IRX(irx_cdusb);
 IRX(irx_bdm);
 IRX(irx_bdmfs_fatfs);
 IRX(irx_usbmass_bd);
+IRX(irx_audsrv);
 
 /* ------------------------------------------------------------------ log */
 static char logbuf[256 * 1024];
@@ -95,7 +97,7 @@ void screen_title(const char *sub)
 	scr_clear();
 	scr_setXY(0, 1);
 	scr_setfontcolor(0x00d0ff);
-	scr_printf("   CDUSB " VERSAO " - DIAGNOSTICO DO LEITOR DE CD USB (FASE 1)\n");
+	scr_printf("   CDUSB " VERSAO " - LEITOR DE CD USB NO PS2\n");
 	scr_setfontcolor(0xffffff);
 	if (sub)
 		scr_printf("   %s\n", sub);
@@ -253,11 +255,13 @@ static int ask_again(void)
 int main(int argc, char *argv[])
 {
 	cdusb_status st;
-	int cd, again;
+	int cd;
 	(void)argc;
 	(void)argv;
 
 	iop_reset();
+	/* a thread de leitura do disco (0x30) tem prioridade sobre esta */
+	ChangeThreadPriority(GetThreadId(), 0x40);
 	init_scr();
 	screen_title("PREPARANDO...");
 	L("CDUSB " VERSAO " (" __DATE__ " " __TIME__ ") - diagnostico do leitor de CD USB");
@@ -295,25 +299,47 @@ int main(int argc, char *argv[])
 	load_buf("bdm", irx_bdm, size_irx_bdm);
 	load_buf("bdmfs_fatfs", irx_bdmfs_fatfs, size_irx_bdmfs_fatfs);
 	load_buf("usbmass_bd", irx_usbmass_bd, size_irx_usbmass_bd);
+	/* audio: libsd da ROM + audsrv */
+	load_rom("rom0:LIBSD");
+	load_buf("audsrv", irx_audsrv, size_irx_audsrv);
 	S("PROCURANDO O PENDRIVE...");
 	wait_pendrive();
 	L("[BOOT] pendrive %s", log_ok ? "pronto: log em " LOG_FILE : "NAO encontrado (log so na tela)");
 	log_save();
 	pad_start();
 
-	do {
+	for (;;) {
+		u16 b;
+
 		if (cdusb_get_status(&st) == 0)
 			wait_devices(&st, 3000);
 		cd = find_cd(&st);
-		if (cd < 0) {
-			screen_title("NENHUM LEITOR DE CD ENCONTRADO");
+		screen_title("MENU");
+		if (cd >= 0)
+			S("   LEITOR: %.8s %.16s %.4s", st.dev[cd].inquiry + 8, st.dev[cd].inquiry + 16,
+			  st.dev[cd].inquiry + 32);
+		else {
+			S("   NENHUM LEITOR DE CD ENCONTRADO");
 			log_devices(&st, "procura");
 			S("   CONFIRA O CABO Y E SE O LEITOR ACENDE.");
 			S("   LIGUE O LEITOR ANTES DE ABRIR ESTE PROGRAMA.");
-			if (!log_ok)
-				S("   (SEM PENDRIVE: O LOG NAO FOI GRAVADO)");
-			L("[FIM] nenhum leitor de CD");
-			log_save();
+		}
+		if (!log_ok)
+			S("   (SEM PENDRIVE: O LOG NAO E GRAVADO)");
+		log_save();
+		scr_printf("\n   X = TOCAR A MUSICA DO DISCO (FASE 2)\n");
+		scr_printf("   QUADRADO = DIAGNOSTICO DO LEITOR (FASE 1)\n");
+		scr_printf("   O = SAIR\n");
+		do {
+			b = pad_new();
+			ee_wait_ms(16);
+		} while (!(b & (PAD_CROSS | PAD_SQUARE | PAD_CIRCLE)));
+		if (b & PAD_CIRCLE)
+			break;
+		if (cd < 0)
+			continue;
+		if (b & PAD_CROSS) {
+			play_run(cd, st.dev[cd].sub);
 		} else {
 			diag_result r;
 			diag_run(cd, &st.dev[cd], &r);
@@ -321,10 +347,11 @@ int main(int argc, char *argv[])
 				log_devices(&st, "fim do teste");
 			diag_summary(&r, log_ok ? LOG_FILE : NULL);
 			log_save();
+			scr_printf("\n   X = VOLTAR AO MENU      O = SAIR\n");
+			if (!ask_again())
+				break;
 		}
-		scr_printf("\n   X = REPETIR      O = SAIR\n");
-		again = ask_again();
-	} while (again);
+	}
 
 	log_save();
 	Exit(0);

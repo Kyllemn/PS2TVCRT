@@ -2,7 +2,9 @@
 
 Leitor de CD USB externo no PS2, para os emuladores de PC Engine CD, Sega CD e Neo Geo CD lerem o disco direto do leitor.
 
-Fase 1 (esta): driver `cdusb.irx` + `CDUSB.ELF`, que testa o leitor e grava o resultado em `mass:/CDUSB.TXT`.
+Fase 1: driver `cdusb.irx` + diagnóstico (QUADRADO no menu), resultado em `mass:/CDUSB.TXT`.
+
+Fase 2 (esta): `cdcache` (leitor travado em 10x, leitura antecipada numa thread, 512 setores na RAM do EE) e o teste de tocar a música do disco (X no menu).
 
 ## Como testar
 

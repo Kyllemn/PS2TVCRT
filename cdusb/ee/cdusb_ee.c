@@ -6,6 +6,7 @@
  * o EE nao trava junto (marca "stuck" e devolve erro).
  */
 #include <kernel.h>
+#include <kernel_util.h>
 #include <sifrpc.h>
 #include <string.h>
 
@@ -16,7 +17,13 @@
 static SifRpcClientData_t client __attribute__((aligned(64)));
 static u8 sbuf[128] __attribute__((aligned(64)));
 static u8 rbuf[(sizeof(cdusb_scsi_resp) + CDUSB_DATA_MAX + 63) & ~63] __attribute__((aligned(64)));
-static int bound, stuck;
+static int bound, stuck, rpc_sema = -1;
+
+static void rpc_done(void *arg)
+{
+	(void)arg;
+	iSignalSema(rpc_sema);
+}
 
 u32 ee_ticks(void)
 {
@@ -41,15 +48,21 @@ u64 ee_now_us(void)
 	static u32 last;
 	static u64 acc;
 	static int init;
-	u32 n = ee_ticks();
+	u32 n;
+	u64 a;
+	int on = DIntr();		/* usado por mais de uma thread */
 
+	n = ee_ticks();
 	if (!init) {
 		last = n;
 		init = 1;
 	}
 	acc += (u32)(n - last);
 	last = n;
-	return acc * 1000 / EE_HZ_MS;
+	a = acc;
+	if (on)
+		EIntr();
+	return a * 1000 / EE_HZ_MS;
 }
 
 void ee_wait_ms(int ms)
@@ -65,8 +78,15 @@ void ee_wait_ms(int ms)
 
 int cdusb_bind(void)
 {
+	ee_sema_t sm;
 	int i;
 
+	if (rpc_sema < 0) {
+		memset(&sm, 0, sizeof(sm));
+		sm.init_count = 0;
+		sm.max_count = 1;
+		rpc_sema = CreateSema(&sm);
+	}
 	for (i = 0; i < 300; i++) {		/* ate ~3 s */
 		if (SifBindRpc(&client, CDUSB_RPC_ID, 0) >= 0 && client.server) {
 			bound = 1;
@@ -82,28 +102,24 @@ int cdusb_stuck(void)
 	return stuck;
 }
 
-/* chamada com prazo; o contador do processador volta a zero a cada ~14 s,
- * por isso o tempo e somado aos poucos */
+/* chamada com prazo; a thread que chama DORME ate o IOP responder
+ * (as outras threads continuam rodando) */
 static int call(int fno, void *s, int ssize, void *r, int rsize, int timeout_ms)
 {
-	u32 last, now;
-	u64 acc = 0, limit = (u64)timeout_ms * EE_HZ_MS;
+	u64 tmo = (u64)timeout_ms * 1000;
 
 	if (!bound)
 		return CDUSB_E_EE_RPC;
 	if (stuck)
 		return CDUSB_E_EE_TIMEOUT;
-	if (SifCallRpc(&client, fno, SIF_RPC_M_NOWAIT, s, ssize, r, rsize, NULL, NULL) < 0)
+	while (PollSema(rpc_sema) >= 0)		/* sinal velho */
+		;
+	if (SifCallRpc(&client, fno, SIF_RPC_M_NOWAIT, s, ssize, r, rsize, rpc_done, NULL) < 0)
 		return CDUSB_E_EE_RPC;
-	last = ee_ticks();
-	while (SifCheckStatRpc(&client)) {
-		now = ee_ticks();
-		acc += (u32)(now - last);
-		last = now;
-		if (acc > limit) {
-			stuck = 1;
-			return CDUSB_E_EE_TIMEOUT;
-		}
+	WaitSemaEx(rpc_sema, 1, &tmo);
+	if (SifCheckStatRpc(&client)) {
+		stuck = 1;
+		return CDUSB_E_EE_TIMEOUT;
 	}
 	return 0;
 }
