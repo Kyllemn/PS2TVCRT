@@ -348,8 +348,10 @@ static int cd_probe(int devId)
 		return 0;
 	if (!finalized)
 		return 1;		/* antes do FINALIZE: pega tudo para ler o INQUIRY */
-	if (in->bInterfaceSubClass == SUB_ATAPI)
-		return 1;		/* subclasse ATAPI = leitor de CD */
+	/* leitor ligado depois: ATAPI (02) e SFF-8070i (05) sao de leitor de CD;
+	 * pendrive usa SCSI (06), que fica para o usbmass */
+	if (in->bInterfaceSubClass == SUB_ATAPI || in->bInterfaceSubClass == SUB_SFF8070)
+		return 1;
 	dev = sceUsbdScanStaticDescriptor(devId, NULL, USB_DT_DEVICE);
 	return dev && is_cd_id((u32)dev->idVendor << 16 | dev->idProduct);
 }

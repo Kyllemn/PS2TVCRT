@@ -25,7 +25,7 @@
 #include "diag.h"
 #include "play.h"
 
-#define VERSAO		"c03"
+#define VERSAO		"c04"
 #define LOG_FILE	"mass:/CDUSB.TXT"
 
 #define IRX(n)	extern unsigned char n[]; extern unsigned int size_##n
@@ -321,8 +321,8 @@ int main(int argc, char *argv[])
 		else {
 			S("   NENHUM LEITOR DE CD ENCONTRADO");
 			log_devices(&st, "procura");
+			S("   PLUGUE O LEITOR: ELE APARECE AQUI SOZINHO.");
 			S("   CONFIRA O CABO Y E SE O LEITOR ACENDE.");
-			S("   LIGUE O LEITOR ANTES DE ABRIR ESTE PROGRAMA.");
 		}
 		if (!log_ok)
 			S("   (SEM PENDRIVE: O LOG NAO E GRAVADO)");
@@ -330,10 +330,22 @@ int main(int argc, char *argv[])
 		scr_printf("\n   X = TOCAR A MUSICA DO DISCO (FASE 2)\n");
 		scr_printf("   QUADRADO = DIAGNOSTICO DO LEITOR (FASE 1)\n");
 		scr_printf("   O = SAIR\n");
-		do {
-			b = pad_new();
-			ee_wait_ms(16);
-		} while (!(b & (PAD_CROSS | PAD_SQUARE | PAD_CIRCLE)));
+		/* espera um botao; se o leitor aparecer ou sumir, redesenha */
+		{
+			int n = 0, changed = 0;
+			do {
+				b = pad_new();
+				ee_wait_ms(16);
+				if (++n % 30 == 0 && cdusb_get_status(&st) == 0 && find_cd(&st) != cd) {
+					changed = 1;
+					break;
+				}
+			} while (!(b & (PAD_CROSS | PAD_SQUARE | PAD_CIRCLE)));
+			if (changed) {
+				ee_wait_ms(500);	/* deixa o leitor terminar de configurar */
+				continue;
+			}
+		}
 		if (b & PAD_CIRCLE)
 			break;
 		if (cd < 0)
