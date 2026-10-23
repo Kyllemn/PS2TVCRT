@@ -303,13 +303,15 @@ void play_run(int dev, int sub)
 			     cs.cmds, cs.errors);
 			line(9, "   ULTIMA LEITURA: %d MS     PIOR: %d MS     LEITOR: %s", cs.last_ms, cs.max_ms,
 			     cs.speed_locked ? "TRAVADO EM 10X" : "VELOCIDADE PADRAO");
+			line(10, "   MANTER GIRANDO: %d LEITURAS (PIOR %d MS)", cs.keepalives, cs.keep_max_ms);
 		}
 		if (now - last_log > 5000000) {
 			last_log = now;
 			cdcd_get_stats(&cs);
 			L("[PLAY] faixa %d setor %d: buffer %d setores, cortes %d, pulos %d, leituras %d, ultima %d ms, "
-			  "pior %d ms, erros %d",
-			  a_track, a_pos, cs.ahead, a_cuts, cs.repositions, cs.cmds, cs.last_ms, cs.max_ms, cs.errors);
+			  "pior %d ms, erros %d, manter girando %d (pior %d ms)",
+			  a_track, a_pos, cs.ahead, a_cuts, cs.repositions, cs.cmds, cs.last_ms, cs.max_ms, cs.errors,
+			  cs.keepalives, cs.keep_max_ms);
 		}
 		/* log no pendrive: na pausa e a cada 30 s (o audio segue na outra thread) */
 		if ((!a_playing && !paused_saved) || now - last_save > 30000000) {

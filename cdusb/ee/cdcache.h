@@ -24,6 +24,8 @@ typedef struct {
 	int errors;			/* leituras que falharam */
 	int ahead;			/* setores prontos a frente do emulador */
 	int speed_locked;		/* 1 = leitor travado na velocidade baixa */
+	int keepalives;			/* leituras para manter o leitor girando */
+	int keep_max_ms;		/* pior delas */
 } cdcd_stats;
 
 /* abre o disco do leitor 'dev' (subclasse 'sub'): espera o disco, le a TOC,

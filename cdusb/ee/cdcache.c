@@ -27,6 +27,7 @@
 #define TMO_READ	10000
 #define LOCK_KBS	706		/* pede 4x */
 #define READER_PRIO	0x30
+#define KEEP_IDLE_MS	2000		/* sem ler ha 2 s: le 1 setor (o leitor desacelera em ~3 s) */
 
 static int dev, sub;
 static cdcd_toc toc;
@@ -42,6 +43,8 @@ static volatile int restart;		/* 1 = recomecar a leitura em consumer */
 static volatile int quit, running, done;
 static int lock_sema = -1, kick_sema = -1, data_sema = -1, thread_id = -1;
 static cdcd_stats st;
+static u64 last_io;			/* ultimo comando de leitura no leitor */
+static int keep_flip;
 static u8 reader_stack[16 * 1024] __attribute__((aligned(16)));
 extern void *_gp;
 
@@ -214,6 +217,52 @@ static void unlock(void)
 	SignalSema(lock_sema);
 }
 
+/* proxima faixa de musica depois de t (-1 = nenhuma) */
+static int next_audio_track(int t)
+{
+	for (t++; t <= toc.last; t++)
+		if (!cdcd_is_data(t))
+			return t;
+	return -1;
+}
+
+/*
+ * Manter girando: 1 setor, sem guardar. Se a musica atual ja foi toda lida e
+ * a faixa seguinte e de dados (PC Engine: faixa 2), le no comeco da proxima
+ * faixa de musica: o leitor ja fica la e a troca de faixa e imediata.
+ * Senao le perto da posicao de leitura, alternando +256 (setor novo: o
+ * leitor tem que ir ao disco e nao ao buffer dele).
+ */
+static void keepalive(void)
+{
+	int c = consumer, f = fill, t = cdcd_track_of(c), lba, n, data, r, ms;
+	u64 t0;
+
+	if (!cdcd_is_data(t) && t < toc.last && cdcd_is_data(t + 1) && f >= cdcd_track_end(t) &&
+	    (n = next_audio_track(t)) > 0) {
+		lba = toc.lba[n] + (keep_flip ? 8 : 0);
+	} else {
+		lba = f < toc.lba[100] ? f : toc.lba[100] - 1;
+		t = cdcd_track_of(lba);
+		if (keep_flip && lba + 256 < (cdcd_is_data(t) ? safe_end(t) : cdcd_track_end(t)))
+			lba += 256;
+	}
+	keep_flip ^= 1;
+	t = cdcd_track_of(lba);
+	data = cdcd_is_data(t);
+	if (data && lba >= safe_end(t))
+		lba = safe_end(t) - 1;
+	t0 = ee_now_us();
+	r = read_sectors(lba, 1, data, tmp);
+	ms = (int)((ee_now_us() - t0) / 1000);
+	last_io = ee_now_us();
+	st.keepalives++;
+	if (ms > st.keep_max_ms)
+		st.keep_max_ms = ms;
+	if (r != CDUSB_OK || ms > 300)
+		L("[CDCACHE] manter girando: setor %d %s em %d ms", lba, r == CDUSB_OK ? "OK" : "FALHOU", ms);
+}
+
 static void reader(void *arg)
 {
 	int f, target, t, end, n, data, r, i, slot, gap;
@@ -235,6 +284,8 @@ static void reader(void *arg)
 		if (f >= 0 && f < toc.lba[100] && cdcd_is_data(cdcd_track_of(f)) != cdcd_is_data(cdcd_track_of(consumer)))
 			f = target;
 		if (f >= target || f >= toc.lba[100] || f < 0) {
+			if (ee_now_us() - last_io > (u64)KEEP_IDLE_MS * 1000)
+				keepalive();
 			wait_us = 10000;
 			WaitSemaEx(kick_sema, 1, &wait_us);
 			continue;
@@ -268,6 +319,7 @@ static void reader(void *arg)
 			if (st.last_ms > st.max_ms)
 				st.max_ms = st.last_ms;
 			st.cmds++;
+			last_io = ee_now_us();
 		}
 		if (r != CDUSB_OK) {
 			st.errors++;
@@ -346,6 +398,8 @@ int cdcd_open(int d, int sb, int (*abort)(void))
 		data_sema = new_sema(0);
 	}
 	consumer = fill = toc.lba[toc.first];
+	last_io = ee_now_us();
+	keep_flip = 0;
 	restart = 0;
 	quit = done = 0;
 	memset(&th, 0, sizeof(th));
@@ -380,8 +434,8 @@ void cdcd_close(void)
 	running = 0;
 	if (!cdusb_stuck())
 		set_speed(0xFFFF, 1);
-	L("[CDCACHE] fechado: %d leituras, pior %d ms, %d pulos, %d erros", st.cmds, st.max_ms,
-	  st.repositions, st.errors);
+	L("[CDCACHE] fechado: %d leituras, pior %d ms, %d pulos, %d erros; manter girando %d (pior %d ms)",
+	  st.cmds, st.max_ms, st.repositions, st.errors, st.keepalives, st.keep_max_ms);
 }
 
 /* setores prontos a partir de lba, copiados (o lock ja esta pego) */
