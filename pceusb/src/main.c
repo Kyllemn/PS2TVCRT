@@ -55,6 +55,12 @@ unsigned prof_cyc[16], prof_cnt[16], prof_last;
 int prof_cur, prof_stack[16], prof_sp;
 
 void ps2_cd_stats(unsigned *data_miss, unsigned *audio_miss);
+extern const unsigned int ps2_syscard3_size;
+extern const unsigned char ps2_syscard3[];
+
+static const char *prof_name[10] = {
+	"outros", "CPU", "fundo", "sprites", "spr-decod", "mistura", "VRAM", "PSG", "CD", "fim-som"
+};
 
 /* ------------------------------------------------------------------ log */
 static char logbuf[256 * 1024];
@@ -75,12 +81,15 @@ static void log_add(const char *s)
 		EIntr();
 }
 
+/* toda linha do log leva o tempo desde que o ELF abriu */
 void L(const char *fmt, ...)
 {
-	char s[256];
+	char s[300];
 	va_list ap;
+	unsigned ms = (unsigned)(ee_now_us() / 1000);
+	int n = snprintf(s, sizeof(s), "[%4u.%03u] ", ms / 1000, ms % 1000);
 	va_start(ap, fmt);
-	vsnprintf(s, sizeof(s), fmt, ap);
+	vsnprintf(s + n, sizeof(s) - n, fmt, ap);
 	va_end(ap);
 	log_add(s);
 }
@@ -94,9 +103,22 @@ void S(const char *fmt, ...)
 	va_start(ap, fmt);
 	vsnprintf(s, sizeof(s), fmt, ap);
 	va_end(ap);
-	log_add(s);
+	L("%s", s);
 	if (text_mode)
 		scr_printf("%s\n", s);
+}
+
+/* passo numerado: vai para o log e o log vai para o pendrive na hora */
+static int step_n;
+static void STEP(const char *fmt, ...)
+{
+	char s[200];
+	va_list ap;
+	va_start(ap, fmt);
+	vsnprintf(s, sizeof(s), fmt, ap);
+	va_end(ap);
+	L("[PASSO %d] %s", ++step_n, s);
+	log_save();
 }
 
 void log_save(void)
@@ -342,6 +364,8 @@ static GSGLOBAL *gs;
 static GSTEXTURE tex;
 static u16 fbuf[FB_W * 256] __attribute__((aligned(128)));
 static unsigned frames_drawn;
+static u64 vid_us_sum, vid_us_max, last_flip_us, vid_last_us;
+static unsigned late_frames, worst_gap_ms;
 
 static void video_start(void)
 {
@@ -390,6 +414,8 @@ static void RETRO_CALLCONV video_cb(const void *data, unsigned width, unsigned h
 			memcpy(fbuf + y * FB_W, (const u8 *)data + y * pitch, width * 2);
 		src = fbuf;
 	}
+	{
+	u64 t0 = ee_now_us(), t1;
 	tex.Mem = (u32 *)src;
 	tex.Height = height;
 	FlushCache(0);
@@ -405,9 +431,25 @@ static void RETRO_CALLCONV video_cb(const void *data, unsigned width, unsigned h
 	gsKit_sync_flip(gs);
 	gsKit_TexManager_nextFrame(gs);
 	frames_drawn++;
+	t1 = ee_now_us();
+	vid_last_us = t1 - t0;
+	vid_us_sum += t1 - t0;
+	if (t1 - t0 > vid_us_max)
+		vid_us_max = t1 - t0;
+	/* intervalo entre retracos: 16,7 ms normal; mais de 20 = retraco perdido */
+	if (last_flip_us) {
+		unsigned gap = (unsigned)((t1 - last_flip_us) / 1000);
+		if (gap > 20)
+			late_frames++;
+		if (gap > worst_gap_ms)
+			worst_gap_ms = gap;
+	}
+	last_flip_us = t1;
+	}
 }
 
 /* ------------------------------------------------------------------ nucleo */
+/* (o log de 1 s sai no passo "60 quadros emulados") */
 static u16 joy;				/* bits RETRO_DEVICE_ID_JOYPAD_* */
 
 static void RETRO_CALLCONV input_poll_cb(void)
@@ -515,29 +557,134 @@ static int ask_retry(const char *msg)
 	}
 }
 
+/* ------------------------------------------------------------------ checagem */
+static u8 chk_buf[16 * 2352] __attribute__((aligned(64)));
+
+static int find_str(const u8 *b, int n, const char *str)
+{
+	int l = strlen(str), i;
+	for (i = 0; i + l <= n; i++)
+		if (b[i] == (u8)str[0] && memcmp(b + i, str, l) == 0)
+			return i;
+	return -1;
+}
+
+/* testa leitor, disco, som e BIOS antes de ligar o nucleo. 1 = X (iniciar),
+ * 0 = O (sair), -1 = tentar de novo */
+static int check_screen(const cdusb_dev_info *d, int audio_ok)
+{
+	const cdcd_toc *c = cdcd_get_toc();
+	int t, fd = -1, fa = -1, nd = 0, na = 0, k, pce = 0, ok = 1, n;
+	u64 t0;
+	unsigned ms;
+
+	screen_title("CHECAGEM ANTES DE LIGAR A BIOS");
+	S("   LEITOR:  %.8s %.16s %.4s  (%04X:%04X)  OK", d->inquiry + 8, d->inquiry + 16, d->inquiry + 32,
+	  d->vid, d->pid);
+	for (t = c->first; t <= c->last; t++) {
+		if (cdcd_is_data(t)) {
+			nd++;
+			if (fd < 0)
+				fd = t;
+		} else {
+			na++;
+			if (fa < 0 || cdcd_track_end(t) - c->lba[t] > cdcd_track_end(fa) - c->lba[fa])
+				fa = t;
+		}
+	}
+	S("   DISCO:   %d FAIXAS (%d DE DADOS, %d DE MUSICA), %d MIN", c->last - c->first + 1, nd, na,
+	  c->lba[100] / 4500);
+
+	if (fd < 0) {
+		S("   DADOS:   O DISCO NAO TEM FAIXA DE DADOS  <-- NAO E PC ENGINE CD");
+		ok = 0;
+	} else {
+		t0 = ee_now_us();
+		n = cdcd_read(c->lba[fd], 16, chk_buf, 12000);
+		ms = (unsigned)((ee_now_us() - t0) / 1000);
+		if (n == 16) {
+			for (k = 0; k < 3; k++)
+				if (find_str(chk_buf + k * 2048, 2048, "PC Engine CD-ROM SYSTEM") >= 0)
+					pce = 1;
+			S("   DADOS:   FAIXA %d, 16 SETORES EM %u MS  OK", fd, ms);
+			if (pce)
+				S("   SISTEMA: PC ENGINE CD  OK");
+			else
+				S("   SISTEMA: ASSINATURA DO PC ENGINE NAO ENCONTRADA (PODE NAO FUNCIONAR)");
+		} else {
+			S("   DADOS:   FALHA NA LEITURA (%d DE 16 EM %u MS)", n, ms);
+			ok = 0;
+		}
+	}
+	if (fa >= 0) {
+		t0 = ee_now_us();
+		n = cdcd_read(c->lba[fa] + 750, 16, chk_buf, 12000);
+		ms = (unsigned)((ee_now_us() - t0) / 1000);
+		if (n == 16) {
+			int nz = 0;
+			for (k = 0; k < 16 * 2352; k++)
+				if (chk_buf[k])
+					nz++;
+			S("   MUSICA:  FAIXA %d, 16 SETORES EM %u MS%s", fa, ms, nz ? "  OK" : "  (SO SILENCIO)");
+		} else
+			S("   MUSICA:  FALHA NA LEITURA (%d DE 16 EM %u MS)", n, ms);
+	} else
+		S("   MUSICA:  O DISCO NAO TEM FAIXA DE MUSICA");
+	S("   SOM:     %s", audio_ok ? "AUDSRV OK" : "FALHA NO AUDIO (O JOGO RODA SEM SOM)");
+	S("   BIOS:    SYSTEM CARD EMBUTIDA, %u KB%s", ps2_syscard3_size / 1024,
+	  ps2_syscard3_size == 262144 ? "  OK" : "  (TAMANHO ESTRANHO)");
+	S("   CONTROLE: O = I   X = II   SELECT   START = RUN   (SELECT+START 1 S = SAIR)");
+	S(" ");
+	if (!ok) {
+		S("   X = TENTAR DE NOVO      O = SAIR");
+		log_save();
+		for (;;) {
+			u16 b = pad_new();
+			if (b & PAD_CROSS)
+				return -1;
+			if (b & PAD_CIRCLE)
+				return 0;
+			ee_wait_ms(16);
+		}
+	}
+	S("   X = INICIAR      O = SAIR");
+	log_save();
+	for (;;) {
+		u16 b = pad_new();
+		if (b & PAD_CROSS)
+			return 1;
+		if (b & PAD_CIRCLE)
+			return 0;
+		ee_wait_ms(16);
+	}
+}
+
 /* ------------------------------------------------------------------ principal */
 int main(int argc, char *argv[])
 {
 	cdusb_status st;
 	struct retro_game_info info;
 	cdcd_stats cs;
-	int cd, r, hold = 0;
-	u64 last_stat;
-	unsigned last_frames = 0, dm, am;
+	int cd, r, hold = 0, audio_ready = 0;
+	u64 last_stat, last_save_us = 0, run_us_sum = 0, run_us_max = 0;
+	unsigned last_frames = 0, dm, am, run_count = 0, last_runs = 0, saves = 0;
 	(void)argc;
 	(void)argv;
 
+	ee_now_us();					/* zero do relogio do log */
 	iop_reset();
 	ChangeThreadPriority(GetThreadId(), 0x40);	/* leitura e som acima do jogo */
 	init_scr();
 	screen_title("PREPARANDO...");
 	L("PCEUSB " VERSAO " (" __DATE__ " " __TIME__ ") - PC Engine CD pelo leitor USB");
+	L("[PASSO %d] IOP reiniciado, tela de texto pronta", ++step_n);
 
 	load_rom("rom0:SIO2MAN");
 	load_rom("rom0:PADMAN");
 	load_buf("iomanX", irx_iomanx, size_irx_iomanx);
 	load_buf("fileXio", irx_filexio, size_irx_filexio);
 	load_buf("usbd", irx_usbd, size_irx_usbd);
+	L("[PASSO %d] modulos basicos carregados", ++step_n);
 	r = load_buf("cdusb", irx_cdusb, size_irx_cdusb);
 	if (r == 0)
 		r = cdusb_bind();
@@ -555,6 +702,15 @@ int main(int argc, char *argv[])
 	load_buf("audsrv", irx_audsrv, size_irx_audsrv);
 	wait_pendrive();
 	L("[BOOT] pendrive %s", log_ok ? "pronto: log em " LOG_FILE : "NAO encontrado");
+	{
+		int i;
+		for (i = 0; i < CDUSB_MAXDEV; i++)
+			if (st.dev[i].state != CDUSB_DEV_FREE)
+				L("[USB] disp %d: %04X:%04X porta %d estado %d subclasse %02X tipo %d \"%.8s %.16s %.4s\"", i,
+				  st.dev[i].vid, st.dev[i].pid, st.dev[i].port, st.dev[i].state, st.dev[i].sub,
+				  st.dev[i].ptype, st.dev[i].inquiry + 8, st.dev[i].inquiry + 16, st.dev[i].inquiry + 32);
+	}
+	STEP("driver do leitor %s, pendrive %s, som carregado", r == 0 ? "OK" : "FALHOU", log_ok ? "OK" : "SEM");
 	pad_start();
 	if (r != 0) {
 		screen_title("FALHA AO CARREGAR O DRIVER DO LEITOR");
@@ -578,24 +734,37 @@ int main(int argc, char *argv[])
 		S("   LEITOR: %.8s %.16s %.4s", st.dev[cd].inquiry + 8, st.dev[cd].inquiry + 16,
 		  st.dev[cd].inquiry + 32);
 		S("   TRAVANDO O LEITOR EM 10X...");
+		STEP("leitor %d encontrado; abrindo o disco", cd);
 		r = cdcd_open(cd, st.dev[cd].sub, abort_o);
-		log_save();
-		if (r == 0)
+		STEP("disco: cdcd_open = %d", r);
+		if (r != 0) {
+			if (!ask_retry("NAO CONSEGUI LER O DISCO"))
+				Exit(0);
+			continue;
+		}
+		if (!audio_ready)
+			audio_ready = audio_start();
+		r = check_screen(&st.dev[cd], audio_ready);
+		STEP("checagem: %s", r > 0 ? "X = iniciar" : r < 0 ? "tentar de novo" : "O = sair");
+		if (r > 0)
 			break;
-		if (!ask_retry("NAO CONSEGUI LER O DISCO"))
+		cdcd_close();
+		if (r == 0) {
+			log_save();
 			Exit(0);
+		}
 	}
 
-	S("   CARREGANDO O JOGO...");
-	if (!audio_start())
-		S("   (SEM SOM: FALHA NO AUDIO)");
+	screen_title("LIGANDO A BIOS (SYSTEM CARD)...");
 	retro_set_environment(environ_cb);
 	retro_set_video_refresh(video_cb);
 	retro_set_audio_sample(audio_sample_cb);
 	retro_set_audio_sample_batch(audio_batch_cb);
 	retro_set_input_poll(input_poll_cb);
 	retro_set_input_state(input_state_cb);
+	STEP("retro_init");
 	retro_init();
+	STEP("retro_init OK; retro_load_game (System Card + disco)");
 	memset(&info, 0, sizeof(info));
 	info.path = DISC_PATH;
 	if (!retro_load_game(&info)) {
@@ -605,13 +774,24 @@ int main(int argc, char *argv[])
 			Exit(0);
 		Exit(0);
 	}
-	L("[JOGO] jogo carregado");
-	log_save();
-
+	STEP("jogo carregado; ligando o video (gsKit 240p)");
 	video_start();
+	STEP("video ligado; primeiro quadro");
 	last_stat = ee_now_us();
 	for (;;) {
+		u64 r0 = ee_now_us(), rt;
+		vid_last_us = 0;
 		retro_run();
+		/* so a emulacao: sem o envio da imagem e a espera do retraco */
+		rt = ee_now_us() - r0 - vid_last_us;
+		run_count++;
+		run_us_sum += rt;
+		if (rt > run_us_max)
+			run_us_max = rt;
+		if (run_count == 1)
+			STEP("primeiro quadro emulado (%u ms)", (unsigned)(rt / 1000));
+		else if (run_count == 60)
+			STEP("60 quadros emulados");
 
 		/* SELECT + START (segurar ~1 s) = sair */
 		if ((pad_now & (PAD_SELECT | PAD_START)) == (PAD_SELECT | PAD_START)) {
@@ -620,21 +800,55 @@ int main(int argc, char *argv[])
 		} else
 			hold = 0;
 
-		if (ee_now_us() - last_stat > 10000000) {
-			u64 now = ee_now_us();
+		if (ee_now_us() - last_stat > 5000000) {
+			u64 now = ee_now_us(), span = now - last_stat;
+			unsigned runs = run_count - last_runs, shown = frames_drawn - last_frames, i, tot = 0;
+			char pbuf[200];
+			int pl = 0;
+
 			cdcd_get_stats(&cs);
 			ps2_cd_stats(&dm, &am);
-			L("[JOGO] %u quadros em %u ms (%u por s); som: %u faltas, %u sobras; CD: %d leituras, pior %d ms, "
-			  "%d pulos, %d erros, manter girando %d; dados atrasados %u, musica sem chegar %u",
-			  frames_drawn - last_frames, (unsigned)((now - last_stat) / 1000),
-			  (unsigned)((u64)(frames_drawn - last_frames) * 1000000 / (now - last_stat)), a_under, a_drop,
-			  cs.cmds, cs.max_ms, cs.repositions, cs.errors, cs.keepalives, dm, am);
+			for (i = 0; i < 10; i++)
+				tot += prof_cyc[i] / 1000;
+			for (i = 0; i < 10 && tot; i++)
+				pl += snprintf(pbuf + pl, sizeof(pbuf) - pl, "%s %u%% ", prof_name[i],
+					       (prof_cyc[i] / 1000) * 100 / tot);
+			pbuf[pl] = 0;
+			L("[DESEMPENHO] %u fps na tela, %u quadros emulados/s; emulacao media %u ms, pior %u ms (limite 16,7, sem o video); "
+			  "video %u ms media, %u pior; retracos perdidos %u, maior intervalo %u ms",
+			  (unsigned)((u64)shown * 1000000 / span), (unsigned)((u64)runs * 1000000 / span),
+			  runs ? (unsigned)(run_us_sum / runs / 1000) : 0, (unsigned)(run_us_max / 1000),
+			  shown ? (unsigned)(vid_us_sum / shown / 1000) : 0, (unsigned)(vid_us_max / 1000), late_frames,
+			  worst_gap_ms);
+			L("[DESEMPENHO] onde o tempo foi: %s", pbuf);
+			L("[SOM] faltas %u, sobras %u, buffer %u de %u", a_under, a_drop, ring_w - ring_r, RING_FRAMES);
+			L("[CD] leituras %d, ultima %d ms, pior %d ms, pulos %d, erros %d, manter girando %d (pior %d ms), "
+			  "buffer %d setores; dados atrasados %u, musica sem chegar %u",
+			  cs.cmds, cs.last_ms, cs.max_ms, cs.repositions, cs.errors, cs.keepalives, cs.keep_max_ms, cs.ahead,
+			  dm, am);
+			memset(prof_cyc, 0, sizeof(prof_cyc));
+			memset(prof_cnt, 0, sizeof(prof_cnt));
+			run_us_sum = run_us_max = 0;
+			vid_us_sum = vid_us_max = 0;
+			late_frames = worst_gap_ms = 0;
 			last_frames = frames_drawn;
+			last_runs = run_count;
 			last_stat = now;
+		}
+		/* log no pendrive: 1 s, 10 s e depois a cada 60 s (pode dar um tranco) */
+		{
+			u64 now = ee_now_us();
+			if ((saves == 0 && run_count >= 600) || (saves >= 1 && now - last_save_us > 60000000)) {
+				L("[LOG] gravando o log no pendrive (pode dar um tranco)");
+				log_save();
+				last_save_us = ee_now_us();
+				L("[LOG] gravado em %u ms", (unsigned)((last_save_us - now) / 1000));
+				saves++;
+			}
 		}
 	}
 
-	L("[JOGO] saindo");
+	STEP("saindo (SELECT + START)");
 	a_quit = 1;
 	retro_unload_game();
 	retro_deinit();
