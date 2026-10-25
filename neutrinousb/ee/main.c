@@ -253,7 +253,6 @@ static int find_cd(const cdusb_status *st)
 static int dev, sub;
 static cdusb_scsi_resp R;
 static u8 sec[2352] __attribute__((aligned(64)));
-static int t_first, t_last, t_lba[101], t_ctrl[101];
 
 static int cdb_len(u8 op)
 {
