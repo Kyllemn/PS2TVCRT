@@ -8,3 +8,10 @@ emberusb/iop/*.elf
 emberusb/loader/*.o
 emberusb/loader/*.elf
 cdusb/iop/*.elf
+neutrinousb/ee/irx_*.c
+neutrinousb/ee/loader_elf.c
+neutrinousb/ee/*.o
+neutrinousb/ee/*.ELF
+neutrinousb/iop/obj/
+neutrinousb/iop/*.irx
+neutrinousb/iop/*.elf

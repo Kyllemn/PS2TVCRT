@@ -1,0 +1,25 @@
+# Name of loaded config, to show to user
+name = "USB CD/DVD drive (usbcd_bd)"
+
+# Leitora de CD/DVD USB externa como dispositivo de bloco.
+# Uso: neutrino.elf -bsd=usbcd -bsdfs=bd -dvd=bdfs:usbcd0p0
+# Copie usbcd_bd.irx para modules/ e este arquivo para config/ do Neutrino.
+
+# Drivers this driver depends on (config file must exist)
+depends = ["i_bdm"]
+
+# Modules to load
+[[module]]
+file = "usbd_mini.irx"
+args = ["thpri=7,8"]
+env = ["LE", "EE"]
+[[module]]
+file = "usbcd_bd.irx"
+env = ["LE", "EE"]
+
+# Modules of the game that are faked/blocked
+[[fake]]
+file = "USBD.IRX"
+name = "USB_driver"
+version = 0x0204
+startrv = 2 # 0=RESIDENT_END, 1=NO_RESIDENT_END, 2=REMOVABLE_END
