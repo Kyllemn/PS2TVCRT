@@ -28,7 +28,7 @@
 
 #include "cdusb_ee.h"
 
-#define VERSAO		"e04"
+#define VERSAO		"e05"
 #define LOG_FILE	"mass:/EMBERUSB.TXT"
 #define CACHE_BLOCKS	"blocks=16"	/* maximo; o vcd deixa 640 KB livres no IOP */
 

@@ -26,14 +26,14 @@
 #include "cdusb_iop.h"
 
 #define MODNAME "vcd"
-IRX_ID(MODNAME, 1, 3);
+IRX_ID(MODNAME, 1, 4);
 
 #define SECT		2352
 #define BLK		16			/* setores por leitura (nunca menos) */
 #define BLK_BYTES	(BLK * SECT)
 #define MAX_BLOCKS	16
 #define TMO_READ	6000
-#define KEEP_MS		1500
+#define KEEP_MS		2000
 #define SLOW_MS		300
 #define LOG_FLUSH_MS	20000
 #define STAT_MS		30000
@@ -66,17 +66,7 @@ static u8 *cache;
 static int lock = -1;
 static u32 tick;
 static volatile int want = -1;		/* proximo bloco do trecho mais recente */
-static volatile unsigned int req_seq;	/* muda a cada bloco pedido pelo Ember */
-
-/* e04: o jogo le varios trechos do disco alternados (ex.: 5xxx e 92xxx).
- * Cada trecho tem a sua leitura adiantada; o mais recente vai mais longe. */
-#define NSTREAM		4
-#define STREAM_LIVE_MS	6000
-static struct {
-	int next;			/* proximo bloco esperado (-1 = livre) */
-	unsigned int t;			/* ultimo uso */
-} strm[NSTREAM] = {{-1, 0}, {-1, 0}, {-1, 0}, {-1, 0}};
-static int ahead_main = 4, ahead_other = 2;
+static int ahead_main = 6;
 static unsigned int last_io;
 static u8 scratch[SECT] __attribute__((aligned(64)));
 
@@ -308,53 +298,6 @@ static void set_speed(void)
 	L("velocidade travada: SET CD SPEED %d, SET STREAMING %d", r1, r2);
 }
 
-/* e04: pede para a leitora ficar ativa e desliga os temporizadores de
- * repouso (pagina 1Ah do MMC). Se ela recusar, nada muda. */
-static void power_active(void)
-{
-	static u8 b[40] __attribute__((aligned(64)));
-	u8 c[12];
-	int r, sense, len, off;
-
-	memset(c, 0, sizeof(c));
-	c[0] = 0x1B;
-	c[4] = 0x11;				/* condicao ACTIVE + START */
-	r = cmd(c, 0, NULL, 0, 5000, &sense);
-	L("energia: START STOP UNIT (ativo) %d sense %06X", r, sense);
-
-	memset(c, 0, sizeof(c));
-	c[0] = 0x5A;				/* MODE SENSE(10), pagina 1A */
-	c[2] = 0x1A;
-	c[8] = sizeof(b);
-	memset(b, 0, sizeof(b));
-	r = cmd(c, 1, b, sizeof(b), 3000, &sense);
-	if (r != CDUSB_OK) {
-		L("energia: leitora sem pagina 1A (%d sense %06X)", r, sense);
-		return;
-	}
-	off = 8 + (b[6] << 8 | b[7]);
-	if (off + 12 > (int)sizeof(b) || (b[off] & 0x3f) != 0x1A) {
-		L("energia: pagina 1A estranha");
-		return;
-	}
-	L("energia: pagina 1A: %02X %02X %02X %02X | ocioso %u, repouso %u (x100 ms)", b[off], b[off + 1],
-	  b[off + 2], b[off + 3], (unsigned int)(b[off + 4] << 24 | b[off + 5] << 16 | b[off + 6] << 8 | b[off + 7]),
-	  (unsigned int)(b[off + 8] << 24 | b[off + 9] << 16 | b[off + 10] << 8 | b[off + 11]));
-	len = off + 2 + b[off + 1];
-	if (len > (int)sizeof(b))
-		len = sizeof(b);
-	b[0] = b[1] = 0;			/* MODE SELECT: tamanho do cabecalho = 0 */
-	b[off] &= 0x3f;				/* bit PS desligado */
-	b[off + 3] &= ~0x03;			/* IDLE e STANDBY desligados */
-	memset(c, 0, sizeof(c));
-	c[0] = 0x55;				/* MODE SELECT(10), PF */
-	c[1] = 0x10;
-	c[7] = len >> 8;
-	c[8] = len;
-	r = cmd(c, 2, b, len, 3000, &sense);
-	L("energia: temporizadores de repouso desligados: %d sense %06X", r, sense);
-}
-
 static int read_toc(void)
 {
 	static u8 b[4 + 100 * 8] __attribute__((aligned(64)));
@@ -500,48 +443,13 @@ static int find_slot(int base)
 	return -1;
 }
 
-/* trecho continuado (ou novo) por um pedido do bloco 'base' (com a trava) */
-static void note_stream(int base)
-{
-	int i, best = 0;
-	unsigned int now = now_ms();
-
-	for (i = 0; i < NSTREAM; i++)
-		if (strm[i].next >= 0 && base >= strm[i].next - 2 * BLK && base <= strm[i].next)
-			break;
-	if (i == NSTREAM) {
-		for (i = 0; i < NSTREAM; i++) {
-			if (strm[i].next < 0) {
-				best = i;
-				break;
-			}
-			if (strm[i].t < strm[best].t)
-				best = i;
-		}
-		i = best;
-	}
-	if (base + BLK > strm[i].next)
-		strm[i].next = base + BLK;
-	strm[i].t = now;
-}
-
-/* o bloco esta na janela de leitura adiantada de algum trecho vivo? (com a trava) */
+/* o bloco esta na janela de leitura adiantada? e05: so o trecho atual, como
+ * na e03 (na e04 adiantar varios trechos fazia a leitora ir e voltar entre
+ * os dois lados do disco a cada bloco) */
 static int in_window(int b)
 {
-	int i, newest = -1, a;
-	unsigned int now = now_ms();
-
-	for (i = 0; i < NSTREAM; i++)
-		if (strm[i].next >= 0 && (newest < 0 || strm[i].t > strm[newest].t))
-			newest = i;
-	for (i = 0; i < NSTREAM; i++) {
-		if (strm[i].next < 0 || now - strm[i].t > STREAM_LIVE_MS)
-			continue;
-		a = i == newest ? ahead_main : ahead_other;
-		if (b >= strm[i].next - BLK && b < strm[i].next + a * BLK)
-			return 1;
-	}
-	return 0;
+	int w = want;
+	return w >= 0 && b >= w - BLK && b < w + ahead_main * BLK;
 }
 
 /* bloco para trocar: vazio; senao o mais antigo fora das janelas; senao
@@ -609,11 +517,7 @@ static int get_block(int base)
 		SignalSema(lock);
 		break;
 	}
-	WaitSema(lock);
-	note_stream(base);
-	SignalSema(lock);
 	want = base + BLK;
-	req_seq++;
 	return i;
 }
 
@@ -695,24 +599,12 @@ static int prefetch_one(int b)
 	return 1;
 }
 
-/* e04: manter girando lendo LONGE do ultimo setor (+-600, alternando): o
- * mesmo setor sempre vinha da memoria da leitora e o motor desacelerava */
-static void keep_spinning(void)
+/* manter girando como na e03: parado ha 2 s, le 1 setor onde o jogo esta */
+static void keep_spinning(int w)
 {
-	static int flip;
-	int c = want >= 0 ? want : t_lba[t_first], s, sense, r, kd;
-	unsigned int t0, ms;
+	int s = w < t_lba[100] ? w : t_lba[100] - 1, sense, r, kd = kind_of(s);
+	unsigned int t0 = now_ms(), ms;
 
-	s = c + (flip ? -600 : 600);
-	flip ^= 1;
-	if (s < 0)
-		s = c + 600;
-	if (s >= t_lba[100])
-		s = c - 600;
-	if (s < 0 || s >= t_lba[100])
-		s = 0;
-	kd = kind_of(s);
-	t0 = now_ms();
 	r = read_run(s, 1, kd ? kd : 2, scratch, &sense);
 	ms = now_ms() - t0;
 	st.keeps++;
@@ -728,35 +620,21 @@ static void worker(void)
 	unsigned int last_flush = now_ms(), last_stat = now_ms();
 
 	for (;;) {
-		int order[NSTREAM], nst = 0, i, j, k, seq = req_seq, stop = 0;
-		int nexts[NSTREAM];
-		unsigned int now = now_ms();
+		int w = want, k;
 
 		DelayThread(5000);
-		/* trechos vivos, do mais recente para o mais antigo */
-		WaitSema(lock);
-		for (i = 0; i < NSTREAM; i++)
-			if (strm[i].next >= 0 && now - strm[i].t <= STREAM_LIVE_MS) {
-				for (j = nst; j > 0 && strm[order[j - 1]].t < strm[i].t; j--)
-					order[j] = order[j - 1];
-				order[j] = i;
-				nst++;
-			}
-		for (i = 0; i < nst; i++)
-			nexts[i] = strm[order[i]].next;
-		SignalSema(lock);
-		for (i = 0; i < nst && !stop; i++) {
-			int a = i == 0 ? ahead_main : ahead_other;
-			for (k = 0; k < a; k++) {
-				int r = prefetch_one(nexts[i] + k * BLK);
-				if (r < 0 || req_seq != (unsigned int)seq) {
-					stop = 1;	/* sem lugar ou o Ember pediu outra coisa: recomeca */
+		if (w >= 0) {
+			for (k = 0; k < ahead_main; k++) {
+				int r;
+				if (want != w)
+					break;			/* o Ember mudou de lugar: recomeca */
+				r = prefetch_one(w + k * BLK);
+				if (r < 0)
 					break;
-				}
 			}
 		}
-		if (ready == 1 && now_ms() - last_io > KEEP_MS)
-			keep_spinning();
+		if (w >= 0 && now_ms() - last_io > KEEP_MS)
+			keep_spinning(w);
 		if (now_ms() - last_stat > STAT_MS) {
 			last_stat = now_ms();
 			L("pedidos %u (%u a %u bytes, %u pulos): esperas >100 ms %u, pior %u ms, total %u ms; blocos: na "
@@ -805,7 +683,7 @@ static void init_thread(void *arg)
 	unsigned int t0 = now_ms();
 	(void)arg;
 
-	L("======== vcd 1.3 (e04): pasta %s%s, jogo %s, %d blocos de cache ========", root, gdir, gname, nblocks);
+	L("======== vcd 1.4 (e05): pasta %s%s, jogo %s, %d blocos de cache ========", root, gdir, gname, nblocks);
 	L("memoria livre no IOP: %u KB", (unsigned int)QueryMaxFreeMemSize() / 1024);
 	/* e04: deixa pelo menos KEEP_FREE_KB livres para o Ember */
 	{
@@ -817,8 +695,7 @@ static void init_thread(void *arg)
 	}
 	while (nblocks >= 3 && !(cache = AllocSysMemory(ALLOC_FIRST, nblocks * BLK_BYTES, NULL)))
 		nblocks--;
-	ahead_main = nblocks / 3 < 3 ? 3 : nblocks / 3;
-	ahead_other = nblocks >= 10 ? 2 : 1;
+	ahead_main = nblocks - 2 < 6 ? nblocks - 2 : 6;	/* e05: como a e03 (8 blocos -> 6 adiantados) */
 	if (!cache) {
 		L("sem memoria para o cache");
 		ready = -1;
@@ -827,8 +704,8 @@ static void init_thread(void *arg)
 	}
 	for (i = 0; i < MAX_BLOCKS; i++)
 		slots[i].base = -1;
-	L("cache: %d blocos (%d KB), adiantado %d no trecho atual e %d nos outros; memoria livre depois: %u KB",
-	  nblocks, nblocks * BLK_BYTES / 1024, ahead_main, ahead_other,
+	L("cache: %d blocos (%d KB), %d adiantados, o resto guarda o que ja foi lido; memoria livre depois: %u KB",
+	  nblocks, nblocks * BLK_BYTES / 1024, ahead_main,
 	  (unsigned int)QueryMaxFreeMemSize() / 1024);
 	if (!wait_ready(30000) || !read_toc()) {
 		L("disco nao ficou pronto ou TOC invalida");
@@ -839,7 +716,6 @@ static void init_thread(void *arg)
 	for (t = t_first; t <= t_last; t++)
 		L("faixa %d: setor %d %s", t, t_lba[t], is_data(t) ? "DADOS" : "MUSICA");
 	L("fim do disco: setor %d", t_lba[100]);
-	power_active();
 	set_speed();
 	if (is_data(t_first)) {
 		int sense;
