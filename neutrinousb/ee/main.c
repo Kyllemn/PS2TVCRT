@@ -376,12 +376,13 @@ static int file_size(const char *path)
 	return fileXioGetStat(path, &s) >= 0 ? (int)s.size : -1;
 }
 
-/* grava o arquivo se faltar ou for diferente (tamanho); devolve 0 = ok */
+/* grava o arquivo (only_if_missing: so se faltar); devolve 0 = ok */
 static int install(const char *path, const void *data, int size, int only_if_missing)
 {
 	int fd, cur = file_size(path);
 
-	if (cur == size || (only_if_missing && cur >= 0)) {
+	/* n03: o driver e sempre regravado (versoes diferentes podem ter o mesmo tamanho) */
+	if (only_if_missing && cur >= 0) {
 		L("[INSTALAR] %s ja esta la (%d bytes)", path, cur);
 		return 0;
 	}
