@@ -52,6 +52,23 @@ typedef struct {
 } diag_result;
 
 void diag_run(int dev, const cdusb_dev_info *info, diag_result *r);
+
+/* teste PS1 (plano do Ember: disco do PS1 como .bin cru) */
+typedef struct {
+	char vendor[9], product[17];
+	int disc, data_tracks, audio_tracks;
+	char system[40];
+	int raw_ok, raw_mode, subq_ok, cur_kbs;
+	int raw_bps16, raw_max16, raw_bps8, raw_max8;	/* dados crus em sequencia */
+	int cuts, pace_min_ms, pace_max_ms;		/* tempo real 2x com cache pequeno */
+	int da_avg, da_max, ad_avg, ad_max;		/* troca dados->musica / musica->dados */
+	int pregap_raw, pregap_audio;			/* pausa antes da musica (de 3 setores) */
+	int seek_avg, seek_max, spinup_ms;
+	int stuck, gone, aborted;
+} ps1_result;
+
+void ps1_run(int dev, const cdusb_dev_info *info, ps1_result *r);
+void ps1_summary(const ps1_result *r, const char *log_file);
 void diag_summary(const diag_result *r, const char *log_file);
 
 #endif

@@ -25,7 +25,7 @@
 #include "diag.h"
 #include "play.h"
 
-#define VERSAO		"c06"
+#define VERSAO		"c07"
 #define LOG_FILE	"mass:/CDUSB.TXT"
 
 #define IRX(n)	extern unsigned char n[]; extern unsigned int size_##n
@@ -334,6 +334,7 @@ int main(int argc, char *argv[])
 		log_save();
 		scr_printf("\n   X = TOCAR A MUSICA DO DISCO (FASE 2)\n");
 		scr_printf("   QUADRADO = DIAGNOSTICO DO LEITOR (FASE 1)\n");
+		scr_printf("   TRIANGULO = TESTE PS1 (EMBER): COLOQUE UM CD DE PS1\n");
 		scr_printf("   O = SAIR\n");
 		/* espera um botao; se o leitor aparecer ou sumir, redesenha */
 		{
@@ -345,7 +346,7 @@ int main(int argc, char *argv[])
 					changed = 1;
 					break;
 				}
-			} while (!(b & (PAD_CROSS | PAD_SQUARE | PAD_CIRCLE)));
+			} while (!(b & (PAD_CROSS | PAD_SQUARE | PAD_TRIANGLE | PAD_CIRCLE)));
 			if (changed) {
 				ee_wait_ms(500);	/* deixa o leitor terminar de configurar */
 				continue;
@@ -357,6 +358,16 @@ int main(int argc, char *argv[])
 			continue;
 		if (b & PAD_CROSS) {
 			play_run(cd, st.dev[cd].sub);
+		} else if (b & PAD_TRIANGLE) {
+			static ps1_result pr;
+			ps1_run(cd, &st.dev[cd], &pr);
+			if (cdusb_get_status(&st) == 0)
+				log_devices(&st, "fim do teste PS1");
+			ps1_summary(&pr, log_ok ? LOG_FILE : NULL);
+			log_save();
+			scr_printf("\n   X = VOLTAR AO MENU      O = SAIR\n");
+			if (!ask_again())
+				break;
 		} else {
 			diag_result r;
 			diag_run(cd, &st.dev[cd], &r);
