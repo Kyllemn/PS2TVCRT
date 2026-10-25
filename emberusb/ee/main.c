@@ -28,7 +28,7 @@
 
 #include "cdusb_ee.h"
 
-#define VERSAO		"e01"
+#define VERSAO		"e02"
 #define LOG_FILE	"mass:/EMBERUSB.TXT"
 #define CACHE_BLOCKS	"blocks=8"
 
@@ -439,8 +439,11 @@ int main(int argc, char *argv[])
 	title("PREPARANDO...");
 	L("EMBERUSB " VERSAO " (" __DATE__ " " __TIME__ ")");
 
-	load_rom("rom0:SIO2MAN");
-	load_rom("rom0:PADMAN");
+	/* e02: controle pelos modulos novos da ROM (XSIO2MAN/XPADMAN), os mesmos
+	 * do wLaunchELF. Com os antigos (SIO2MAN/PADMAN) carregados, o Ember nao
+	 * conseguia subir o controle dele (o IOP nao e reiniciado). */
+	load_rom("rom0:XSIO2MAN");
+	load_rom("rom0:XPADMAN");
 	load_buf("iomanX", irx_iomanx, size_irx_iomanx, 0, NULL);
 	load_buf("fileXio", irx_filexio, size_irx_filexio, 0, NULL);
 	load_buf("usbd", irx_usbd, size_irx_usbd, 0, NULL);
