@@ -26,7 +26,7 @@
 #include "cdusb_iop.h"
 
 #define MODNAME "vcd"
-IRX_ID(MODNAME, 1, 1);
+IRX_ID(MODNAME, 1, 2);
 
 #define SECT		2352
 #define BLK		16			/* setores por leitura (nunca menos) */
@@ -70,6 +70,7 @@ static u8 scratch[SECT] __attribute__((aligned(64)));
 
 static struct {
 	unsigned int reqs, hits, waits, misses, pref, slow, worst, errors, recov, keeps, keep_worst;
+	unsigned int jumps, wait100, wait_sum, wait_max, sz_min, sz_max;	/* e03: o que o Ember sentiu */
 } st;
 
 /* ------------------------------------------------------------------ log */
@@ -85,7 +86,96 @@ static unsigned int now_ms(void)
 	return (unsigned int)(s * 1000 + us / 1000);
 }
 
-static void L(const char *fmt, ...)
+/* e03: formatador proprio (o vsprintf da ROM saia vazio em alguns PS2).
+ * Entende %d %u %x %X %s %c %% com largura e zeros (ex.: %06X, %5u). */
+static int fmt_num(char *o, unsigned int v, int neg, int base, int upper, int width, int zero)
+{
+	char t[12];
+	int n = 0, k = 0;
+	const char *dg = upper ? "0123456789ABCDEF" : "0123456789abcdef";
+
+	do {
+		t[n++] = dg[v % base];
+		v /= base;
+	} while (v && n < 11);
+	if (neg)
+		t[n++] = '-';
+	while (n + k < width && k < 20)
+		o[k++] = zero ? '0' : ' ';
+	if (neg && zero && k) {		/* sinal antes dos zeros */
+		o[0] = '-';
+		t[--n] = 0;
+		o[k++] = '0';
+	}
+	while (n)
+		o[k++] = t[--n];
+	return k;
+}
+
+static int fmt(char *o, int max, const char *f, va_list ap)
+{
+	int n = 0;
+
+	while (*f && n < max - 24) {
+		int width = 0, zero = 0;
+		if (*f != '%') {
+			o[n++] = *f++;
+			continue;
+		}
+		f++;
+		if (*f == '0')
+			zero = 1;
+		while (*f >= '0' && *f <= '9')
+			width = width * 10 + (*f++ - '0');
+		switch (*f) {
+		case 'd': {
+			int v = va_arg(ap, int);
+			n += fmt_num(o + n, v < 0 ? -(unsigned int)v : (unsigned int)v, v < 0, 10, 0, width, zero);
+			break;
+		}
+		case 'u':
+			n += fmt_num(o + n, va_arg(ap, unsigned int), 0, 10, 0, width, zero);
+			break;
+		case 'x':
+		case 'X':
+			n += fmt_num(o + n, va_arg(ap, unsigned int), 0, 16, *f == 'X', width, zero);
+			break;
+		case 'c':
+			o[n++] = (char)va_arg(ap, int);
+			break;
+		case 's': {
+			const char *p = va_arg(ap, const char *);
+			if (!p)
+				p = "(null)";
+			while (*p && n < max - 24)
+				o[n++] = *p++;
+			break;
+		}
+		case '%':
+			o[n++] = '%';
+			break;
+		default:
+			o[n++] = '?';
+			break;
+		}
+		if (*f)
+			f++;
+	}
+	o[n] = 0;
+	return n;
+}
+
+static int fmtx(char *o, int max, const char *f, ...)
+{
+	va_list ap;
+	int n;
+	va_start(ap, f);
+	n = fmt(o, max, f, ap);
+	va_end(ap);
+	return n;
+}
+
+static void L(const char *fmtstr, ...)
 {
 	static char line[640];
 	va_list ap;
@@ -94,12 +184,10 @@ static void L(const char *fmt, ...)
 
 	if (log_lock >= 0)
 		WaitSema(log_lock);
-	n = sprintf(line, "[%5u.%03u] ", t / 1000, t % 1000);
-	va_start(ap, fmt);
-	n += vsprintf(line + n, fmt, ap);
+	n = fmtx(line, sizeof(line), "[%5u.%03u] ", t / 1000, t % 1000);
+	va_start(ap, fmtstr);
+	n += fmt(line + n, sizeof(line) - n - 3, fmtstr, ap);
 	va_end(ap);
-	if (n > (int)sizeof(line) - 3)
-		n = sizeof(line) - 3;
 	line[n++] = '\r';
 	line[n++] = '\n';
 	line[n] = 0;
@@ -434,11 +522,22 @@ static int bin_read(u32 pos, u8 *dst, int size)
 {
 	int done = 0;
 
+	static u32 next_pos;
+	unsigned int t0 = now_ms(), ms, m0 = st.misses, w0 = st.waits;
+	int jump;
+
 	if (pos >= bin_size)
 		return 0;
 	if ((u32)size > bin_size - pos)
 		size = bin_size - pos;
 	st.reqs++;
+	jump = st.reqs > 1 && pos != next_pos;
+	if (jump)
+		st.jumps++;
+	if (!st.sz_min || (u32)size < st.sz_min)
+		st.sz_min = size;
+	if ((u32)size > st.sz_max)
+		st.sz_max = size;
 	while (done < size) {
 		u32 sect = pos / SECT, off = pos % SECT;
 		int base = sect - sect % BLK, i = get_block(base);
@@ -449,6 +548,16 @@ static int bin_read(u32 pos, u8 *dst, int size)
 		unpin(i);
 		done += n;
 		pos += n;
+	}
+	next_pos = pos;
+	ms = now_ms() - t0;
+	st.wait_sum += ms;
+	if (ms > st.wait_max)
+		st.wait_max = ms;
+	if (ms > 100) {
+		st.wait100++;
+		L("ESPERA: Ember pediu setor %u (%d bytes%s) e esperou %u ms: %u da leitora na hora, %u da leitura "
+		  "adiantada", (pos - done) / SECT, done, jump ? ", PULO" : "", ms, st.misses - m0, st.waits - w0);
 	}
 	return done;
 }
@@ -503,10 +612,11 @@ static void worker(void)
 		}
 		if (now_ms() - last_stat > STAT_MS) {
 			last_stat = now_ms();
-			L("pedidos %u: na memoria %u, esperou a leitura adiantada %u, leu na hora %u; adiantados %u; "
-			  "lentos %u (pior %u ms); erros %u; recuperacoes %u; manter girando %u (pior %u ms)",
-			  st.reqs, st.hits, st.waits, st.misses, st.pref, st.slow, st.worst, st.errors, st.recov,
-			  st.keeps, st.keep_worst);
+			L("pedidos %u (%u a %u bytes, %u pulos): esperas >100 ms %u, pior %u ms, total %u ms; blocos: na "
+			  "memoria %u, esperou adiantada %u, leu na hora %u; adiantados %u; leitora lenta %u (pior %u ms); "
+			  "erros %u; recuperacoes %u; manter girando %u (pior %u ms)",
+			  st.reqs, st.sz_min, st.sz_max, st.jumps, st.wait100, st.wait_max, st.wait_sum, st.hits, st.waits,
+			  st.misses, st.pref, st.slow, st.worst, st.errors, st.recov, st.keeps, st.keep_worst);
 		}
 		if (now_ms() - last_flush > LOG_FLUSH_MS) {
 			last_flush = now_ms();
@@ -518,7 +628,7 @@ static void worker(void)
 /* ------------------------------------------------------------------ .cue */
 static void msf(char *o, int lba)
 {
-	sprintf(o, "%02d:%02d:%02d", lba / 4500, (lba / 75) % 60, lba % 75);
+	fmtx(o, 16, "%02d:%02d:%02d", lba / 4500, (lba / 75) % 60, lba % 75);
 }
 
 static void make_cue(void)
@@ -526,16 +636,16 @@ static void make_cue(void)
 	char a[16];
 	int t, n = 0;
 
-	n += sprintf(cue + n, "FILE \"%s.bin\" BINARY\r\n", gname);
+	n += fmtx(cue + n, sizeof(cue) - n, "FILE \"%s.bin\" BINARY\r\n", gname);
 	for (t = t_first; t <= t_last && n < (int)sizeof(cue) - 128; t++) {
-		n += sprintf(cue + n, "  TRACK %02d %s\r\n", t,
+		n += fmtx(cue + n, sizeof(cue) - n, "  TRACK %02d %s\r\n", t,
 			     !is_data(t) ? "AUDIO" : data_mode == 1 ? "MODE1/2352" : "MODE2/2352");
 		if (!is_data(t) && t > t_first && is_data(t - 1) && t_lba[t] >= 150) {
 			msf(a, t_lba[t] - 150);
-			n += sprintf(cue + n, "    INDEX 00 %s\r\n", a);
+			n += fmtx(cue + n, sizeof(cue) - n, "    INDEX 00 %s\r\n", a);
 		}
 		msf(a, t_lba[t]);
-		n += sprintf(cue + n, "    INDEX 01 %s\r\n", a);
+		n += fmtx(cue + n, sizeof(cue) - n, "    INDEX 01 %s\r\n", a);
 	}
 	cue_len = n;
 	bin_size = (u32)t_lba[100] * SECT;
@@ -548,7 +658,7 @@ static void init_thread(void *arg)
 	unsigned int t0 = now_ms();
 	(void)arg;
 
-	L("vcd 1.1: pasta %s%s, jogo %s, %d blocos de cache", root, gdir, gname, nblocks);
+	L("======== vcd 1.2 (e03): pasta %s%s, jogo %s, %d blocos de cache ========", root, gdir, gname, nblocks);
 	L("memoria livre no IOP: %u KB", (unsigned int)QueryMaxFreeMemSize() / 1024);
 	while (nblocks >= 3 && !(cache = AllocSysMemory(ALLOC_FIRST, nblocks * BLK_BYTES, NULL)))
 		nblocks--;
@@ -932,8 +1042,8 @@ static int v_dread(iomanX_iop_file_t *f, iox_dirent_t *d)
 
 	if (!v)
 		return -9;
-	sprintf(cn, "%s.cue", gname);
-	sprintf(bn, "%s.bin", gname);
+	fmtx(cn, sizeof(cn), "%s.cue", gname);
+	fmtx(bn, sizeof(bn), "%s.bin", gname);
 	for (;;) {
 		r = iomanX_dread(v->fd, d);
 		if (r <= 0)
@@ -1040,9 +1150,9 @@ int _start(int argc, char *argv[])
 				nblocks = MAX_BLOCKS;
 		}
 	}
-	sprintf(cue_path, "%s/%s.cue", gdir, gname);
-	sprintf(bin_path, "%s/%s.bin", gdir, gname);
-	sprintf(log_path, "%s%s/VCD.TXT", root, gdir);
+	fmtx(cue_path, sizeof(cue_path), "%s/%s.cue", gdir, gname);
+	fmtx(bin_path, sizeof(bin_path), "%s/%s.bin", gdir, gname);
+	fmtx(log_path, sizeof(log_path), "%s%s/VCD.TXT", root, gdir);
 
 	lock = new_sema(1);
 	log_lock = new_sema(1);

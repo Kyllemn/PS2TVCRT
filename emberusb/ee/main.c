@@ -28,7 +28,7 @@
 
 #include "cdusb_ee.h"
 
-#define VERSAO		"e02"
+#define VERSAO		"e03"
 #define LOG_FILE	"mass:/EMBERUSB.TXT"
 #define CACHE_BLOCKS	"blocks=8"
 
