@@ -17,9 +17,12 @@ Para usar no seu lançador: copie `usbcd_bd.irx` para `modules/` e
 `bsd-usbcd.toml` para `config/` do Neutrino e chame com os argumentos acima.
 Argumentos do driver (no .toml, `args = [...]`): `speed=<KB/s>` (0 = não
 travar; padrão CD 706, DVD 1385), `keep=<ms>` (manter girando, padrão 2000),
-`cache=<KB>` (leitura adiantada no IOP, padrão 128; 0 desliga; diminua se um
-jogo ficar sem som ou travar por falta de memória do IOP), `fila=0` (desliga a
-fila completa no USB).
+`cache=<KB>` (leitura adiantada no IOP; padrão 0 = desligada), `fila=1` (liga a
+fila completa no USB; padrão desligada).
+
+n03: na n02 as duas técnicas ligadas juntas pioraram muito as cutscenes; o
+padrão voltou a ser o da n01 e cada técnica virou opção (o lançador escolhe:
+X normal, QUADRADO fila, TRIÂNGULO leitura adiantada).
 
 n02: fila completa no USB (comando + pedaços de 4 KB + resposta pedidos de uma
 vez, como o usbmass_bd) e leitura adiantada em anel enquanto o jogo processa.

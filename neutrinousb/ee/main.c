@@ -28,7 +28,7 @@
 
 #include "cdusb_ee.h"
 
-#define VERSAO		"n02"
+#define VERSAO		"n03"
 #define LOG_FILE	"mass:/NEUTRINOUSB.TXT"
 
 #define IRX(n)	extern unsigned char n[]; extern unsigned int size_##n
@@ -400,31 +400,52 @@ static int install(const char *path, const void *data, int size, int only_if_mis
 	return 0;
 }
 
-static const char toml_usbcd[] =
-	"# Name of loaded config, to show to user\n"
-	"name = \"USB CD/DVD drive (usbcd_bd)\"\n"
-	"\n"
-	"# Leitora de CD/DVD USB externa como dispositivo de bloco (NEUTRINOUSB).\n"
-	"# Uso: neutrino.elf -bsd=usbcd -bsdfs=bd -dvd=bdfs:usbcd0p0\n"
-	"\n"
-	"# Drivers this driver depends on (config file must exist)\n"
-	"depends = [\"i_bdm\"]\n"
-	"\n"
-	"# Modules to load\n"
-	"[[module]]\n"
-	"file = \"usbd_mini.irx\"\n"
-	"args = [\"thpri=7,8\"]\n"
-	"env = [\"LE\", \"EE\"]\n"
-	"[[module]]\n"
-	"file = \"usbcd_bd.irx\"\n"
-	"env = [\"LE\", \"EE\"]\n"
-	"\n"
-	"# Modules of the game that are faked/blocked\n"
-	"[[fake]]\n"
-	"file = \"USBD.IRX\"\n"
-	"name = \"USB_driver\"\n"
-	"version = 0x0204\n"
-	"startrv = 2 # 0=RESIDENT_END, 1=NO_RESIDENT_END, 2=REMOVABLE_END\n";
+/* bsd-usbcd.toml; 'args' vai para o usbcd_bd.irx (ex.: "\"fila=1\"") */
+static int write_toml(const char *path, const char *args)
+{
+	static char t[1200];
+	int n, fd;
+
+	n = snprintf(t, sizeof(t),
+		"# Name of loaded config, to show to user\n"
+		"name = \"USB CD/DVD drive (usbcd_bd)\"\n"
+		"\n"
+		"# Leitora de CD/DVD USB externa como dispositivo de bloco (NEUTRINOUSB).\n"
+		"# Uso: neutrino.elf -bsd=usbcd -bsdfs=bd -dvd=bdfs:usbcd0p0\n"
+		"# Opcoes do usbcd_bd.irx: fila=1 (fila completa no USB), cache=<KB> (leitura\n"
+		"# adiantada), speed=<KB/s>, keep=<ms>\n"
+		"\n"
+		"# Drivers this driver depends on (config file must exist)\n"
+		"depends = [\"i_bdm\"]\n"
+		"\n"
+		"# Modules to load\n"
+		"[[module]]\n"
+		"file = \"usbd_mini.irx\"\n"
+		"args = [\"thpri=7,8\"]\n"
+		"env = [\"LE\", \"EE\"]\n"
+		"[[module]]\n"
+		"file = \"usbcd_bd.irx\"\n"
+		"%s%s%s"
+		"env = [\"LE\", \"EE\"]\n"
+		"\n"
+		"# Modules of the game that are faked/blocked\n"
+		"[[fake]]\n"
+		"file = \"USBD.IRX\"\n"
+		"name = \"USB_driver\"\n"
+		"version = 0x0204\n"
+		"startrv = 2 # 0=RESIDENT_END, 1=NO_RESIDENT_END, 2=REMOVABLE_END\n",
+		args[0] ? "args = [" : "", args, args[0] ? "]\n" : "");
+	fd = fileXioOpen(path, FIO_O_WRONLY | FIO_O_CREAT | FIO_O_TRUNC, 0666);
+	if (fd < 0)
+		return -1;
+	if (fileXioWrite(fd, t, n) != n) {
+		fileXioClose(fd);
+		return -1;
+	}
+	fileXioClose(fd);
+	L("[INSTALAR] %s gravado (opcoes: %s)", path, args[0] ? args : "nenhuma");
+	return 0;
+}
 
 static const char *neutrino_paths[] = {
 	"mass:/neutrino/neutrino.elf", "mass:/APPS/neutrino/neutrino.elf", "mass:/APP/neutrino/neutrino.elf",
@@ -434,7 +455,9 @@ static const char *neutrino_paths[] = {
 int main(int argc, char *argv[])
 {
 	cdusb_status st;
-	static char ndir[160], path[220], cfgdir[200], moddir[200], code[32], vol[33], cwd[200];
+	static char ndir[160], path[220], cfgdir[200], moddir[200], code[32], vol[33], cwd[200], tomlpath[220];
+	const char *mode_args = "", *mode_name = "NORMAL (COMO A N01)";
+	u16 b;
 	const char *np = NULL;
 	char *nargv[4];
 	int r, i, fd, flat;
@@ -499,8 +522,8 @@ int main(int argc, char *argv[])
 		fail("NAO CONSEGUI GRAVAR O usbcd_bd.irx NA PASTA DO NEUTRINO");
 	snprintf(path, sizeof(path), "%s/usbd_mini.irx", moddir);
 	install(path, irx_usbd_mini, size_irx_usbd_mini, 1);
-	snprintf(path, sizeof(path), "%s/bsd-usbcd.toml", cfgdir);
-	if (install(path, toml_usbcd, sizeof(toml_usbcd) - 1, 0) < 0)
+	snprintf(tomlpath, sizeof(tomlpath), "%s/bsd-usbcd.toml", cfgdir);
+	if (write_toml(tomlpath, "") < 0)
 		fail("NAO CONSEGUI GRAVAR O bsd-usbcd.toml NA PASTA DO NEUTRINO");
 
 	/* leitora e disco */
@@ -534,10 +557,32 @@ int main(int argc, char *argv[])
 	S("   JOGO:     %s  (%s)", code[0] ? code : "?", vol[0] ? vol : "?");
 	S("   NEUTRINO: %s", np);
 	S(" ");
-	S("   X = JOGAR      O = SAIR");
+	S("   X         = JOGAR (NORMAL, COMO A N01)");
+	S("   QUADRADO  = JOGAR TESTE A: FILA COMPLETA NO USB");
+	S("   TRIANGULO = JOGAR TESTE B: LEITURA ADIANTADA (128 KB)");
+	S("   O         = SAIR");
 	log_save();
-	if (!ask())
-		Exit(0);
+	for (;;) {
+		b = pad_new();
+		if (b & PAD_CIRCLE)
+			Exit(0);
+		if (b & PAD_CROSS)
+			break;
+		if (b & PAD_SQUARE) {
+			mode_args = "\"fila=1\"";
+			mode_name = "TESTE A: FILA COMPLETA";
+			break;
+		}
+		if (b & PAD_TRIANGLE) {
+			mode_args = "\"cache=128\"";
+			mode_name = "TESTE B: LEITURA ADIANTADA";
+			break;
+		}
+		ee_wait_ms(16);
+	}
+	S("   MODO: %s", mode_name);
+	if (write_toml(tomlpath, mode_args) < 0)
+		fail("NAO CONSEGUI GRAVAR O bsd-usbcd.toml NA PASTA DO NEUTRINO");
 
 	snprintf(cwd, sizeof(cwd), "-cwd=%s", ndir);
 	nargv[0] = "-bsd=usbcd";

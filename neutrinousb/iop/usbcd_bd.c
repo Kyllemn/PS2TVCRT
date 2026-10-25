@@ -28,13 +28,15 @@
  *
  * Argumentos: speed=<KB/s> (0 = nao travar; padrao: CD 706, DVD 1385)
  *             keep=<ms> (0 = sem manter girando; padrao 2000)
- *             cache=<KB> (leitura adiantada; 0 = desligada; padrao 128)
- *             fila=0 (desliga a fila completa)
+ *             cache=<KB> (leitura adiantada; padrao 0 = desligada)
+ *             fila=1 (liga a fila completa; padrao desligada)
+ * n03: na n02 as duas tecnicas ligadas pioraram muito as cutscenes; o padrao
+ *      volta a ser o da n01 e cada uma vira opcao para testar separada.
  */
 #include "irx_imports.h"
 
 #define MODNAME "usbcd_bd"
-IRX_ID(MODNAME, 1, 2);
+IRX_ID(MODNAME, 1, 3);
 
 #define SUB_ATAPI	0x02
 #define SUB_SFF8070	0x05
@@ -71,12 +73,12 @@ static u8 small[64] __attribute__((aligned(64)));
 static u8 bounce[SECT] __attribute__((aligned(64)));
 
 /* fila completa (n02) */
-static int use_queue = 1;
+static int use_queue;				/* n03: desligado (fila=1 liga) */
 static volatile int q_total, q_done, q_err;
 
 /* leitura adiantada (n02) */
 #define PF_CHUNK	16			/* setores por comando da leitura adiantada */
-static int cache_kb = 128;
+static int cache_kb;				/* n03: desligado (cache=KB liga) */
 static u8 *pf_buf;
 static u32 pf_cap;				/* setores que cabem */
 static volatile u32 pf_lba, pf_have, pf_gen;	/* janela: [pf_lba, pf_lba + pf_have) valida */
