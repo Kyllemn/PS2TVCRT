@@ -54,16 +54,27 @@ typedef struct {
 void diag_run(int dev, const cdusb_dev_info *info, diag_result *r);
 
 /* teste PS1 (plano do Ember: disco do PS1 como .bin cru) */
+#define PS1_SEEKS	5
+#define PS1_MOTORS	3
+typedef struct {
+	int cuts, stalls, min_ms, max_ms;	/* cortes (cache vazio), comandos > 300 ms */
+	int jumps, jwait_sum, jwait_max;	/* pulos: espera pelo 1o bloco */
+} ps1_pace;
+
 typedef struct {
 	char vendor[9], product[17];
 	int disc, data_tracks, audio_tracks;
 	char system[40];
 	int raw_ok, raw_mode, subq_ok, cur_kbs;
 	int raw_bps16, raw_max16, raw_bps8, raw_max8;	/* dados crus em sequencia */
-	int cuts, pace_min_ms, pace_max_ms;		/* tempo real 2x com cache pequeno */
+	int st_n[2], st_max[2], st_done;		/* travadas frente/volta: [0] = 16, [1] = 8 setores */
+	ps1_pace seq, jmp;				/* tempo real 2x: em sequencia / com pulos */
 	int da_avg, da_max, ad_avg, ad_max;		/* troca dados->musica / musica->dados */
+	int audio_bps, audio_max;
 	int pregap_raw, pregap_audio;			/* pausa antes da musica (de 3 setores) */
-	int seek_avg, seek_max, spinup_ms;
+	int seek_dist[PS1_SEEKS], seek_ms[PS1_SEEKS];
+	int motor_ms[PS1_MOTORS];			/* parado 3, 6, 15 s */
+	int recoveries;					/* leitora reiniciou e voltou */
 	int stuck, gone, aborted;
 } ps1_result;
 

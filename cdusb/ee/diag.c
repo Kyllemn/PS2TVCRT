@@ -921,85 +921,235 @@ void diag_summary(const diag_result *r, const char *log_file)
 
 /* ================================================================== PS1 (EMBER)
  * Teste para o plano do Ember: o disco do PS1 vira um .bin de 2352 bytes por
- * setor lido da leitora. Mede o que decide se da: leitura crua dos dados,
- * velocidade crua, tempo real a 2x com cache pequeno (o do IOP), troca
- * musica<->dados, busca, pausa antes da musica, subcanal Q (LibCrypt).
+ * setor lido da leitora (c07). A c08 faz a fase toda de uma vez:
+ *  1. setor cru, subcanal Q, velocidade crua (8 e 16 setores);
+ *  2. travadas: le em sequencia, volta para tras e le de novo, em 4 pontos
+ *     do disco, com 8 e 16 setores (a c07 travou 1,5-2 s depois de voltar);
+ *  3. tempo real a 2x com cache de 220 KB: 60 s em sequencia e 60 s com
+ *     pulos a cada 5 s (como o jogo carregando coisas);
+ *  4. troca musica <-> dados e pausa antes da musica (se o disco tiver musica);
+ *  5. busca em varias distancias;
+ *  6. motor: parado 3, 6 e 15 s;
+ * Se a leitora reiniciar no meio, espera ela voltar, trava a velocidade de
+ * novo e repete a leitura (conta como recuperacao).
  */
 #define PS1_RATE	150		/* PS1 a 2x: 150 setores por segundo */
 #define PS1_AHEAD	96		/* cache do IOP: 96 setores crus = 220 KB */
-#define PS1_PACE_SECS	20
 #define PS1_SWITCHES	4
+#define STALL_MS	300
 
 static ps1_result *pr;
+static unsigned rnd_state = 12345;
 
-/* consumo em tempo real de 'rate' setores/s, lendo 16 por vez para ficar
- * 'ahead' setores a frente. Devolve cortes (-1 = falhou). */
-static int pace_gen(int kind, int start, int end, int rate, int ahead, int secs, int *min_ms, int *max_ms)
+static unsigned rnd(void)
 {
-	int lba = start, produced = 0, before, consumed, a, min_a = 1 << 30, cuts = 0, in_cut = 0, r, c;
-	u64 t0, now, c0;
+	rnd_state = rnd_state * 1103515245u + 12345u;
+	return rnd_state >> 8;
+}
 
-	*min_ms = *max_ms = -1;
-	if (end - start < rate * secs + ahead + 32)
-		return -1;
-	while (produced < ahead) {
-		if (bench_read(kind, lba, 16) != CDUSB_OK)
-			return -1;
-		lba += 16;
-		produced += 16;
-	}
-	*max_ms = 0;
-	t0 = ee_now_us();
-	for (;;) {
-		now = ee_now_us();
-		if (now - t0 >= (u64)secs * 1000000)
+/* a leitora reiniciou ou parou de responder: espera voltar e trava de novo */
+static int recover(const char *why)
+{
+	u64 t0 = ee_now_us();
+
+	pr->recoveries++;
+	L("[PS1] RECUPERANDO (%s)...", why);
+	log_save();
+	ee_wait_ms(500);
+	if (res->stuck)
+		return 0;
+	res->gone = 0;
+	while (ee_now_us() - t0 < 20000000ull) {
+		cdusb_status st;
+		if (cdusb_get_status(&st) == 0 && st.dev[dev].state == CDUSB_DEV_READY)
 			break;
-		consumed = (int)((now - t0) * rate / 1000000);
-		if (produced - consumed >= ahead) {
-			ee_wait_ms(2);
-			continue;
-		}
-		before = produced;
-		c0 = ee_now_us();
-		r = bench_read(kind, lba, 16);
-		now = ee_now_us();
-		c = (int)((now - c0) / 1000);
-		if (r != CDUSB_OK) {
-			lcmd("TEMPO REAL PS1", r);
-			return -1;
-		}
-		lba += 16;
-		produced += 16;
-		a = before - (int)((now - t0) * rate / 1000000);
-		if (a < min_a)
-			min_a = a;
-		if (a < 0) {
-			if (!in_cut)
-				cuts++;
-			in_cut = 1;
-		} else
-			in_cut = 0;
-		if (c > *max_ms)
-			*max_ms = c;
-		if (c > 300)
-			L("[PS1] LENTO setor %d em %d ms (folga %d ms)", lba - 16, c, a * 1000 / rate);
+		ee_wait_ms(300);
 	}
-	*min_ms = min_a * 1000 / rate;
-	return cuts;
+	if (!wait_ready())
+		return 0;
+	set_speed(706, 0, NULL);
+	L("[PS1] leitora de volta em %d ms", (int)((ee_now_us() - t0) / 1000));
+	return 1;
+}
+
+/* leitura do teste: uma nova tentativa depois de recuperar */
+static int pread(int kind, int lba, int n)
+{
+	int r = bench_read(kind, lba, n), key = (R.sense >> 16) & 0x0f;
+
+	if (r == CDUSB_OK)
+		return r;
+	if (r == CDUSB_E_TIMEOUT || r == CDUSB_E_USB || r == CDUSB_PHASE || r == CDUSB_E_NODEV ||
+	    (r == CDUSB_CHECK && (key == 6 || key == 2))) {
+		lcmd("leitura PS1", r);
+		if (!recover(rtxt(r)))
+			return r;
+		r = bench_read(kind, lba, n);
+	}
+	if (r != CDUSB_OK)
+		lcmd("leitura PS1", r);
+	return r;
 }
 
 static int timed(int kind, int lba, int n)
 {
 	u64 t0 = ee_now_us();
-	int r = bench_read(kind, lba, n);
+	int r = pread(kind, lba, n);
 	int ms = (int)((ee_now_us() - t0) / 1000);
-	if (r != CDUSB_OK) {
-		lcmd(kind == 1 ? "troca: musica" : "troca: dados", r);
-		return -1;
-	}
-	return ms;
+	return r == CDUSB_OK ? ms : -1;
 }
 
+static int dead(void)
+{
+	log_save();
+	return res->stuck || res->gone;
+}
+
+/* ------------------------------------------------------------------ 2. travadas */
+/* le 'count' setores de 'per' em 'per'; devolve o pior comando (-1 = falhou) */
+static int seq_read(int lba, int count, int per, const char *what, int *stalls)
+{
+	int i, ms, worst = 0;
+
+	for (i = 0; i < count; i += per) {
+		ms = timed(2, lba + i, per);
+		if (ms < 0)
+			return -1;
+		if (ms > STALL_MS) {
+			(*stalls)++;
+			L("[TRAVADA] %s: setor %d (comando %d) em %d ms", what, lba + i, i / per, ms);
+		}
+		if (ms > worst)
+			worst = ms;
+	}
+	return worst;
+}
+
+static void ps1_stall(int fd)
+{
+	int lo = trk[fd].lba, hi = safe_end(fd), span = hi - lo, p, k, j, w;
+	static const int pers[2] = {16, 8};
+	char what[64];
+
+	for (k = 0; k < 2; k++)
+		pr->st_n[k] = pr->st_max[k] = 0;
+	for (j = 0; j < 4; j++) {
+		p = j == 0 ? lo : j == 1 ? lo + span / 4 : j == 2 ? lo + span / 2 : lo + span * 9 / 10;
+		if (p + 800 > hi)
+			continue;
+		for (k = 0; k < 2; k++) {
+			int per = pers[k];
+			snprintf(what, sizeof(what), "%d setores, ponto %d, em frente", per, j + 1);
+			w = seq_read(p, 400, per, what, &pr->st_n[k]);
+			if (w < 0)
+				return;
+			if (w > pr->st_max[k]) pr->st_max[k] = w;
+			snprintf(what, sizeof(what), "%d setores, ponto %d, volta 400", per, j + 1);
+			w = seq_read(p, 400, per, what, &pr->st_n[k]);		/* volta para tras */
+			if (w < 0)
+				return;
+			if (w > pr->st_max[k]) pr->st_max[k] = w;
+			snprintf(what, sizeof(what), "%d setores, ponto %d, volta 200", per, j + 1);
+			w = seq_read(p + 200, 200, per, what, &pr->st_n[k]);	/* volta curta */
+			if (w < 0)
+				return;
+			if (w > pr->st_max[k]) pr->st_max[k] = w;
+			L("[TRAVADA] %d setores, ponto %d (setor %d): ate aqui %d travadas, pior %d ms", per, j + 1, p,
+			  pr->st_n[k], pr->st_max[k]);
+			if (dead())
+				return;
+		}
+	}
+	pr->st_done = 1;
+}
+
+/* ------------------------------------------------------------------ 3. tempo real */
+/* consome 'rate' setores/s com cache de 'ahead'; jump_s > 0: pula para um ponto
+ * qualquer a cada jump_s segundos (o cache comeca vazio, o jogo espera o 1o bloco) */
+static void pace2(int lo, int hi, int secs, int jump_s, ps1_pace *o)
+{
+	int lba = lo, produced = 0, before, a, min_a = 1 << 30, in_cut = 0, c, jw;
+	u64 now = ee_now_us(), tend, tnext, base, c0;
+
+	memset(o, 0, sizeof(*o));
+	o->min_ms = o->max_ms = -1;
+	o->cuts = -1;
+	if (hi - lo < PS1_RATE * (jump_s ? jump_s : secs) + PS1_AHEAD + 64)
+		return;
+	while (produced < PS1_AHEAD) {
+		if (pread(2, lba, 16) != CDUSB_OK)
+			return;
+		lba += 16;
+		produced += 16;
+	}
+	o->cuts = 0;
+	o->max_ms = 0;
+	now = base = ee_now_us();
+	tend = now + (u64)secs * 1000000;
+	tnext = jump_s ? now + (u64)jump_s * 1000000 : ~0ull;
+	while ((now = ee_now_us()) < tend) {
+		if (now >= tnext) {
+			int np = lo + (int)(rnd() % (unsigned)(hi - lo - PS1_RATE * jump_s - PS1_AHEAD - 64));
+			jw = timed(2, np, 16);
+			if (jw < 0) {
+				o->cuts = -1;
+				return;
+			}
+			o->jumps++;
+			o->jwait_sum += jw;
+			if (jw > o->jwait_max)
+				o->jwait_max = jw;
+			if (jw > STALL_MS)
+				L("[TEMPO REAL] pulo para o setor %d: 1o bloco em %d ms", np, jw);
+			lba = np + 16;
+			produced = 16;
+			in_cut = 0;
+			base = ee_now_us();
+			tnext = base + (u64)jump_s * 1000000;
+			continue;
+		}
+		if (produced - (int)((now - base) * PS1_RATE / 1000000) >= PS1_AHEAD) {
+			ee_wait_ms(2);
+			continue;
+		}
+		if (lba + 16 > hi)
+			lba = lo;
+		before = produced;
+		c0 = ee_now_us();
+		if (pread(2, lba, 16) != CDUSB_OK) {
+			o->cuts = -1;
+			return;
+		}
+		now = ee_now_us();
+		c = (int)((now - c0) / 1000);
+		lba += 16;
+		produced += 16;
+		a = before - (int)((now - base) * PS1_RATE / 1000000);
+		if (a < min_a)
+			min_a = a;
+		if (a < 0) {
+			if (!in_cut) {
+				o->cuts++;
+				L("[TEMPO REAL] CORTE no setor %d (comando de %d ms)", lba - 16, c);
+			}
+			in_cut = 1;
+		} else
+			in_cut = 0;
+		if (c > o->max_ms)
+			o->max_ms = c;
+		if (c > STALL_MS) {
+			o->stalls++;
+			L("[TEMPO REAL] LENTO setor %d em %d ms (folga %d ms)", lba - 16, c, a * 1000 / PS1_RATE);
+		}
+	}
+	o->min_ms = min_a == (1 << 30) ? -1 : min_a * 1000 / PS1_RATE;
+	L("[TEMPO REAL] %d s%s: cortes %d, travadas %d, menor folga %d ms, pior comando %d ms; pulos %d, 1o bloco "
+	  "media %d ms, pior %d ms",
+	  secs, jump_s ? " com pulos" : " em sequencia", o->cuts, o->stalls, o->min_ms, o->max_ms, o->jumps,
+	  o->jumps ? o->jwait_sum / o->jumps : 0, o->jwait_max);
+}
+
+/* ------------------------------------------------------------------ 4. musica */
 static void ps1_switch(int fd, int fa)
 {
 	int d = trk[fd].lba + 3000, a = trk[fa].lba + 750, i, ms;
@@ -1033,6 +1183,8 @@ static void ps1_switch(int fd, int fa)
 	pr->ad_avg /= PS1_SWITCHES;
 	L("[PS1] troca dados->musica: media %d ms, pior %d ms; musica->dados: media %d ms, pior %d ms",
 	  pr->da_avg, pr->da_max, pr->ad_avg, pr->ad_max);
+	/* musica em sequencia (o Ember toca a faixa lendo o .bin) */
+	pr->audio_bps = bench(1, fa, 16, BENCH_MS, &pr->audio_max, NULL);
 }
 
 /* pausa de 150 setores antes da 1a musica depois dos dados: o que a leitora entrega? */
@@ -1058,11 +1210,72 @@ static void ps1_pregap(int fd)
 	}
 }
 
+/* ------------------------------------------------------------------ 5. busca */
+static void ps1_seek(int fd)
+{
+	int lo = trk[fd].lba, hi = safe_end(fd), base = lo + 1000, i, k, ms, sum;
+	int dist[PS1_SEEKS];
+
+	dist[0] = 2000;
+	dist[1] = (hi - lo) / 10;
+	dist[2] = (hi - lo) / 2;
+	dist[3] = (hi - lo) * 9 / 10;
+	dist[4] = hi - 600 - base;
+	for (i = 0; i < PS1_SEEKS; i++) {
+		pr->seek_ms[i] = -1;
+		pr->seek_dist[i] = dist[i];
+		if (base + dist[i] >= hi || dist[i] <= 0)
+			continue;
+		for (k = 0, sum = 0; k < 3; k++) {
+			if (timed(2, base + k * 32, 1) < 0)	/* posiciona */
+				return;
+			ms = timed(2, base + dist[i] + k * 32, 1);
+			if (ms < 0)
+				return;
+			sum += ms;
+		}
+		pr->seek_ms[i] = sum / 3;
+		L("[BUSCA] pulo de %d setores (%d MB): media %d ms", dist[i], (int)((u64)dist[i] * 2352 >> 20),
+		  pr->seek_ms[i]);
+	}
+}
+
+/* ------------------------------------------------------------------ 6. motor */
+static void ps1_motor(int fd)
+{
+	static const int waits[PS1_MOTORS] = {3, 6, 15};
+	int lba = trk[fd].lba + 5000, i;
+	u64 t0;
+
+	for (i = 0; i < PS1_MOTORS; i++)
+		pr->motor_ms[i] = -1;
+	if (lba + 4000 >= safe_end(fd))
+		return;
+	for (i = 0; i < PS1_MOTORS; i++) {
+		if (timed(2, lba, 1) < 0)
+			return;
+		S("   MOTOR: %d S SEM LER NADA...  (O = PULAR)", waits[i]);
+		t0 = ee_now_us();
+		while (ee_now_us() - t0 < (u64)waits[i] * 1000000) {
+			if (pad_new() & PAD_CIRCLE) {
+				L("[MOTOR] pulado pelo usuario");
+				return;
+			}
+			ee_wait_ms(16);
+		}
+		pr->motor_ms[i] = timed(2, lba + 1000, 1);
+		L("[MOTOR] depois de %d s parado: %d ms", waits[i], pr->motor_ms[i]);
+		lba += 1000;
+	}
+}
+
+/* ------------------------------------------------------------------ roteiro */
 void ps1_run(int d, const cdusb_dev_info *info, ps1_result *p)
 {
 	static diag_result dr;
 	speed_result s;
 	int fd, fa, lba, r;
+	u64 t_all = ee_now_us();
 
 	dev = d;
 	sub = info->sub;
@@ -1071,15 +1284,15 @@ void ps1_run(int d, const cdusb_dev_info *info, ps1_result *p)
 	memset(&dr, 0, sizeof(dr));
 	memset(p, 0, sizeof(*p));
 	data_raw = 0;
-	p->raw_bps8 = p->raw_bps16 = p->cuts = p->pace_min_ms = p->pace_max_ms = -1;
-	p->seek_avg = p->seek_max = p->da_avg = p->ad_avg = -1;
-	p->pregap_raw = p->pregap_audio = p->spinup_ms = -1;
+	p->raw_bps8 = p->raw_bps16 = p->da_avg = p->audio_bps = -1;
+	p->pregap_raw = p->pregap_audio = -1;
+	p->seq.cuts = p->jmp.cuts = -1;
 	memcpy(p->vendor, info->inquiry + 8, 8);
 	memcpy(p->product, info->inquiry + 16, 16);
 
-	screen_title("TESTE PS1 (EMBER)");
+	screen_title("TESTE PS1 (EMBER) - FASE COMPLETA, ~5 MIN");
 	S("   LEITOR: %s %s", p->vendor, p->product);
-	L("[PS1] ---------------- teste PS1: disp %d, %04X:%04X ----------------", d, info->vid, info->pid);
+	L("[PS1] ---------------- teste PS1 c08: disp %d, %04X:%04X ----------------", d, info->vid, info->pid);
 	S("   ESPERANDO O DISCO...");
 	if (!wait_ready())
 		goto out;
@@ -1093,34 +1306,31 @@ void ps1_run(int d, const cdusb_dev_info *info, ps1_result *p)
 	p->audio_tracks = dr.audio_tracks;
 	identify();			/* pode falhar em modo 2 (READ(10)); o setor cru confere abaixo */
 	strcpy(p->system, dr.system);
-	S("   DISCO: %s, %d FAIXAS DE DADOS, %d DE MUSICA", p->system, p->data_tracks, p->audio_tracks);
-	log_save();
 	fd = first_of(1);
 	if (fd < 0) {
 		S("   SEM FAIXA DE DADOS: NAO E JOGO");
 		goto out;
 	}
 
-	/* setor cru (o que vai no .bin) */
+	/* 1. setor cru (o que vai no .bin) e subcanal Q */
+	S("   1/6 SETOR CRU, SUBCANAL E VELOCIDADE...");
 	r = readcd(trk[fd].lba + 16, 1, 0, 0xF8, 0);
 	lcmd("READ CD cru (setor 16)", r);
 	if (r == CDUSB_OK) {
+		const u8 *u;
 		p->raw_ok = buf[0] == 0 && buf[1] == 0xFF && buf[10] == 0xFF && buf[11] == 0;
 		p->raw_mode = buf[15];
 		hex16("setor 16 cru", buf);
 		L("[PS1] setor cru: sincronismo %s, modo %d, subcabecalho %02X %02X %02X %02X", p->raw_ok ? "OK" : "ERRADO",
 		  buf[15], buf[16], buf[17], buf[18], buf[19]);
-		/* ISO9660 dentro do setor cru (modo 2: dados em +24, modo 1: em +16) */
-		{
-			const u8 *u = buf + (buf[15] == 2 ? 24 : 16);
-			if (memcmp(u + 1, "CD001", 5) == 0) {
-				L("[PS1] ISO9660 (cru): sistema \"%.32s\" volume \"%.32s\"", u + 8, u + 40);
-				if (find_str(u + 8, 32, "PLAYSTATION") >= 0)
-					strcpy(p->system, "PLAYSTATION");
-			}
+		u = buf + (buf[15] == 2 ? 24 : 16);
+		if (memcmp(u + 1, "CD001", 5) == 0) {
+			L("[PS1] ISO9660 (cru): sistema \"%.32s\" volume \"%.32s\"", u + 8, u + 40);
+			if (find_str(u + 8, 32, "PLAYSTATION") >= 0)
+				strcpy(p->system, "PLAYSTATION");
 		}
 	}
-	/* subcanal Q nos dados (LibCrypt depende dele) */
+	S("   DISCO: %s, %d FAIXAS DE DADOS, %d DE MUSICA", p->system, p->data_tracks, p->audio_tracks);
 	lba = trk[fd].lba + 1000;
 	r = readcd(lba, 1, 0, 0xF8, 2);
 	lcmd("READ CD cru + Q (dados)", r);
@@ -1129,58 +1339,63 @@ void ps1_run(int d, const cdusb_dev_info *info, ps1_result *p)
 		hex16("Q dos dados", q);
 		p->subq_ok = (q[0] & 0x0f) == 1;
 	}
-	log_save();
-	if (dr.stuck || dr.gone)
+	if (dead() || !p->raw_ok)
 		goto out;
-
-	S("   TRAVANDO A VELOCIDADE (PEDE 4X)...");
 	memset(&s, 0, sizeof(s));
 	set_speed(706, 0, &s);
 	get_caps();
 	p->cur_kbs = dr.cur_kbs;
-	if (dr.stuck || dr.gone)
+	data_raw = 1;
+	p->raw_bps16 = bench(2, fd, 16, BENCH_MS, &p->raw_max16, NULL);
+	p->raw_bps8 = bench(2, fd, 8, BENCH_MS, &p->raw_max8, NULL);
+	if (dead())
 		goto out;
 
-	if (p->raw_ok) {
-		S("   VELOCIDADE DOS DADOS CRUS...");
-		p->raw_bps16 = bench(2, fd, 16, BENCH_MS, &p->raw_max16, NULL);
-		p->raw_bps8 = bench(2, fd, 8, BENCH_MS, &p->raw_max8, NULL);
-		log_save();
-		if (dr.stuck || dr.gone)
-			goto out;
-		S("   TEMPO REAL A 2X COM CACHE DE 220 KB (%d S)...", PS1_PACE_SECS);
-		p->cuts = pace_gen(2, trk[fd].lba + 500, safe_end(fd), PS1_RATE, PS1_AHEAD, PS1_PACE_SECS,
-				   &p->pace_min_ms, &p->pace_max_ms);
-		L("[PS1] tempo real 2x: cortes %d, menor folga %d ms (de %d), pior comando %d ms", p->cuts,
-		  p->pace_min_ms, PS1_AHEAD * 1000 / PS1_RATE, p->pace_max_ms);
-		log_save();
-	}
+	/* 2. travadas depois de voltar para tras */
+	S("   2/6 TRAVADAS: FRENTE E VOLTA EM 4 PONTOS DO DISCO...");
+	ps1_stall(fd);
+	if (dead())
+		goto out;
+
+	/* 3. tempo real */
+	S("   3/6 TEMPO REAL 2X, CACHE 220 KB: 60 S EM SEQUENCIA...");
+	pace2(trk[fd].lba + 500, safe_end(fd), 60, 0, &p->seq);
+	if (dead())
+		goto out;
+	S("   3/6 TEMPO REAL 2X: 60 S COM PULOS A CADA 5 S...");
+	pace2(trk[fd].lba + 500, safe_end(fd), 60, 5, &p->jmp);
+	if (dead())
+		goto out;
+
+	/* 4. musica */
 	fa = longest_audio();
 	if (fa >= 0) {
-		S("   TROCA MUSICA <-> DADOS (%d VEZES)...", PS1_SWITCHES);
+		S("   4/6 TROCA MUSICA <-> DADOS...");
 		ps1_switch(fd, fa);
 		ps1_pregap(fd);
-		log_save();
-		if (dr.stuck || dr.gone)
+		if (dead())
 			goto out;
-	}
-	S("   BUSCA...");
-	data_raw = p->raw_ok;
-	test_seek(&s, 0);
-	p->seek_avg = s.seek_avg;
-	p->seek_max = s.seek_max;
-	log_save();
+	} else
+		S("   4/6 SEM FAIXAS DE MUSICA NESTE DISCO: PULADO");
+
+	/* 5. busca */
+	S("   5/6 BUSCA EM VARIAS DISTANCIAS...");
+	ps1_seek(fd);
+	if (dead())
+		goto out;
+
+	/* 6. motor (sem a trava: como fica no dia a dia, com a trava aplicada) */
+	S("   6/6 MOTOR...");
+	ps1_motor(fd);
 
 	S("   VOLTANDO O LEITOR PARA A VELOCIDADE PADRAO...");
 	set_speed(0xFFFF, 1, NULL);
-	test_motor();
-	p->spinup_ms = dr.spinup_ms;
 out:
 	data_raw = 0;
 	p->stuck = dr.stuck;
 	p->gone = dr.gone;
 	p->aborted = dr.aborted;
-	L("[PS1] fim do teste");
+	L("[PS1] fim do teste (%d s)", (int)((ee_now_us() - t_all) / 1000000));
 	log_save();
 }
 
@@ -1196,39 +1411,57 @@ static const char *kbs_x(int bps, char *o)
 	return o;
 }
 
+static void pace_line(const char *what, const ps1_pace *o)
+{
+	if (o->cuts < 0) {
+		S("   %s: -", what);
+		return;
+	}
+	S("   %s: %d CORTES, %d TRAVADAS, FOLGA MIN %d MS, PIOR %d MS", what, o->cuts, o->stalls, o->min_ms,
+	  o->max_ms);
+	if (o->jumps)
+		S("      %d PULOS: 1O BLOCO MEDIA %d MS, PIOR %d MS", o->jumps, o->jwait_sum / o->jumps, o->jwait_max);
+}
+
 void ps1_summary(const ps1_result *p, const char *log_file)
 {
 	char a[32], b[32];
+	int i;
 
 	screen_title("RESULTADO PS1 (EMBER)");
-	S("   LEITOR:   %s %s", p->vendor, p->product);
+	S("   LEITOR: %s %s", p->vendor, p->product);
 	if (p->gone)
 		S("   O LEITOR DESCONECTOU NO MEIO DO TESTE: FALTA DE ENERGIA?");
 	if (p->stuck)
 		S("   O LEITOR TRAVOU (SEM RESPOSTA). DESLIGUE E LIGUE O LEITOR.");
 	if (p->aborted)
 		S("   TESTE INTERROMPIDO");
+	if (p->recoveries)
+		S("   LEITORA REINICIOU %d VEZ(ES) NO MEIO (RECUPERADA)", p->recoveries);
 	if (p->disc) {
-		S("   DISCO:    %s (%d DADOS, %d MUSICA)", p->system, p->data_tracks, p->audio_tracks);
-		S("   SETOR CRU: %s, MODO %d   SUBCANAL Q: %s", p->raw_ok ? "OK" : "NAO", p->raw_mode,
-		  p->subq_ok ? "OK" : "NAO");
-		if (p->cur_kbs > 0)
-			S("   LEITOR TRAVADO EM %dX", (p->cur_kbs + 88) / 176);
-		S("   CRU 16 SETORES: %s, PIOR %d MS", kbs_x(p->raw_bps16, a), p->raw_max16);
-		S("   CRU 8 SETORES:  %s, PIOR %d MS", kbs_x(p->raw_bps8, b), p->raw_max8);
-		S("   (O PS1 PRECISA DE 2X = 344 KB/S)");
-		if (p->cuts >= 0)
-			S("   TEMPO REAL 2X: %d CORTES, MENOR FOLGA %d MS, PIOR %d MS", p->cuts, p->pace_min_ms,
-			  p->pace_max_ms);
+		S("   DISCO: %s (%d DADOS, %d MUSICA)", p->system, p->data_tracks, p->audio_tracks);
+		S("   SETOR CRU: %s, MODO %d   SUBCANAL Q: %s   LEITOR EM %dX", p->raw_ok ? "OK" : "NAO", p->raw_mode,
+		  p->subq_ok ? "OK" : "NAO", p->cur_kbs > 0 ? (p->cur_kbs + 88) / 176 : 0);
+		S("   CRU 16: %s PIOR %d MS   CRU 8: %s PIOR %d MS", kbs_x(p->raw_bps16, a), p->raw_max16,
+		  kbs_x(p->raw_bps8, b), p->raw_max8);
+		if (p->st_done || p->st_n[0] || p->st_n[1])
+			S("   TRAVADAS FRENTE/VOLTA: 16 SET. %d (PIOR %d MS), 8 SET. %d (PIOR %d MS)", p->st_n[0],
+			  p->st_max[0], p->st_n[1], p->st_max[1]);
+		pace_line("2X SEQUENCIA 60 S", &p->seq);
+		pace_line("2X COM PULOS 60 S", &p->jmp);
 		if (p->da_avg >= 0)
 			S("   TROCA DADOS->MUSICA %d MS (PIOR %d), MUSICA->DADOS %d MS (PIOR %d)", p->da_avg, p->da_max,
 			  p->ad_avg, p->ad_max);
+		if (p->audio_bps > 0)
+			S("   MUSICA EM SEQUENCIA: %s", kbs_x(p->audio_bps, a));
 		if (p->pregap_raw >= 0)
 			S("   PAUSA ANTES DA MUSICA: CRU %d/3, COMO MUSICA %d/3", p->pregap_raw, p->pregap_audio);
-		if (p->seek_avg >= 0)
-			S("   BUSCA: MEDIA %d MS, PIOR %d MS", p->seek_avg, p->seek_max);
-		if (p->spinup_ms >= 0)
-			S("   MOTOR: DEPOIS DE 15 S PARADO, %d MS PARA VOLTAR", p->spinup_ms);
+		for (i = 0; i < PS1_SEEKS; i++)
+			if (p->seek_ms[i] >= 0)
+				S("   BUSCA DE %d MB: %d MS", (int)((u64)p->seek_dist[i] * 2352 >> 20), p->seek_ms[i]);
+		if (p->motor_ms[0] >= 0)
+			S("   MOTOR PARADO 3/6/15 S: %d / %d / %d MS PARA VOLTAR", p->motor_ms[0], p->motor_ms[1],
+			  p->motor_ms[2]);
 	}
 	S(" ");
 	if (log_file)
