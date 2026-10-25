@@ -79,6 +79,30 @@ typedef struct {
 } ps1_result;
 
 void ps1_run(int dev, const cdusb_dev_info *info, ps1_result *r);
+
+/* teste PS2 (driver de bloco para o Neutrino) */
+typedef struct {
+	int cur_kbs;
+	int kbs[3], worst[3];			/* sequencia com 8, 16, 19 setores */
+	int small_avg, small_max;		/* leituras pequenas espalhadas */
+	int seek[6];				/* busca: 4 MB, 10%, 50%, 90%, fim, troca de camada */
+} ps2_speed;
+
+typedef struct {
+	char vendor[9], product[17];
+	int disc, dvd, profile, size_mb, layers, l0_end, ps2;
+	int max_kbs, def_kbs;
+	char system[16], code[16];
+	ps2_speed sp[2];			/* [0] velocidade do leitor, [1] travada */
+	int seek_mb[6];
+	int st_n, st_max;
+	ps1_pace seq300, jmp300, jmp600;
+	int motor_ms[3];
+	int recoveries, stuck, gone, aborted;
+} ps2_result;
+
+void ps2_run(int dev, const cdusb_dev_info *info, ps2_result *r);
+void ps2_summary(const ps2_result *r, const char *log_file);
 void ps1_summary(const ps1_result *r, const char *log_file);
 void diag_summary(const diag_result *r, const char *log_file);
 

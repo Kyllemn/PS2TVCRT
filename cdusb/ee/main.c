@@ -25,7 +25,7 @@
 #include "diag.h"
 #include "play.h"
 
-#define VERSAO		"c08"
+#define VERSAO		"c09"
 #define LOG_FILE	"mass:/CDUSB.TXT"
 
 #define IRX(n)	extern unsigned char n[]; extern unsigned int size_##n
@@ -335,6 +335,7 @@ int main(int argc, char *argv[])
 		scr_printf("\n   X = TOCAR A MUSICA DO DISCO (FASE 2)\n");
 		scr_printf("   QUADRADO = DIAGNOSTICO DO LEITOR (FASE 1)\n");
 		scr_printf("   TRIANGULO = TESTE PS1 (EMBER): COLOQUE UM CD DE PS1\n");
+		scr_printf("   R1 = TESTE PS2 (NEUTRINO): COLOQUE UM DVD OU CD DE PS2\n");
 		scr_printf("   O = SAIR\n");
 		/* espera um botao; se o leitor aparecer ou sumir, redesenha */
 		{
@@ -346,7 +347,7 @@ int main(int argc, char *argv[])
 					changed = 1;
 					break;
 				}
-			} while (!(b & (PAD_CROSS | PAD_SQUARE | PAD_TRIANGLE | PAD_CIRCLE)));
+			} while (!(b & (PAD_CROSS | PAD_SQUARE | PAD_TRIANGLE | PAD_R1 | PAD_CIRCLE)));
 			if (changed) {
 				ee_wait_ms(500);	/* deixa o leitor terminar de configurar */
 				continue;
@@ -358,6 +359,16 @@ int main(int argc, char *argv[])
 			continue;
 		if (b & PAD_CROSS) {
 			play_run(cd, st.dev[cd].sub);
+		} else if (b & PAD_R1) {
+			static ps2_result qr2;
+			ps2_run(cd, &st.dev[cd], &qr2);
+			if (cdusb_get_status(&st) == 0)
+				log_devices(&st, "fim do teste PS2");
+			ps2_summary(&qr2, log_ok ? LOG_FILE : NULL);
+			log_save();
+			scr_printf("\n   X = VOLTAR AO MENU      O = SAIR\n");
+			if (!ask_again())
+				break;
 		} else if (b & PAD_TRIANGLE) {
 			static ps1_result pr;
 			ps1_run(cd, &st.dev[cd], &pr);

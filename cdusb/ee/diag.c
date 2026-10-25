@@ -940,6 +940,8 @@ void diag_summary(const diag_result *r, const char *log_file)
 
 static ps1_result *pr;
 static unsigned rnd_state = 12345;
+static int lock_kbs = 706;		/* velocidade travada de novo depois de recuperar */
+static int recoveries;
 
 static unsigned rnd(void)
 {
@@ -952,8 +954,8 @@ static int recover(const char *why)
 {
 	u64 t0 = ee_now_us();
 
-	pr->recoveries++;
-	L("[PS1] RECUPERANDO (%s)...", why);
+	recoveries++;
+	L("[REC] RECUPERANDO (%s)...", why);
 	log_save();
 	ee_wait_ms(500);
 	if (res->stuck)
@@ -967,8 +969,9 @@ static int recover(const char *why)
 	}
 	if (!wait_ready())
 		return 0;
-	set_speed(706, 0, NULL);
-	L("[PS1] leitora de volta em %d ms", (int)((ee_now_us() - t0) / 1000));
+	if (lock_kbs)
+		set_speed(lock_kbs, 0, NULL);
+	L("[REC] leitora de volta em %d ms", (int)((ee_now_us() - t0) / 1000));
 	return 1;
 }
 
@@ -1284,6 +1287,8 @@ void ps1_run(int d, const cdusb_dev_info *info, ps1_result *p)
 	memset(&dr, 0, sizeof(dr));
 	memset(p, 0, sizeof(*p));
 	data_raw = 0;
+	lock_kbs = 706;
+	recoveries = 0;
 	p->raw_bps8 = p->raw_bps16 = p->da_avg = p->audio_bps = -1;
 	p->pregap_raw = p->pregap_audio = -1;
 	p->seq.cuts = p->jmp.cuts = -1;
@@ -1392,6 +1397,7 @@ void ps1_run(int d, const cdusb_dev_info *info, ps1_result *p)
 	set_speed(0xFFFF, 1, NULL);
 out:
 	data_raw = 0;
+	p->recoveries = recoveries;
 	p->stuck = dr.stuck;
 	p->gone = dr.gone;
 	p->aborted = dr.aborted;
@@ -1462,6 +1468,477 @@ void ps1_summary(const ps1_result *p, const char *log_file)
 		if (p->motor_ms[0] >= 0)
 			S("   MOTOR PARADO 3/6/15 S: %d / %d / %d MS PARA VOLTAR", p->motor_ms[0], p->motor_ms[1],
 			  p->motor_ms[2]);
+	}
+	S(" ");
+	if (log_file)
+		S("   LOG: %s", log_file);
+	else
+		S("   SEM PENDRIVE: LOG NAO GRAVADO");
+}
+
+/* ================================================================== PS2
+ * c09: os mesmos testes, agora com DVD (ou CD azul) de PS2, para o driver de
+ * bloco do Neutrino. Dados por READ(10) de 2048 bytes.
+ *  1. disco: perfil, capacidade, camadas (DVD-9), SYSTEM.CNF (BOOT2);
+ *  2. velocidade em sequencia com 8, 16 e 19 setores por comando (19 = o
+ *     maximo do cdusb), na velocidade do leitor e travada (DVD 1x / CD 4x);
+ *  3. leituras pequenas espalhadas (jogo carregando muitos arquivos);
+ *  4. busca em varias distancias e troca de camada;
+ *  5. travadas frente/volta, tempo real (300 e 600 KB/s, cache de 128 KB,
+ *     com pulos) e motor, na velocidade travada;
+ */
+#define PS2_SEEKS	6
+static ps2_result *qr;
+
+static int read_capacity(int *last)
+{
+	u8 c[12] = {0x25, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+	int r = cmd(c, 1, 8, TMO_CMD);
+	if (r != CDUSB_OK)
+		return 0;
+	*last = buf[0] << 24 | buf[1] << 16 | buf[2] << 8 | buf[3];
+	return 1;
+}
+
+/* DVD: camadas e fim da camada 0 (READ DVD STRUCTURE, formato 0) */
+static void dvd_layers(void)
+{
+	u8 c[12] = {0xAD, 0, 0, 0, 0, 0, 0, 0, 0, 36, 0, 0};
+	int r = cmd(c, 1, 36, TMO_CMD), start, endl0;
+
+	qr->layers = qr->l0_end = -1;
+	lcmd("READ DVD STRUCTURE", r);
+	if (r != CDUSB_OK)
+		return;
+	hex16("DVD fisico", buf + 4);
+	qr->layers = ((buf[4 + 2] >> 5) & 3) + 1;
+	start = buf[4 + 5] << 16 | buf[4 + 6] << 8 | buf[4 + 7];
+	endl0 = buf[4 + 13] << 16 | buf[4 + 14] << 8 | buf[4 + 15];
+	if (qr->layers > 1 && endl0 > start)
+		qr->l0_end = endl0 - start;		/* ultimo setor da camada 0 (LBA) */
+	L("[PS2] DVD: %d camada(s), %s, inicio PSN %X, fim da camada 0 PSN %X (LBA %d)", qr->layers,
+	  (buf[4 + 2] & 0x10) ? "OTP" : "PTP", start, endl0, qr->l0_end);
+}
+
+/* SYSTEM.CNF pela ISO9660 (READ(10)) */
+static void ps2_identify(int base)
+{
+	int root, rsize, k, off, lba = -1;
+	char txt[2049], *p;
+
+	strcpy(qr->system, "DESCONHECIDO");
+	if (read10(base + 16, 1) != CDUSB_OK || memcmp(buf + 1, "CD001", 5) != 0) {
+		L("[PS2] sem ISO9660 no setor 16");
+		return;
+	}
+	L("[PS2] ISO9660: sistema \"%.32s\" volume \"%.32s\"", buf + 8, buf + 40);
+	snprintf(qr->system, sizeof(qr->system), "%.11s", buf + 8);
+	root = buf[158] | buf[159] << 8 | buf[160] << 16 | buf[161] << 24;
+	rsize = buf[166] | buf[167] << 8 | buf[168] << 16 | buf[169] << 24;
+	for (k = 0; k * 2048 < rsize && k < 8 && lba < 0; k++) {
+		if (read10(base + root + k, 1) != CDUSB_OK)
+			return;
+		for (off = 0; off < 2048 && buf[off];) {
+			if (buf[off + 32] >= 10 && memcmp(buf + off + 33, "SYSTEM.CNF", 10) == 0) {
+				lba = buf[off + 2] | buf[off + 3] << 8 | buf[off + 4] << 16 | buf[off + 5] << 24;
+				break;
+			}
+			off += buf[off];
+		}
+	}
+	if (lba < 0 || read10(base + lba, 1) != CDUSB_OK) {
+		L("[PS2] SYSTEM.CNF nao encontrado");
+		return;
+	}
+	memcpy(txt, buf, 2048);
+	txt[2048] = 0;
+	L("[PS2] SYSTEM.CNF: %.160s", txt);
+	p = strstr(txt, "BOOT2");
+	qr->ps2 = p != NULL;
+	if (p && (p = strstr(p, "cdrom0:")) != NULL) {
+		int n = 0;
+		p += 7;
+		while (*p == '\\')
+			p++;
+		while (*p && *p != ';' && *p != '\r' && *p != '\n' && n < 15)
+			qr->code[n++] = *p++;
+		qr->code[n] = 0;
+	}
+}
+
+/* em sequencia: 'per' setores por comando durante ms; KB/s (-1 = falhou) */
+static int ps2_bench(int start, int per, int ms, int *worst)
+{
+	int lba = start, r, c, n = 0, end = trk[100].lba;
+	u64 t0, c0, bytes = 0;
+
+	*worst = 0;
+	if (pread(0, lba, per) != CDUSB_OK)
+		return -1;
+	lba += per;
+	t0 = ee_now_us();
+	while (ee_now_us() - t0 < (u64)ms * 1000) {
+		if (lba + per > end)
+			lba = start;
+		c0 = ee_now_us();
+		r = pread(0, lba, per);
+		c = (int)((ee_now_us() - c0) / 1000);
+		if (r != CDUSB_OK)
+			return -1;
+		if (c > *worst)
+			*worst = c;
+		if (c > STALL_MS)
+			L("[PS2] LENTO: setor %d x%d em %d ms", lba, per, c);
+		bytes += per * 2048;
+		lba += per;
+		n++;
+	}
+	{
+		u64 el = ee_now_us() - t0;
+		c = (int)(bytes * 1000000 / (el ? el : 1) / 1024);
+	}
+	L("[PS2] em sequencia, %d setores por comando: %d KB/s (%d comandos, pior %d ms)", per, c, n, *worst);
+	return c;
+}
+
+static void ps2_speed_block(int st_i, int start)
+{
+	static const int pers[3] = {8, 16, 19};
+	int k, w;
+	ps2_speed *v = &qr->sp[st_i];
+
+	for (k = 0; k < 3; k++) {
+		v->kbs[k] = ps2_bench(start, pers[k], BENCH_MS, &w);
+		v->worst[k] = w;
+		if (dead())
+			return;
+	}
+	/* leituras pequenas espalhadas: 4 setores em pontos aleatorios */
+	{
+		int i, ms, sum = 0, mx = 0, cnt = 0, span = trk[100].lba - start - 64;
+		for (i = 0; i < 20 && span > 0; i++) {
+			int lba = start + (int)(rnd() % (unsigned)span);
+			ms = timed(0, lba, 4);
+			if (ms < 0)
+				return;
+			sum += ms;
+			cnt++;
+			if (ms > mx)
+				mx = ms;
+		}
+		v->small_avg = cnt ? sum / cnt : -1;
+		v->small_max = mx;
+		L("[PS2] 20 leituras pequenas espalhadas: media %d ms, pior %d ms", v->small_avg, mx);
+	}
+	/* busca em varias distancias */
+	{
+		int span = trk[100].lba - start, base = start + 1000, i, k2, sm, ms;
+		int dist[PS2_SEEKS];
+		dist[0] = 2000;
+		dist[1] = span / 10;
+		dist[2] = span / 2;
+		dist[3] = span * 9 / 10;
+		dist[4] = span - 1000 - 600;
+		dist[5] = qr->l0_end > 0 ? qr->l0_end + 200 - base : -1;	/* troca de camada */
+		for (i = 0; i < PS2_SEEKS; i++) {
+			v->seek[i] = -1;
+			qr->seek_mb[i] = dist[i] > 0 ? (int)((u64)dist[i] * 2048 >> 20) : -1;
+			if (dist[i] <= 0 || base + dist[i] >= trk[100].lba)
+				continue;
+			for (k2 = 0, sm = 0; k2 < 3; k2++) {
+				if (timed(0, base + k2 * 32, 1) < 0)
+					return;
+				ms = timed(0, base + dist[i] + k2 * 32, 1);
+				if (ms < 0)
+					return;
+				sm += ms;
+			}
+			v->seek[i] = sm / 3;
+			L("[PS2] busca de %d MB%s: media %d ms", qr->seek_mb[i], i == 5 ? " (troca de camada)" : "",
+			  v->seek[i]);
+		}
+	}
+}
+
+/* tempo real: consome rate_kbs com cache de cache_kb; pulo a cada jump_s (0 = sem) */
+static void ps2_pace(int start, int rate_kbs, int cache_kb, int secs, int jump_s, ps1_pace *o)
+{
+	int per = 16, rate = rate_kbs / 2;		/* setores por segundo */
+	int ahead = cache_kb / 2, lba = start, end = trk[100].lba, produced = 0, before, a, min_a = 1 << 30;
+	int in_cut = 0, c, jw;
+	u64 now, tend, tnext, base, c0;
+
+	memset(o, 0, sizeof(*o));
+	o->min_ms = o->max_ms = -1;
+	o->cuts = -1;
+	while (produced < ahead) {
+		if (pread(0, lba, per) != CDUSB_OK)
+			return;
+		lba += per;
+		produced += per;
+	}
+	o->cuts = 0;
+	o->max_ms = 0;
+	now = base = ee_now_us();
+	tend = now + (u64)secs * 1000000;
+	tnext = jump_s ? now + (u64)jump_s * 1000000 : ~0ull;
+	while ((now = ee_now_us()) < tend) {
+		if (now >= tnext) {
+			int np = start + (int)(rnd() % (unsigned)(end - start - rate * jump_s - ahead - 64));
+			jw = timed(0, np, per);
+			if (jw < 0) {
+				o->cuts = -1;
+				return;
+			}
+			o->jumps++;
+			o->jwait_sum += jw;
+			if (jw > o->jwait_max)
+				o->jwait_max = jw;
+			lba = np + per;
+			produced = per;
+			in_cut = 0;
+			base = ee_now_us();
+			tnext = base + (u64)jump_s * 1000000;
+			continue;
+		}
+		if (produced - (int)((now - base) * rate / 1000000) >= ahead) {
+			ee_wait_ms(2);
+			continue;
+		}
+		if (lba + per > end)
+			lba = start;
+		before = produced;
+		c0 = ee_now_us();
+		if (pread(0, lba, per) != CDUSB_OK) {
+			o->cuts = -1;
+			return;
+		}
+		now = ee_now_us();
+		c = (int)((now - c0) / 1000);
+		lba += per;
+		produced += per;
+		a = before - (int)((now - base) * rate / 1000000);
+		if (a < min_a)
+			min_a = a;
+		if (a < 0) {
+			if (!in_cut)
+				o->cuts++;
+			in_cut = 1;
+		} else
+			in_cut = 0;
+		if (c > o->max_ms)
+			o->max_ms = c;
+		if (c > STALL_MS) {
+			o->stalls++;
+			L("[PS2] tempo real: LENTO setor %d em %d ms", lba - per, c);
+		}
+	}
+	o->min_ms = min_a == (1 << 30) ? -1 : min_a * 1000 / rate;
+	L("[PS2] tempo real %d KB/s, cache %d KB, %d s%s: cortes %d, travadas %d, folga min %d ms, pior %d ms; "
+	  "pulos %d (1o bloco media %d ms, pior %d ms)",
+	  rate_kbs, cache_kb, secs, jump_s ? " com pulos" : "", o->cuts, o->stalls, o->min_ms, o->max_ms, o->jumps,
+	  o->jumps ? o->jwait_sum / o->jumps : 0, o->jwait_max);
+}
+
+static void ps2_stall(int start)
+{
+	int span = trk[100].lba - start, j, p, i, ms;
+
+	qr->st_n = qr->st_max = 0;
+	for (j = 0; j < 4; j++) {
+		p = start + (j == 0 ? 0 : j == 1 ? span / 4 : j == 2 ? span / 2 : span * 9 / 10);
+		if (p + 1000 > trk[100].lba)
+			continue;
+		for (i = 0; i < 3; i++) {		/* frente 800, volta 800, volta 400 */
+			int a = i == 2 ? p + 400 : p, n = i == 2 ? 400 : 800, k;
+			for (k = 0; k < n; k += 16) {
+				ms = timed(0, a + k, 16);
+				if (ms < 0)
+					return;
+				if (ms > STALL_MS) {
+					qr->st_n++;
+					L("[PS2] TRAVADA: ponto %d, passada %d, setor %d em %d ms", j + 1, i + 1, a + k, ms);
+				}
+				if (ms > qr->st_max)
+					qr->st_max = ms;
+			}
+		}
+		if (dead())
+			return;
+	}
+	L("[PS2] travadas frente/volta: %d, pior %d ms", qr->st_n, qr->st_max);
+}
+
+void ps2_run(int d, const cdusb_dev_info *info, ps2_result *p)
+{
+	static diag_result dr;
+	speed_result s;
+	int last = -1, start, i;
+	u64 t_all = ee_now_us();
+	static const int waits[3] = {3, 6, 15};
+
+	dev = d;
+	sub = info->sub;
+	res = &dr;
+	qr = p;
+	memset(&dr, 0, sizeof(dr));
+	memset(p, 0, sizeof(*p));
+	recoveries = 0;
+	memcpy(p->vendor, info->inquiry + 8, 8);
+	memcpy(p->product, info->inquiry + 16, 16);
+	for (i = 0; i < 2; i++) {
+		int k;
+		for (k = 0; k < 3; k++)
+			p->sp[i].kbs[k] = -1;
+		p->sp[i].small_avg = -1;
+		for (k = 0; k < PS2_SEEKS; k++)
+			p->sp[i].seek[k] = -1;
+	}
+	p->seq300.cuts = p->jmp300.cuts = p->jmp600.cuts = -1;
+	for (i = 0; i < 3; i++)
+		p->motor_ms[i] = -1;
+
+	screen_title("TESTE PS2 (DVD/CD) - FASE COMPLETA, ~6 MIN");
+	S("   LEITOR: %s %s", p->vendor, p->product);
+	L("[PS2] ---------------- teste PS2 c09: disp %d, %04X:%04X ----------------", d, info->vid, info->pid);
+	S("   ESPERANDO O DISCO...");
+	if (!wait_ready())
+		goto out;
+	get_profile();
+	p->profile = dr.profile;
+	get_caps();
+	p->max_kbs = dr.max_kbs;
+	p->def_kbs = dr.cur_kbs;
+	if (!read_toc() && read_capacity(&last)) {
+		memset(trk, 0, sizeof(trk));		/* sem TOC: uma faixa de dados ate a capacidade */
+		t_first = t_last = 1;
+		trk[1].ctrl = 4;
+		trk[100].lba = last + 1;
+	}
+	if (read_capacity(&last))
+		L("[PS2] capacidade: ultimo setor %d (%d MB)", last, (int)((u64)(last + 1) * 2048 >> 20));
+	if (trk[100].lba <= 0) {
+		S("   NAO CONSEGUI LER O TAMANHO DO DISCO");
+		goto out;
+	}
+	p->disc = 1;
+	p->size_mb = (int)((u64)trk[100].lba * 2048 >> 20);
+	p->dvd = p->profile >= 0x10 && p->profile < 0x40;
+	if (p->dvd)
+		dvd_layers();
+	start = trk[first_of(1) >= 0 ? first_of(1) : t_first].lba;
+	ps2_identify(start);
+	S("   DISCO: %s %s, %d MB, %s", p->dvd ? "DVD" : "CD", p->system, p->size_mb, p->code[0] ? p->code : "?");
+	if (dead())
+		goto out;
+
+	/* 2-4 na velocidade do leitor e travada */
+	for (i = 0; i < 2; i++) {
+		int kbs = p->dvd ? 1385 : 706;
+		if (i == 0) {
+			S("   VELOCIDADE DO LEITOR: SEQUENCIA, LEITURAS PEQUENAS, BUSCA...");
+			L("[PS2] ======== velocidade do leitor ========");
+			lock_kbs = 0;
+		} else {
+			S("   VELOCIDADE TRAVADA (%s): SEQUENCIA, LEITURAS PEQUENAS, BUSCA...", p->dvd ? "DVD 1X" : "CD 4X");
+			L("[PS2] ======== travada em %d KB/s ========", kbs);
+			memset(&s, 0, sizeof(s));
+			set_speed(kbs, 0, &s);
+			lock_kbs = kbs;
+		}
+		get_caps();
+		p->sp[i].cur_kbs = dr.cur_kbs;
+		ps2_speed_block(i, start);
+		if (dead())
+			goto out;
+	}
+
+	/* 5. na velocidade travada */
+	S("   TRAVADAS FRENTE/VOLTA EM 4 PONTOS...");
+	ps2_stall(start);
+	if (dead())
+		goto out;
+	S("   TEMPO REAL 300 KB/S, CACHE 128 KB: 30 S EM SEQUENCIA + 30 S COM PULOS...");
+	ps2_pace(start + 500, 300, 128, 30, 0, &p->seq300);
+	if (dead())
+		goto out;
+	ps2_pace(start + 500, 300, 128, 30, 3, &p->jmp300);
+	if (dead())
+		goto out;
+	S("   TEMPO REAL 600 KB/S, CACHE 128 KB: 30 S COM PULOS...");
+	ps2_pace(start + 500, 600, 128, 30, 3, &p->jmp600);
+	if (dead())
+		goto out;
+	S("   MOTOR...");
+	{
+		int lba = start + 5000;
+		for (i = 0; i < 3 && lba + 4000 < trk[100].lba; i++) {
+			u64 t0;
+			if (timed(0, lba, 1) < 0)
+				break;
+			S("   MOTOR: %d S SEM LER NADA...  (O = PULAR)", waits[i]);
+			t0 = ee_now_us();
+			while (ee_now_us() - t0 < (u64)waits[i] * 1000000) {
+				if (pad_new() & PAD_CIRCLE)
+					goto motor_out;
+				ee_wait_ms(16);
+			}
+			p->motor_ms[i] = timed(0, lba + 1000, 1);
+			L("[PS2] motor: depois de %d s parado, %d ms", waits[i], p->motor_ms[i]);
+			lba += 1000;
+		}
+	}
+motor_out:
+	S("   VOLTANDO O LEITOR PARA A VELOCIDADE PADRAO...");
+	set_speed(0xFFFF, 1, NULL);
+out:
+	lock_kbs = 706;
+	p->recoveries = recoveries;
+	p->stuck = dr.stuck;
+	p->gone = dr.gone;
+	p->aborted = dr.aborted;
+	L("[PS2] fim do teste (%d s)", (int)((ee_now_us() - t_all) / 1000000));
+	log_save();
+}
+
+void ps2_summary(const ps2_result *p, const char *log_file)
+{
+	int i, k;
+
+	screen_title("RESULTADO PS2");
+	S("   LEITOR: %s %s", p->vendor, p->product);
+	if (p->gone)
+		S("   O LEITOR DESCONECTOU NO MEIO DO TESTE: FALTA DE ENERGIA?");
+	if (p->stuck)
+		S("   O LEITOR TRAVOU (SEM RESPOSTA). DESLIGUE E LIGUE O LEITOR.");
+	if (p->recoveries)
+		S("   LEITORA REINICIOU %d VEZ(ES) NO MEIO (RECUPERADA)", p->recoveries);
+	if (p->disc) {
+		S("   DISCO: %s %s %s, %d MB%s", p->dvd ? "DVD" : "CD", p->system, p->code[0] ? p->code : "",
+		  p->size_mb, p->layers > 1 ? ", 2 CAMADAS" : "");
+		for (i = 0; i < 2; i++) {
+			const ps2_speed *v = &p->sp[i];
+			if (v->kbs[1] < 0)
+				continue;
+			S("   %s (LEITOR %d KB/S):", i ? "TRAVADA" : "LIVRE", v->cur_kbs);
+			S("     SEQUENCIA 8/16/19: %d / %d / %d KB/S (PIOR %d/%d/%d MS)", v->kbs[0], v->kbs[1], v->kbs[2],
+			  v->worst[0], v->worst[1], v->worst[2]);
+			S("     PEQUENAS ESPALHADAS: MEDIA %d MS, PIOR %d MS", v->small_avg, v->small_max);
+			for (k = 0; k < PS2_SEEKS; k++)
+				if (v->seek[k] >= 0)
+					S("     BUSCA %d MB%s: %d MS", p->seek_mb[k], k == 5 ? " (CAMADA)" : "", v->seek[k]);
+		}
+		S("   TRAVADAS FRENTE/VOLTA: %d (PIOR %d MS)", p->st_n, p->st_max);
+		if (p->seq300.cuts >= 0)
+			S("   300 KB/S SEQUENCIA: %d CORTES, PIOR %d MS", p->seq300.cuts, p->seq300.max_ms);
+		if (p->jmp300.cuts >= 0)
+			S("   300 KB/S PULOS: %d CORTES, 1O BLOCO %d MS (PIOR %d)", p->jmp300.cuts,
+			  p->jmp300.jumps ? p->jmp300.jwait_sum / p->jmp300.jumps : 0, p->jmp300.jwait_max);
+		if (p->jmp600.cuts >= 0)
+			S("   600 KB/S PULOS: %d CORTES, 1O BLOCO %d MS (PIOR %d)", p->jmp600.cuts,
+			  p->jmp600.jumps ? p->jmp600.jwait_sum / p->jmp600.jumps : 0, p->jmp600.jwait_max);
+		if (p->motor_ms[0] >= 0)
+			S("   MOTOR PARADO 3/6/15 S: %d / %d / %d MS", p->motor_ms[0], p->motor_ms[1], p->motor_ms[2]);
 	}
 	S(" ");
 	if (log_file)
