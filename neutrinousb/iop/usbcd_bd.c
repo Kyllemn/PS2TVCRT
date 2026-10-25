@@ -18,13 +18,23 @@
  *  - leitora que reinicia: espera ficar pronta, trava de novo e repete;
  *  - motor: le 1 setor quando fica parada (2 s), para nao desacelerar.
  *
+ * n02 (cutscenes):
+ *  - fila completa no USB: comando + todos os pedacos de 4 KB + resposta sao
+ *    pedidos de uma vez (como o usbmass_bd da ps2sdk), sem o USB parar entre
+ *    os pedacos. Se a leitora estranhar, volta sozinho para o jeito antigo;
+ *  - leitura adiantada: depois de cada leitura em sequencia, uma thread ja
+ *    busca os proximos setores enquanto o jogo processa (o USB nao fica
+ *    parado entre os pedidos do jogo).
+ *
  * Argumentos: speed=<KB/s> (0 = nao travar; padrao: CD 706, DVD 1385)
  *             keep=<ms> (0 = sem manter girando; padrao 2000)
+ *             cache=<KB> (leitura adiantada; 0 = desligada; padrao 128)
+ *             fila=0 (desliga a fila completa)
  */
 #include "irx_imports.h"
 
 #define MODNAME "usbcd_bd"
-IRX_ID(MODNAME, 1, 1);
+IRX_ID(MODNAME, 1, 2);
 
 #define SUB_ATAPI	0x02
 #define SUB_SFF8070	0x05
@@ -59,6 +69,19 @@ static u8 cbw[32] __attribute__((aligned(64)));
 static u8 csw[16] __attribute__((aligned(64)));
 static u8 small[64] __attribute__((aligned(64)));
 static u8 bounce[SECT] __attribute__((aligned(64)));
+
+/* fila completa (n02) */
+static int use_queue = 1;
+static volatile int q_total, q_done, q_err;
+
+/* leitura adiantada (n02) */
+#define PF_CHUNK	16			/* setores por comando da leitura adiantada */
+static int cache_kb = 128;
+static u8 *pf_buf;
+static u32 pf_cap;				/* setores que cabem */
+static volatile u32 pf_lba, pf_have, pf_gen;	/* janela: [pf_lba, pf_lba + pf_have) valida */
+static volatile int fg_wait;			/* o jogo esta esperando o USB */
+static int pf_lock, pf_sema;
 
 static sceUsbdLddOps ldd;
 
@@ -318,9 +341,91 @@ static void set_speed(void)
 	scsi(c, 2, small, sizeof(pd), 3000, NULL);
 }
 
+/* n02: callback da fila completa: conta os pedacos; o ultimo acorda */
+static void q_cb(int rc, int bytes, void *arg)
+{
+	(void)bytes;
+	if ((u32)arg != xfer_gen)
+		return;
+	if (rc != USB_RC_OK && !q_err)
+		q_err = rc ? rc : -1;
+	if (++q_done == q_total)
+		SignalSema(xfer_sema);
+}
+
+/* n02: READ(10) com comando, todos os pedacos e a resposta na fila de uma vez */
+static int read10_queued(u32 lba, int n, void *dst)
+{
+	u8 c[12] = {0x28, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+	u32 len = n * SECT, t, off;
+	void *g;
+	int rc, k, cl = d.sub == SUB_ATAPI ? 12 : 10;
+
+	if (d.devId < 0)
+		return R_USB;
+	c[2] = lba >> 24; c[3] = lba >> 16; c[4] = lba >> 8; c[5] = lba;
+	c[7] = n >> 8; c[8] = n;
+	t = ++tag;
+	memset(cbw, 0, 31);
+	cbw[0] = 0x55; cbw[1] = 0x53; cbw[2] = 0x42; cbw[3] = 0x43;
+	cbw[4] = t; cbw[5] = t >> 8; cbw[6] = t >> 16; cbw[7] = t >> 24;
+	cbw[8] = len; cbw[9] = len >> 8; cbw[10] = len >> 16; cbw[11] = len >> 24;
+	cbw[12] = 0x80;
+	cbw[14] = cl;
+	memcpy(cbw + 15, c, cl);
+	memset(csw, 0, 13);
+
+	g = (void *)xfer_gen;
+	q_done = 0;
+	q_err = 0;
+	q_total = 2 + (len + USB_CHUNK - 1) / USB_CHUNK;
+	rc = sceUsbdBulkTransfer(d.epOut, cbw, 31, q_cb, g);
+	for (off = 0, k = 1; rc == USB_RC_OK && off < len; off += USB_CHUNK, k++)
+		rc = sceUsbdBulkTransfer(d.epIn, (u8 *)dst + off, len - off > USB_CHUNK ? USB_CHUNK : len - off, q_cb, g);
+	if (rc == USB_RC_OK)
+		rc = sceUsbdBulkTransfer(d.epIn, csw, 13, q_cb, g);
+	if (rc != USB_RC_OK) {
+		/* parte nao entrou na fila: espera o que entrou e desiste */
+		DelayThread(50 * 1000);
+		xfer_gen++;
+		while (PollSema(xfer_sema) == 0)
+			;
+		reset_recovery();
+		last_io = now_ms();
+		return R_USB;
+	}
+	rc = xfer_wait(TMO_READ);		/* acorda no ultimo pedaco (ou no prazo) */
+	last_io = now_ms();
+	if (rc == R_TIMEOUT || q_err) {
+		reset_recovery();
+		return rc == R_TIMEOUT ? R_TIMEOUT : R_USB;
+	}
+	if ((csw[0] | csw[1] << 8 | csw[2] << 16 | (u32)csw[3] << 24) != 0x53425355 ||
+	    (csw[4] | csw[5] << 8 | csw[6] << 16 | (u32)csw[7] << 24) != t || csw[12] != 0) {
+		reset_recovery();
+		return R_PHASE;
+	}
+	return R_OK;
+}
+
 static int read10(u32 lba, int n, void *dst)
 {
 	u8 c[12] = {0x28, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+	int r;
+
+	if (use_queue && ((u32)dst & 3) == 0) {
+		r = read10_queued(lba, n, dst);
+		if (r == R_OK)
+			return r;
+		/* a leitora nao gostou da fila: confere pelo jeito antigo */
+		c[2] = lba >> 24; c[3] = lba >> 16; c[4] = lba >> 8; c[5] = lba;
+		c[7] = n >> 8; c[8] = n;
+		if (tur_wait(15000) && scsi(c, 1, dst, n * SECT, TMO_READ, NULL) == R_OK) {
+			use_queue = 0;		/* o antigo funciona e a fila nao: fica no antigo */
+			return R_OK;
+		}
+		return r;
+	}
 	c[2] = lba >> 24; c[3] = lba >> 16; c[4] = lba >> 8; c[5] = lba;
 	c[7] = n >> 8; c[8] = n;
 	return scsi(c, 1, dst, n * SECT, TMO_READ, NULL);
@@ -340,6 +445,56 @@ static int read_robust(u32 lba, int n, void *dst)
 }
 
 /* ------------------------------------------------------------------ BDM */
+/* n02: leitura adiantada em anel. O setor 'lba' mora na posicao lba % pf_cap;
+ * a janela valida e [pf_lba, pf_lba + pf_have). Quando o jogo avanca dentro
+ * dela, ela so anda (nada e copiado nem jogado fora). */
+static u8 *pf_at(u32 lba)
+{
+	return pf_buf + (lba % pf_cap) * SECT;
+}
+
+/* copia da janela o que tiver de [lba, lba + n); devolve setores */
+static u32 pf_take(u32 lba, u32 n, u8 *dst)
+{
+	u32 k = 0, i;
+
+	if (!pf_buf)
+		return 0;
+	WaitSema(pf_lock);
+	if (lba >= pf_lba && lba < pf_lba + pf_have) {
+		k = pf_lba + pf_have - lba;
+		if (k > n)
+			k = n;
+		for (i = 0; i < k;) {			/* ate a volta do anel, depois o resto */
+			u32 pos = (lba + i) % pf_cap, run = pf_cap - pos;
+			if (run > k - i)
+				run = k - i;
+			memcpy(dst + i * SECT, pf_buf + pos * SECT, run * SECT);
+			i += run;
+		}
+	}
+	SignalSema(pf_lock);
+	return k;
+}
+
+/* o jogo vai continuar em 'next': a janela anda ate la ou recomeca ali */
+static void pf_restart(u32 next)
+{
+	if (!pf_buf)
+		return;
+	WaitSema(pf_lock);
+	if (next >= pf_lba && next <= pf_lba + pf_have) {
+		pf_have -= next - pf_lba;
+		pf_lba = next;
+	} else {
+		pf_lba = next;
+		pf_have = 0;
+		pf_gen++;
+	}
+	SignalSema(pf_lock);
+	SignalSema(pf_sema);
+}
+
 static int bd_read(struct block_device *b, u64 sector, void *buffer, u16 count)
 {
 	u32 lba = (u32)(sector >> 2), off = ((u32)sector & 3) * 512, left = (u32)count * 512;
@@ -348,23 +503,44 @@ static int bd_read(struct block_device *b, u64 sector, void *buffer, u16 count)
 
 	if (d.state != 2)
 		return -EIO;
-	WaitSema(io_lock);
 	while (left) {
-		if (off == 0 && left >= SECT && ((u32)p & 3) == 0) {
-			u32 n = left / SECT;
+		if (off == 0 && left >= SECT) {
+			u32 n = left / SECT, k;
 			if (n > MAX_PER_CMD)
 				n = MAX_PER_CMD;
-			if (read_robust(lba, n, p) < 0)
-				goto fail;
-			p += n * SECT;
-			left -= n * SECT;
-			lba += n;
+			k = pf_take(lba, n, p);			/* ja veio adiantado? */
+			if (!k) {
+				fg_wait = 1;
+				WaitSema(io_lock);
+				fg_wait = 0;
+				k = pf_take(lba, n, p);		/* pode ter chegado enquanto esperava */
+				if (!k) {
+					if (((u32)p & 3) == 0) {
+						if (read_robust(lba, n, p) < 0)
+							goto fail;
+						k = n;
+					} else {
+						if (read_robust(lba, 1, bounce) < 0)
+							goto fail;
+						memcpy(p, bounce, SECT);
+						k = 1;
+					}
+				}
+				SignalSema(io_lock);
+			}
+			p += k * SECT;
+			left -= k * SECT;
+			lba += k;
 		} else {
 			u32 k = SECT - off;
 			if (k > left)
 				k = left;
+			fg_wait = 1;
+			WaitSema(io_lock);
+			fg_wait = 0;
 			if (read_robust(lba, 1, bounce) < 0)
 				goto fail;
+			SignalSema(io_lock);
 			memcpy(p, bounce + off, k);
 			p += k;
 			left -= k;
@@ -372,11 +548,50 @@ static int bd_read(struct block_device *b, u64 sector, void *buffer, u16 count)
 			off = 0;
 		}
 	}
-	SignalSema(io_lock);
+	pf_restart(lba);		/* proximos setores enquanto o jogo processa */
 	return count;
 fail:
 	SignalSema(io_lock);
 	return -EIO;
+}
+
+/* n02: thread da leitura adiantada */
+static void pf_thread(void *arg)
+{
+	(void)arg;
+	for (;;) {
+		WaitSema(pf_sema);
+		for (;;) {
+			u32 gen, at, n, pos;
+			if (d.state != 2 || fg_wait)
+				break;
+			WaitSema(pf_lock);
+			gen = pf_gen;
+			at = pf_lba + pf_have;
+			n = pf_cap - pf_have;
+			SignalSema(pf_lock);
+			if (n == 0 || at >= disc_sectors)
+				break;
+			if (n > PF_CHUNK)
+				n = PF_CHUNK;
+			pos = at % pf_cap;
+			if (n > pf_cap - pos)
+				n = pf_cap - pos;	/* nao passa da volta do anel */
+			if (at + n > disc_sectors)
+				n = disc_sectors - at;
+			if (PollSema(io_lock) != 0)
+				break;			/* o jogo esta lendo: deixa para depois */
+			if (read10(at, n, pf_at(at)) != R_OK) {
+				SignalSema(io_lock);
+				break;
+			}
+			SignalSema(io_lock);
+			WaitSema(pf_lock);
+			if (gen == pf_gen && at == pf_lba + pf_have)
+				pf_have += n;
+			SignalSema(pf_lock);
+		}
+	}
 }
 
 static int bd_write(struct block_device *b, u64 sector, const void *buffer, u16 count)
@@ -614,13 +829,26 @@ int _start(int argc, char *argv[])
 			lock_kbs = strtol(argv[i] + 6, NULL, 10);
 		else if (!strncmp(argv[i], "keep=", 5))
 			keep_ms = strtol(argv[i] + 5, NULL, 10);
+		else if (!strncmp(argv[i], "cache=", 6))
+			cache_kb = strtol(argv[i] + 6, NULL, 10);
+		else if (!strncmp(argv[i], "fila=", 5))
+			use_queue = strtol(argv[i] + 5, NULL, 10) != 0;
+	}
+	if (cache_kb > 0) {
+		pf_cap = cache_kb * 1024 / SECT;
+		if (pf_cap < PF_CHUNK)
+			pf_cap = PF_CHUNK;
+		pf_buf = AllocSysMemory(ALLOC_FIRST, pf_cap * SECT, NULL);	/* sem memoria: sem adiantar */
 	}
 	io_lock = new_sema(1);
 	work_sema = new_sema(0);
 	xfer_sema = new_sema(0);
-	if (io_lock < 0 || work_sema < 0 || xfer_sema < 0)
+	pf_lock = new_sema(1);
+	pf_sema = new_sema(0);
+	if (io_lock < 0 || work_sema < 0 || xfer_sema < 0 || pf_lock < 0 || pf_sema < 0)
 		return MODULE_NO_RESIDENT_END;
-	if (new_thread(work_thread, 0x12) <= 0 || new_thread(keep_thread, 0x60) <= 0)
+	if (new_thread(work_thread, 0x12) <= 0 || new_thread(keep_thread, 0x60) <= 0 ||
+	    (pf_buf && new_thread(pf_thread, 0x50) <= 0))
 		return MODULE_NO_RESIDENT_END;
 	memset(&ldd, 0, sizeof(ldd));
 	ldd.name = "usbcd_bd";

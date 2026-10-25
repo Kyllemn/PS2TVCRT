@@ -3,6 +3,10 @@ I_bdm_connect_bd
 I_bdm_disconnect_bd
 bdm_IMPORTS_end
 
+sysmem_IMPORTS_start
+I_AllocSysMemory
+sysmem_IMPORTS_end
+
 sysclib_IMPORTS_start
 I_memcpy
 I_memset

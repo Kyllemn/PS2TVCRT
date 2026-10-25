@@ -28,7 +28,7 @@
 
 #include "cdusb_ee.h"
 
-#define VERSAO		"n01"
+#define VERSAO		"n02"
 #define LOG_FILE	"mass:/NEUTRINOUSB.TXT"
 
 #define IRX(n)	extern unsigned char n[]; extern unsigned int size_##n
@@ -298,35 +298,6 @@ static int wait_disc(void)
 			return 0;
 		ee_wait_ms(300);
 	}
-}
-
-static int read_toc(void)
-{
-	static u8 b[4 + 100 * 8] __attribute__((aligned(64)));
-	u8 c[12] = {0x43, 0, 0, 0, 0, 0, 1, 0, 4, 0, 0, 0};
-	int len, i, have_end = 0;
-
-	if (cmd(c, 1, b, 4, 5000) != CDUSB_OK)
-		return 0;
-	len = (b[0] << 8 | b[1]) + 2;
-	if (len < 12 || len > (int)sizeof(b))
-		return 0;
-	c[7] = len >> 8;
-	c[8] = len;
-	if (cmd(c, 1, b, len, 5000) != CDUSB_OK)
-		return 0;
-	t_first = b[2];
-	t_last = b[3];
-	for (i = 4; i + 8 <= len; i += 8) {
-		int t = b[i + 2], idx = t == 0xAA ? 100 : t;
-		if (idx < 1 || idx > 100)
-			continue;
-		t_lba[idx] = b[i + 4] << 24 | b[i + 5] << 16 | b[i + 6] << 8 | b[i + 7];
-		t_ctrl[idx] = b[i + 1] & 0x0f;
-		if (idx == 100)
-			have_end = 1;
-	}
-	return t_first >= 1 && t_last >= t_first && t_last <= 99 && have_end && t_lba[100] > t_lba[t_last];
 }
 
 /* setor de dados (2048) por READ(10) */

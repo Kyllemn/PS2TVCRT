@@ -8,6 +8,7 @@
 #include <errno.h>
 #include <loadcore.h>
 #include <sysclib.h>
+#include <sysmem.h>
 #include <thbase.h>
 #include <thsemap.h>
 #include <usbd.h>
