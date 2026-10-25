@@ -25,7 +25,6 @@
 #include <io_common.h>
 #include <libpad.h>
 #include <debug.h>
-#include <elf-loader.h>
 
 #include "cdusb_ee.h"
 
@@ -42,6 +41,51 @@ IRX(irx_bdm);
 IRX(irx_bdmfs_fatfs);
 IRX(irx_usbmass_bd);
 IRX(irx_vcd);
+IRX(loader_elf);
+
+/* ------------------------------------------------------------------ abrir o Ember */
+/* como o elf-loader da ps2sdk, mas com o nosso mini-loader (../loader), que
+ * nunca reinicia o IOP. Nao volta se der certo. */
+typedef struct {
+	u8 ident[16];
+	u16 type, machine;
+	u32 version, entry, phoff, shoff, flags;
+	u16 ehsize, phentsize, phnum, shentsize, shnum, shstrndx;
+} elf_hdr;
+
+typedef struct {
+	u32 type, offset, vaddr, paddr, filesz, memsz, flags, align;
+} elf_phdr;
+
+static int exec_noreset(const char *path, int argc, char *argv[])
+{
+	elf_hdr *eh = (elf_hdr *)loader_elf;
+	elf_phdr *ph;
+	char *nargv[3 + 4];
+	int i;
+
+	if (argc > 4)
+		return -1;
+	if (memcmp(eh->ident, "\x7f" "ELF", 4) != 0)
+		return -2;
+	nargv[0] = "";
+	nargv[1] = (char *)path;
+	nargv[2] = "0";
+	for (i = 0; i < argc; i++)
+		nargv[3 + i] = argv[i];
+	ph = (elf_phdr *)(loader_elf + eh->phoff);
+	for (i = 0; i < eh->phnum; i++) {
+		if (ph[i].type != 1)
+			continue;
+		memcpy((void *)ph[i].vaddr, loader_elf + ph[i].offset, ph[i].filesz);
+		if (ph[i].memsz > ph[i].filesz)
+			memset((u8 *)ph[i].vaddr + ph[i].filesz, 0, ph[i].memsz - ph[i].filesz);
+	}
+	sceSifExitRpc();
+	FlushCache(0);
+	FlushCache(2);
+	return ExecPS2((void *)eh->entry, NULL, argc + 3, nargv);
+}
 
 /* ------------------------------------------------------------------ log e tela */
 static char logbuf[64 * 1024];
@@ -528,7 +572,9 @@ int main(int argc, char *argv[])
 	log_save();
 	padPortClose(0, 0);
 	padEnd();
-	r = LoadELFFromFileWithPartitionNoReset(vpath, NULL, 1, eargv);
+	if (!exists(vpath))
+		fail("O VCD NAO MOSTRA O EMBER (VER VCD.TXT)");
+	r = exec_noreset(vpath, 1, eargv);
 	/* so volta se falhou */
 	pad_ok = 0;
 	L("[EMBER] falhou ao abrir: %d", r);

@@ -41,8 +41,8 @@ IRX_ID(MODNAME, 1, 1);
 
 /* ------------------------------------------------------------------ estado */
 static char root[16] = "mass:";
-static char gdir[192] = "/Ember/games/CD-USB";
-static char gname[64] = "CD-USB";
+static char gdir[180] = "/Ember/games/CD-USB";
+static char gname[48] = "CD-USB";
 static char cue_path[256], bin_path[256], log_path[256];
 static int nblocks = 8;
 
@@ -52,7 +52,7 @@ static int data_mode = 2;		/* PS1 = modo 2 (XA); conferido no setor 16 */
 static volatile int ready;		/* 0 = preparando, 1 = pronto, -1 = falhou */
 static char cue[6144];
 static int cue_len;
-static u32 bin_size;
+static unsigned int bin_size;
 
 typedef struct {
 	int base;			/* 1o setor do bloco (-1 = vazio) */
@@ -65,24 +65,24 @@ static u8 *cache;
 static int lock = -1;
 static u32 tick;
 static volatile int want = -1;		/* proximo bloco que o Ember deve pedir */
-static u32 last_io;
+static unsigned int last_io;
 static u8 scratch[SECT] __attribute__((aligned(64)));
 
 static struct {
-	u32 reqs, hits, waits, misses, pref, slow, worst, errors, recov, keeps, keep_worst;
+	unsigned int reqs, hits, waits, misses, pref, slow, worst, errors, recov, keeps, keep_worst;
 } st;
 
 /* ------------------------------------------------------------------ log */
 static char logbuf[6144];
 static int loglen, log_lock = -1;
 
-static u32 now_ms(void)
+static unsigned int now_ms(void)
 {
 	iop_sys_clock_t c;
 	u32 s, us;
 	GetSystemTime(&c);
 	SysClock2USec(&c, &s, &us);
-	return s * 1000 + us / 1000;
+	return (unsigned int)(s * 1000 + us / 1000);
 }
 
 static void L(const char *fmt, ...)
@@ -90,7 +90,7 @@ static void L(const char *fmt, ...)
 	static char line[640];
 	va_list ap;
 	int n;
-	u32 t = now_ms();
+	unsigned int t = now_ms();
 
 	if (log_lock >= 0)
 		WaitSema(log_lock);
@@ -158,7 +158,7 @@ static void put_lba(u8 *c, int lba)
 static int wait_ready(int ms)
 {
 	u8 c[12] = {0};
-	u32 t0 = now_ms();
+	unsigned int t0 = now_ms();
 	int r, sense;
 
 	while (now_ms() - t0 < (u32)ms) {
@@ -285,7 +285,7 @@ static int read_run(int lba, int n, int kind, u8 *dst, int *sense)
 
 static void recover(int r, int lba)
 {
-	u32 t0 = now_ms();
+	unsigned int t0 = now_ms();
 	st.recov++;
 	L("leitora sem resposta/reiniciou (resultado %d, setor %d): recuperando", r, lba);
 	DelayThread(300 * 1000);
@@ -313,7 +313,7 @@ static void read_robust(int lba, int n, int kind, u8 *dst)
 static void load_block(int i, int base)
 {
 	u8 *dst = cache + i * BLK_BYTES;
-	u32 t0 = now_ms(), ms;
+	unsigned int t0 = now_ms(), ms;
 	int s = base, e = base + BLK;
 
 	while (s < e) {
@@ -456,7 +456,7 @@ static int bin_read(u32 pos, u8 *dst, int size)
 /* leitura adiantada + manter girando + log (thread propria) */
 static void worker(void)
 {
-	u32 last_flush = now_ms(), last_stat = now_ms();
+	unsigned int last_flush = now_ms(), last_stat = now_ms();
 	int ahead = nblocks - 2;
 
 	for (;;) {
@@ -492,7 +492,7 @@ static void worker(void)
 		/* parado ha 2 s: le 1 setor perto de onde o jogo esta */
 		if (w >= 0 && now_ms() - last_io > KEEP_MS) {
 			int s = w < t_lba[100] ? w : t_lba[100] - 1, sense, r, kd = kind_of(s);
-			u32 t0 = now_ms(), ms;
+			unsigned int t0 = now_ms(), ms;
 			r = read_run(s, 1, kd ? kd : 2, scratch, &sense);
 			ms = now_ms() - t0;
 			st.keeps++;
@@ -545,11 +545,11 @@ static void make_cue(void)
 static void init_thread(void *arg)
 {
 	int i, t;
-	u32 t0 = now_ms();
+	unsigned int t0 = now_ms();
 	(void)arg;
 
 	L("vcd 1.1: pasta %s%s, jogo %s, %d blocos de cache", root, gdir, gname, nblocks);
-	L("memoria livre no IOP: %u KB", QueryMaxFreeMemSize() / 1024);
+	L("memoria livre no IOP: %u KB", (unsigned int)QueryMaxFreeMemSize() / 1024);
 	while (nblocks >= 3 && !(cache = AllocSysMemory(ALLOC_FIRST, nblocks * BLK_BYTES, NULL)))
 		nblocks--;
 	if (!cache) {
@@ -561,7 +561,7 @@ static void init_thread(void *arg)
 	for (i = 0; i < MAX_BLOCKS; i++)
 		slots[i].base = -1;
 	L("cache: %d blocos (%d KB); memoria livre depois: %u KB", nblocks, nblocks * BLK_BYTES / 1024,
-	  QueryMaxFreeMemSize() / 1024);
+	  (unsigned int)QueryMaxFreeMemSize() / 1024);
 	if (!wait_ready(30000) || !read_toc()) {
 		L("disco nao ficou pronto ou TOC invalida");
 		ready = -1;
@@ -1021,7 +1021,7 @@ static void copy_arg(char *dst, const char *src, int max)
 int _start(int argc, char *argv[])
 {
 	iop_thread_t t;
-	char tmp[192];
+	char tmp[180];
 	int i, id;
 
 	for (i = 1; i < argc; i++) {

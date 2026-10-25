@@ -5,6 +5,7 @@
 
 /* em ordem alfabetica */
 #include <iomanX.h>
+#include <loadcore.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <sysclib.h>
@@ -12,6 +13,7 @@
 #include <thbase.h>
 #include <thsemap.h>
 #include <io_common.h>
+#include "cdusb_iop.h"
 #include <iox_stat.h>
 
 #endif

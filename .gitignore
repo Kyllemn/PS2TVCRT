@@ -3,3 +3,8 @@ emberusb/ee/*.o
 emberusb/ee/*.ELF
 emberusb/iop/obj/
 emberusb/iop/*.irx
+emberusb/ee/loader_elf.c
+emberusb/iop/*.elf
+emberusb/loader/*.o
+emberusb/loader/*.elf
+cdusb/iop/*.elf
