@@ -16,7 +16,7 @@ Jogos de PS2 (DVD ou CD) direto da leitora de CD/DVD USB externa, pelo
 Para usar no seu lançador: copie `usbcd_bd.irx` para `modules/` e
 `bsd-usbcd.toml` para `config/` do Neutrino e chame com os argumentos acima.
 Argumentos do driver (no .toml, `args = [...]`): `speed=<KB/s>` (0 = não
-travar; padrão CD 706, DVD não trava), `keep=<ms>` (manter girando, padrão 2000).
+travar; padrão CD 706, DVD 1385), `keep=<ms>` (manter girando, padrão 2000).
 
 Testes que deram as regras (CDUSB c07–c09, ASUS SDRW-08D1S-U): ver
 `../cdusb` e o histórico.

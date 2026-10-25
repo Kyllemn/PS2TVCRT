@@ -12,11 +12,13 @@
  *  - setores de 2048 (READ(10)); o BDM usa setores de 512: 1 do disco = 4;
  *  - quanto maior o comando, melhor (19 setores = 729 KB/s, o teto do USB
  *    do PS2); aqui ate 32 (64 KB) quando o pedido e alinhado;
- *  - CD: velocidade travada (pede 4x, a ASUS fica em 10x), mais estavel;
+ *  - velocidade travada: CD pede 4x (a ASUS fica em 10x); DVD pede 1x (ela
+ *    fica em ~2,4x). Livre, o DVD girou a 8x e travou 4 s; travado, nenhuma
+ *    travada e a mesma velocidade (o limite e o USB: ~730 KB/s);
  *  - leitora que reinicia: espera ficar pronta, trava de novo e repete;
  *  - motor: le 1 setor quando fica parada (2 s), para nao desacelerar.
  *
- * Argumentos: speed=<KB/s> (0 = nao travar; padrao: CD 706, DVD nao trava)
+ * Argumentos: speed=<KB/s> (0 = nao travar; padrao: CD 706, DVD 1385)
  *             keep=<ms> (0 = sem manter girando; padrao 2000)
  */
 #include "irx_imports.h"
@@ -524,7 +526,7 @@ static int setup_dev(void)
 		is_dvd = prof >= 0x10 && prof < 0x40;
 	}
 	if (lock_kbs < 0)
-		lock_kbs = is_dvd ? 0 : 706;
+		lock_kbs = is_dvd ? 1385 : 706;
 	set_speed();
 	return 1;
 }
