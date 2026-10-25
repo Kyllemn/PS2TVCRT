@@ -1,0 +1,10 @@
+DECLARE_EXPORT_TABLE(cdusb, 1, 1)
+	DECLARE_EXPORT(_start)
+	DECLARE_EXPORT(_retonly)
+	DECLARE_EXPORT(_retonly)
+	DECLARE_EXPORT(_retonly)
+	DECLARE_EXPORT(cdusb_iop_find_cd)
+/*05*/	DECLARE_EXPORT(cdusb_iop_scsi)
+END_EXPORT_TABLE
+
+void _retonly() {}

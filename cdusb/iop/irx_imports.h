@@ -4,6 +4,7 @@
 #include <irx.h>
 
 /* em ordem alfabetica */
+#include <loadcore.h>
 #include <sifcmd.h>
 #include <sysclib.h>
 #include <thbase.h>

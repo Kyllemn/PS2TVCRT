@@ -1,6 +1,6 @@
 # cdusb.irx - leitor de CD USB (IOP)
 IOP_BIN = cdusb.irx
-IOP_OBJS = cdusb.o imports.o
+IOP_OBJS = exports.o cdusb.o imports.o
 IOP_CFLAGS += -I../common
 
 all: $(IOP_BIN)

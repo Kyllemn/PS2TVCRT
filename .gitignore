@@ -1,0 +1,5 @@
+emberusb/ee/irx_*.c
+emberusb/ee/*.o
+emberusb/ee/*.ELF
+emberusb/iop/obj/
+emberusb/iop/*.irx

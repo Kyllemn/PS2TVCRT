@@ -23,6 +23,9 @@
 #include <usbd_macro.h>
 
 #include "cdusb_rpc.h"
+#include "cdusb_iop.h"
+
+extern struct irx_export_table _exp_cdusb;
 
 IRX_ID("cdusb", 1, 1);
 
@@ -585,6 +588,40 @@ static void *rpc_fn(int fno, void *buf, int size)
 	return buf;
 }
 
+/* ------------------------------------------------------------------ biblioteca do IOP */
+int cdusb_iop_find_cd(int *sub)
+{
+	int i;
+	for (i = 0; i < CDUSB_MAXDEV; i++)
+		if (devs[i].devId >= 0 && devs[i].info.state == CDUSB_DEV_READY && devs[i].info.ptype == 5) {
+			if (sub)
+				*sub = devs[i].info.sub;
+			return i;
+		}
+	return -1;
+}
+
+int cdusb_iop_scsi(int dev, const u8 *cdb, int cdb_len, int dir, void *data, u32 len, int ms, int *sense)
+{
+	cddev *d;
+	int r;
+
+	if (sense)
+		*sense = 0;
+	if (dev < 0 || dev >= CDUSB_MAXDEV || cdb_len < 6 || cdb_len > 16 || dir < 0 || dir > 2)
+		return CDUSB_E_ARGS;
+	if (ms < 500)
+		ms = 500;
+	WaitSema(io_lock);
+	d = &devs[dev];
+	if (d->devId < 0 || d->info.state != CDUSB_DEV_READY)
+		r = CDUSB_E_NODEV;
+	else
+		r = scsi(d, cdb, cdb_len, dir, data, len, ms, NULL, sense, NULL);
+	SignalSema(io_lock);
+	return r;
+}
+
 static void rpc_thread(void *arg)
 {
 	static SifRpcDataQueue_t qd;
@@ -636,6 +673,9 @@ int _start(int argc, char *argv[])
 		return MODULE_NO_RESIDENT_END;
 
 	if (new_thread(work_thread, 0x12, 0x1000) <= 0 || new_thread(rpc_thread, 0x20, 0x1000) <= 0)
+		return MODULE_NO_RESIDENT_END;
+
+	if (RegisterLibraryEntries(&_exp_cdusb) != 0)
 		return MODULE_NO_RESIDENT_END;
 
 	memset(&ldd, 0, sizeof(ldd));
