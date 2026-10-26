@@ -31,7 +31,7 @@
 #define VERSAO		"n06"
 #define LOG_FILE	"mass:/NEUTRINOUSB.TXT"
 
-#define IRX(n)	extern unsigned char n[]; extern unsigned int size_##n
+#define IRX(n)	extern const unsigned char n[]; extern unsigned int size_##n
 IRX(irx_iomanx);
 IRX(irx_filexio);
 IRX(irx_usbd);
@@ -40,7 +40,6 @@ IRX(irx_bdm);
 IRX(irx_bdmfs_fatfs);
 IRX(irx_usbmass_bd);
 IRX(irx_usbcd_bd);
-IRX(irx_usbd_mini);
 IRX(loader_elf);
 
 /* ------------------------------------------------------------------ abrir o Neutrino */
@@ -85,6 +84,43 @@ static int exec_noreset(const char *path, int argc, char *argv[])
 	FlushCache(0);
 	FlushCache(2);
 	return ExecPS2((void *)eh->entry, NULL, argc + 3, nargv);
+}
+
+/* ------------------------------------------------------------------ selo */
+/*
+ * Selo de integridade: CRC32 do codigo (.text) e das constantes (.rodata:
+ * mensagens, drivers embutidos, carregador). O valor e gravado no arquivo
+ * depois de compilar (tools/selo.py procura a marca em rv_seal). Se qualquer
+ * byte mudar, o programa nao roda.
+ */
+extern char _ftext[], _etext[], _frodata[], _erodata[];
+volatile u32 rv_seal[4] = {0x544C5652, 0x4C41534C, 0, 0};	/* "RVLT" "LSAL" crc tamanho */
+
+static u32 crc32_upd(u32 c, const u8 *p, u32 n)
+{
+	static u32 tab[256];
+	u32 i, k;
+
+	if (!tab[1])
+		for (i = 0; i < 256; i++) {
+			u32 v = i;
+			for (k = 0; k < 8; k++)
+				v = (v >> 1) ^ (0xEDB88320u & (0u - (v & 1)));
+			tab[i] = v;
+		}
+	while (n--)
+		c = tab[(c ^ *p++) & 0xff] ^ (c >> 8);
+	return c;
+}
+
+static int seal_ok(void)
+{
+	u32 c = 0xFFFFFFFFu;
+	u32 nt = (u32)(_etext - _ftext), nr = (u32)(_erodata - _frodata);
+
+	c = crc32_upd(c, (const u8 *)_ftext, nt);
+	c = crc32_upd(c, (const u8 *)_frodata, nr);
+	return rv_seal[3] == nt + nr && rv_seal[2] == (c ^ 0xFFFFFFFFu);
 }
 
 /* ------------------------------------------------------------------ log e tela */
@@ -197,10 +233,10 @@ static void fail(const char *msg)
 }
 
 /* ------------------------------------------------------------------ modulos */
-static int load_buf(const char *name, void *p, unsigned int size, int arglen, const char *args)
+static int load_buf(const char *name, const void *p, unsigned int size, int arglen, const char *args)
 {
 	int ret, mr = -1;
-	ret = SifExecModuleBuffer(p, size, arglen, args, &mr);
+	ret = SifExecModuleBuffer((void *)p, size, arglen, args, &mr);
 	L("[BOOT] %s: %d / %d", name, ret, mr);
 	return (ret < 0 || mr == 1) ? -1 : 0;
 }
@@ -463,6 +499,14 @@ int main(int argc, char *argv[])
 	char *nargv[4];
 	int r, i, fd, flat;
 
+	if (!seal_ok()) {
+		init_scr();
+		scr_setfontcolor(0x0000ff);
+		scr_printf("\n\n   ARQUIVO ALTERADO OU CORROMPIDO.\n");
+		scr_printf("   ESTE PROGRAMA NAO PODE SER MODIFICADO.\n");
+		for (;;)
+			SleepThread();
+	}
 	iop_reset();
 	init_scr();
 	title("PREPARANDO...");
@@ -525,7 +569,10 @@ int main(int argc, char *argv[])
 	if (install(path, irx_usbcd_bd, size_irx_usbcd_bd, 0) < 0)
 		fail("NAO CONSEGUI GRAVAR O DRIVER DA LEITORA NO PENDRIVE");
 	snprintf(path, sizeof(path), "%s/usbd_mini.irx", moddir);
-	install(path, irx_usbd_mini, size_irx_usbd_mini, 1);
+	if (!exists(path)) {
+		L("[NEUTRINO] falta %s (vem com o Neutrino)", path);
+		fail("ARQUIVOS DO CARREGADOR INCOMPLETOS NO PENDRIVE");
+	}
 	snprintf(tomlpath, sizeof(tomlpath), "%s/bsd-usbcd.toml", cfgdir);
 	if (write_toml(tomlpath, "") < 0)
 		fail("NAO CONSEGUI GRAVAR A CONFIGURACAO NO PENDRIVE");
@@ -560,8 +607,14 @@ int main(int argc, char *argv[])
 	S("   LEITORA:  %.8s %.16s", st.dev[dev].inquiry + 8, st.dev[dev].inquiry + 16);
 	S("   JOGO:     %s  (%s)", code[0] ? code : "?", vol[0] ? vol : "?");
 	S(" ");
+	scr_setfontcolor(0x00d0ff);
+	S("   AO JOGAR PELA USB, PODE HAVER MUITOS ENGASGOS NAS CUTSCENES.");
+	S("   ISSO E UMA LIMITACAO DA VELOCIDADE DA USB E NAO TEM NADA A VER");
+	S("   COM O DESEMPENHO DO SOFTWARE.");
+	scr_setfontcolor(0xffffff);
+	S(" ");
 	S("   X         = JOGAR");
-	S("   TRIANGULO = JOGAR SEM FILA (COMO A N01, SE ALGUM JOGO ESTRANHAR)");
+	S("   TRIANGULO = JOGAR SEM FILA (SE ALGUM JOGO ESTRANHAR)");
 	S("   O         = SAIR");
 	log_save();
 	for (;;) {
