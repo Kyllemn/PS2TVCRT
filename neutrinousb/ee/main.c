@@ -498,8 +498,20 @@ static int write_toml(const char *path, const char *args)
 
 static const char *neutrino_paths[] = {
 	"mass:/neutrino/neutrino.elf", "mass:/APPS/neutrino/neutrino.elf", "mass:/APP/neutrino/neutrino.elf",
-	"mass:/APPS/NEUTRINO/neutrino.elf", "mass:/neutrino.elf", NULL,
+	"mass:/APPS/NEUTRINO/neutrino.elf", "mass:/neutrino.elf",
+	"mc0:/neutrino/neutrino.elf", "mc1:/neutrino/neutrino.elf", "mc0:/APPS/neutrino/neutrino.elf",
+	"mc1:/APPS/neutrino/neutrino.elf", NULL,
 };
+
+static int mass_ready(void)
+{
+	int fd = fileXioDopen("mass:/");
+	if (fd < 0)
+		return 0;
+	fileXioDclose(fd);
+	log_ok = 1;
+	return 1;
+}
 
 int main(int argc, char *argv[])
 {
@@ -508,7 +520,7 @@ int main(int argc, char *argv[])
 	u16 b;
 	const char *np = NULL;
 	char *nargv[4];
-	int r, i, fd, flat;
+	int r, i, flat;
 
 	if (!seal_ok()) {
 		init_scr();
@@ -527,6 +539,7 @@ int main(int argc, char *argv[])
 	load_rom("rom0:XPADMAN");
 	load_buf("iomanX", irx_iomanx, size_irx_iomanx, 0, NULL);
 	load_buf("fileXio", irx_filexio, size_irx_filexio, 0, NULL);
+	load_rom("rom0:XMCMAN");	/* cartao de memoria (mc0:/mc1:) via iomanX */
 	load_buf("usbd", irx_usbd, size_irx_usbd, 0, NULL);
 	r = load_buf("cdusb", irx_cdusb, size_irx_cdusb, 0, NULL);
 	if (r == 0)
@@ -546,38 +559,24 @@ int main(int argc, char *argv[])
 	pad_ok = padPortOpen(0, 0, pad_area) != 0;
 	if (r != 0)
 		fail("FALHA AO CARREGAR O DRIVER DA LEITORA (CDUSB)");
-	/* pendrive: espera 10 s; se nao achar, deixa plugar e procurar de novo sem reiniciar */
-	for (i = 40;;) {
-		while (i-- > 0) {
-			fd = fileXioDopen("mass:/");
-			if (fd >= 0) {
-				fileXioDclose(fd);
-				log_ok = 1;
+	/* arquivos do carregador: pendrive (espera ate 5 s) ou cartao de memoria */
+	for (;;) {
+		for (i = 0; i < 20 && !mass_ready(); i++)
+			ee_wait_ms(250);
+		for (i = 0; neutrino_paths[i]; i++)
+			if (exists(neutrino_paths[i])) {
+				np = neutrino_paths[i];
 				break;
 			}
-			ee_wait_ms(250);
-		}
-		if (log_ok)
+		if (np)
 			break;
-		title("PENDRIVE NAO ENCONTRADO");
-		S("   PLUGUE O PENDRIVE COM OS ARQUIVOS DO CARREGADOR.");
+		L("[NEUTRINO] nao encontrado no pendrive nem no cartao de memoria");
+		title("ARQUIVOS DO CARREGADOR NAO ENCONTRADOS");
+		S("   COLOQUE OS ARQUIVOS NO PENDRIVE OU NO CARTAO DE MEMORIA.");
 		S("   X = PROCURAR DE NOVO      O = SAIR");
 		if (!ask())
 			Exit(0);
-		title("PROCURANDO O PENDRIVE...");
-		i = 20;
-	}
-
-	/* Neutrino */
-	for (i = 0; neutrino_paths[i]; i++)
-		if (exists(neutrino_paths[i])) {
-			np = neutrino_paths[i];
-			break;
-		}
-	if (!np)
-		{
-		L("[NEUTRINO] nao encontrado: precisa de mass:/neutrino/neutrino.elf");
-		fail("ARQUIVOS DO CARREGADOR NAO ENCONTRADOS NO PENDRIVE");
+		title("PROCURANDO...");
 	}
 	strcpy(ndir, np);
 	*strrchr(ndir, '/') = 0;			/* "mass:/neutrino" */
@@ -588,15 +587,15 @@ int main(int argc, char *argv[])
 	L("[NEUTRINO] %s (%s)", np, flat ? "pasta plana" : "config/ e modules/");
 	snprintf(path, sizeof(path), "%s/usbcd_bd.irx", moddir);
 	if (install(path, irx_usbcd_bd, size_irx_usbcd_bd, 0) < 0)
-		fail("NAO CONSEGUI GRAVAR O DRIVER DA LEITORA NO PENDRIVE");
+		fail("NAO CONSEGUI GRAVAR O DRIVER DA LEITORA");
 	snprintf(path, sizeof(path), "%s/usbd_mini.irx", moddir);
 	if (!exists(path)) {
 		L("[NEUTRINO] falta %s (vem com o Neutrino)", path);
-		fail("ARQUIVOS DO CARREGADOR INCOMPLETOS NO PENDRIVE");
+		fail("ARQUIVOS DO CARREGADOR INCOMPLETOS");
 	}
 	snprintf(tomlpath, sizeof(tomlpath), "%s/bsd-usbcd.toml", cfgdir);
 	if (write_toml(tomlpath, "") < 0)
-		fail("NAO CONSEGUI GRAVAR A CONFIGURACAO NO PENDRIVE");
+		fail("NAO CONSEGUI GRAVAR A CONFIGURACAO");
 
 	/* leitora e disco */
 	for (;;) {
@@ -660,7 +659,7 @@ int main(int argc, char *argv[])
 	L("[NEUTRINO] falhou ao abrir: %d", r);
 	log_save();
 	title("FALHA AO INICIAR O JOGO");
-	S("   CODIGO %d (VER O LOG NO PENDRIVE)", r);
+	S("   CODIGO %d", r);
 	for (;;)
 		ee_wait_ms(1000);
 	(void)argc;
