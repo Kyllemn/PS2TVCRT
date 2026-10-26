@@ -1,12 +1,12 @@
 # PS2USB.ELF - Retrovolt. Leitor de CDVD Externo (EE)
-# Compilar: /opt/ps2/ps2.sh <repositorio> "make -C cdusb/iop && make -C neutrinousb/iop && make -C emberusb/loader && make -C neutrinousb/ee final"
+# Compilar: /opt/ps2/ps2.sh <repositorio> "make -C cdusb/iop && make -C neutrinousb/iop && make -C emberusb/iop && make -C emberusb/loader && make -C neutrinousb/ee final"
 # 'final' = strip + selo de integridade (tools/selo.py) + compactacao LZMA (ps2-packer) -> PS2USB_FINAL.ELF
 # make LOG=1 ... = versao de diagnostico com log em mass:/PS2USB.TXT
 EE_BIN = PS2USB.ELF
 FINAL = PS2USB_FINAL.ELF
 CDUSB = ../../cdusb
 IRX_OBJS = irx_iomanx.o irx_filexio.o irx_usbd.o irx_cdusb.o irx_bdm.o irx_bdmfs_fatfs.o irx_usbmass_bd.o \
-	   irx_usbcd_bd.o loader_elf.o
+	   irx_usbcd_bd.o irx_vcd.o loader_elf.o
 EE_OBJS = main.o cdusb_ee.o $(IRX_OBJS)
 EE_INCS := -I$(CDUSB)/common -I$(CDUSB)/ee
 EE_LIBS = -ldebug -lpad -lfileXio -lpatches
@@ -58,6 +58,10 @@ irx_cdusb.c: $(CDUSB)/iop/cdusb.irx
 	$(BIN2C) $< $@ irx_cdusb && $(CONST) $@
 irx_usbcd_bd.c: ../iop/usbcd_bd.irx
 	$(BIN2C) $< $@ irx_usbcd_bd && $(CONST) $@
+
+# PS1: pasta virtual do Ember (o CD da leitora vira .cue/.bin)
+irx_vcd.c: ../../emberusb/iop/vcd.irx
+	$(BIN2C) $< $@ irx_vcd && $(CONST) $@
 loader_strip.elf: ../../emberusb/loader/loader.elf
 	$(EE_STRIP) -o $@ $<
 loader_elf.c: loader_strip.elf

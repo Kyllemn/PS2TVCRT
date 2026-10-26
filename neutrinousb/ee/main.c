@@ -1,15 +1,17 @@
 /*
- * NEUTRINOUSB - abre o Neutrino com o DVD/CD de PS2 da leitora USB.
+ * PS2USB (NEUTRINOUSB) - jogos de PS2 e PS1 pela leitora USB externa.
  * Criado por Leonardo Torres.
  *
  * 1. sobe usbd -> cdusb (+ FINALIZE: o pendrive fica com o usbmass) ->
- *    bdm/usbmass (pendrive), como o EMBERUSB;
- * 2. acha o Neutrino no pendrive e instala nele o usbcd_bd.irx (modules/) e
- *    o bsd-usbcd.toml (config/) (pasta "plana" tambem: SAS);
- * 3. confere o disco (ISO9660 + SYSTEM.CNF/BOOT2);
- * 4. abre o Neutrino SEM reiniciar o IOP (ele le a configuracao dele pelo
- *    pendrive antes de reiniciar o IOP sozinho) com:
+ *    bdm/usbmass (pendrive) e o XMCMAN (cartao de memoria);
+ * 2. confere o disco (ISO9660 + SYSTEM.CNF): BOOT2 = PS2, BOOT = PS1;
+ * 3. PS2: acha o Neutrino (cartao de memoria primeiro, depois o pendrive),
+ *    instala nele o usbcd_bd.irx (modules/) e o bsd-usbcd.toml (config/)
+ *    (pasta "plana" tambem: SAS) e abre SEM reiniciar o IOP com:
  *      -bsd=usbcd -bsdfs=bd -dvd=bdfs:usbcd0p0
+ * 4. PS1 (n09): acha o Ember (mesma ordem), sobe o vcd.irx (o CD vira
+ *    <jogo>.cue/.bin em <Ember>/games/<jogo>) e abre vcd:/<Ember>/ember.elf
+ *    SEM reiniciar o IOP.
  * Log: mass:/PS2USB.TXT (so com make LOG=1)
  */
 #include <stdio.h>
@@ -28,7 +30,7 @@
 
 #include "cdusb_ee.h"
 
-#define VERSAO		"n08"
+#define VERSAO		"n09"
 /* log so na compilacao de diagnostico (make LOG=1); a versao final nao grava log */
 #define LOG_FILE	"mass:/PS2USB.TXT"
 
@@ -41,6 +43,7 @@ IRX(irx_bdm);
 IRX(irx_bdmfs_fatfs);
 IRX(irx_usbmass_bd);
 IRX(irx_usbcd_bd);
+IRX(irx_vcd);
 IRX(loader_elf);
 
 /* ------------------------------------------------------------------ abrir o Neutrino */
@@ -333,7 +336,7 @@ static int wait_disc(void)
 			return 1;
 		if (r == CDUSB_CHECK && ((R.sense >> 16) & 0x0f) == 2 && ((R.sense >> 8) & 0xff) == 0x3A) {
 			if (shown != 1)
-				S("   SEM DISCO: COLOQUE O DISCO DE PS2 NA LEITORA  (O = SAIR)");
+				S("   SEM DISCO: COLOQUE O DISCO NA LEITORA  (O = SAIR)");
 			shown = 1;
 		} else if (r == CDUSB_CHECK && ((R.sense >> 16) & 0x0f) == 6) {
 			continue;
@@ -517,12 +520,129 @@ static int write_toml(const char *path, const char *args, const char *media)
 	return 0;
 }
 
-static const char *neutrino_paths[] = {
-	"mass:/neutrino/neutrino.elf", "mass:/APPS/neutrino/neutrino.elf", "mass:/APP/neutrino/neutrino.elf",
-	"mass:/APPS/NEUTRINO/neutrino.elf", "mass:/neutrino.elf",
-	"mc0:/neutrino/neutrino.elf", "mc1:/neutrino/neutrino.elf", "mc0:/APPS/neutrino/neutrino.elf",
-	"mc1:/APPS/neutrino/neutrino.elf", NULL,
+/* ------------------------------------------------------------------ PS1 (n09) */
+static int t_first, t_last, t_lba[101], t_ctrl[101];
+
+static int read_toc(void)
+{
+	static u8 b[4 + 100 * 8] __attribute__((aligned(64)));
+	u8 c[12] = {0x43, 0, 0, 0, 0, 0, 1, 0, 4, 0, 0, 0};
+	int len, i, have_end = 0;
+
+	if (cmd(c, 1, b, 4, 5000) != CDUSB_OK)
+		return 0;
+	len = (b[0] << 8 | b[1]) + 2;
+	if (len < 12 || len > (int)sizeof(b))
+		return 0;
+	c[7] = len >> 8;
+	c[8] = len;
+	if (cmd(c, 1, b, len, 5000) != CDUSB_OK)
+		return 0;
+	t_first = b[2];
+	t_last = b[3];
+	for (i = 4; i + 8 <= len; i += 8) {
+		int t = b[i + 2], idx = t == 0xAA ? 100 : t;
+		if (idx < 1 || idx > 100)
+			continue;
+		t_lba[idx] = b[i + 4] << 24 | b[i + 5] << 16 | b[i + 6] << 8 | b[i + 7];
+		t_ctrl[idx] = b[i + 1] & 0x0f;
+		if (idx == 100)
+			have_end = 1;
+	}
+	return t_first >= 1 && t_last >= t_first && t_last <= 99 && have_end && t_lba[100] > t_lba[t_last];
+}
+
+/* setor de dados cru; devolve os 2048 bytes do usuario (modo 2 em +24, modo 1 em +16) */
+static const u8 *read_user(int lba)
+{
+	u8 c[12] = {0xBE, 0, 0, 0, 0, 0, 0, 0, 1, 0xF8, 0, 0};
+	c[2] = lba >> 24; c[3] = lba >> 16; c[4] = lba >> 8; c[5] = lba;
+	if (cmd(c, 1, sec, 2352, 8000) != CDUSB_OK)
+		return NULL;
+	return sec + (sec[15] == 2 ? 24 : 16);
+}
+
+static int upper(int c)
+{
+	return (c >= 'a' && c <= 'z') ? c - 32 : c;
+}
+
+/* "BOOT = cdrom:\SLUS_006.06;1" -> "SLUS-00606" (nome da pasta de saves) */
+static int ps1_id(char *out, int max, char *vol)
+{
+	const u8 *u = read_user(16);
+	u32 root, rsize, off, k, f_lba = 0;
+	char txt[2049], *p, *q;
+	int n = 0, i;
+
+	out[0] = vol[0] = 0;
+	if (!u || memcmp(u + 1, "CD001", 5) != 0)
+		return -1;
+	if (memcmp(u + 8, "PLAYSTATION", 11) != 0)
+		return -2;
+	memcpy(vol, u + 40, 32);
+	vol[32] = 0;
+	for (i = 31; i >= 0 && vol[i] == ' '; i--)
+		vol[i] = 0;
+	root = le32(u + 156 + 2);
+	rsize = le32(u + 156 + 10);
+	for (k = 0; k * 2048 < rsize && k < 8 && !f_lba; k++) {
+		const u8 *d = read_user(root + k);
+		if (!d)
+			return -3;
+		for (off = 0; off < 2048 && d[off];) {
+			if (d[off + 32] >= 10 && memcmp(d + off + 33, "SYSTEM.CNF", 10) == 0) {
+				f_lba = le32(d + off + 2);
+				break;
+			}
+			off += d[off];
+		}
+	}
+	if (!f_lba)
+		return -4;
+	u = read_user(f_lba);
+	if (!u)
+		return -5;
+	memcpy(txt, u, 2048);
+	txt[2048] = 0;
+	L("[PS1] SYSTEM.CNF: %.120s", txt);
+	p = strstr(txt, "cdrom:");
+	if (!p)
+		p = strstr(txt, "CDROM:");
+	if (!p)
+		return -6;
+	p += 6;
+	while (*p == '\\' || *p == '/')
+		p++;
+	for (q = p; *q && *q != ';' && *q != '\r' && *q != '\n' && n < max - 2; q++) {
+		int c = upper(*q);
+		if (c == '\\' || c == '/') {
+			n = 0;			/* pasta dentro do disco: fica so o arquivo */
+			continue;
+		}
+		if (c == '.')
+			continue;
+		if (c == '_')
+			c = '-';
+		if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-')
+			out[n++] = c;
+	}
+	out[n] = 0;
+	return n > 0 ? 0 : -7;
+}
+
+/* ------------------------------------------------------------------ carregadores */
+/* n09: procura no cartao de memoria primeiro; o pendrive so depois */
+static const char *const app_devs[] = {"mc0:", "mc1:", "mass:", NULL};
+static const char *const neutrino_files[] = {
+	"/neutrino/neutrino.elf", "/APPS/neutrino/neutrino.elf", "/APP/neutrino/neutrino.elf",
+	"/APPS/NEUTRINO/neutrino.elf", "/NEUTRINO/neutrino.elf", "/neutrino.elf", NULL,
 };
+static const char *const ember_files[] = {
+	"/Ember/ember.elf", "/Ember/EMBER.ELF", "/APPS/Ember/ember.elf", "/APP/Ember/ember.elf",
+	"/EMBER/ember.elf", "/EMBER/EMBER.ELF", "/APPS/EMBER/ember.elf", "/ember.elf", NULL,
+};
+static int mass_waited;
 
 static int mass_ready(void)
 {
@@ -534,14 +654,135 @@ static int mass_ready(void)
 	return 1;
 }
 
+static int find_app(const char *const *files, char *out, int max)
+{
+	int d, i;
+
+	for (d = 0; app_devs[d]; d++) {
+		if (!strcmp(app_devs[d], "mass:") && !mass_waited) {
+			for (i = 0; i < 20 && !mass_ready(); i++)	/* pendrive: ate 5 s */
+				ee_wait_ms(250);
+			mass_waited = 1;
+		}
+		for (i = 0; files[i]; i++) {
+			snprintf(out, max, "%s%s", app_devs[d], files[i]);
+			if (exists(out))
+				return 1;
+		}
+	}
+	return 0;
+}
+
+/* acha o carregador ou deixa colocar e procurar de novo */
+static void locate(const char *const *files, char *out, int max)
+{
+	while (!find_app(files, out, max)) {
+		L("[APP] %s nao encontrado", files[0]);
+		title("ARQUIVOS DO CARREGADOR NAO ENCONTRADOS");
+		S("   COLOQUE OS ARQUIVOS NO CARTAO DE MEMORIA OU NO PENDRIVE.");
+		S("   X = PROCURAR DE NOVO      O = SAIR");
+		if (!ask())
+			Exit(0);
+		title("PROCURANDO...");
+		mass_waited = 0;
+	}
+}
+
+static void usb_warning(void)
+{
+	S(" ");
+	scr_setfontcolor(0x00d0ff);
+	S("   AO JOGAR PELA USB, PODE HAVER MUITOS ENGASGOS NAS CUTSCENES.");
+	S("   ISSO E UMA LIMITACAO DA VELOCIDADE DA USB E NAO TEM NADA A VER");
+	S("   COM O DESEMPENHO DO SOFTWARE.");
+	scr_setfontcolor(0xffffff);
+	S(" ");
+	S("   X = JOGAR");
+	S("   O = SAIR");
+	log_save();
+	if (!ask())
+		Exit(0);
+}
+
+/* PS1: Ember + vcd.irx (o CD da leitora vira <jogo>.cue/.bin na pasta do jogo) */
+static void run_ps1(const char *inq)
+{
+	static char ep[200], devn[8], edir[160], gdir[200], gname[48], vol[33], vpath[220], args[400], arg1[120];
+	char *eargv[1];
+	int r, n, dl;
+
+	if (!read_toc())
+		fail("NAO CONSEGUI LER O SUMARIO DO DISCO");
+	L("[PS1] faixas %d a %d, fim %d", t_first, t_last, t_lba[100]);
+	if (!(t_ctrl[t_first] & 4))
+		fail("ESTE CD NAO TEM DADOS: NAO E JOGO DE PLAYSTATION");
+	r = ps1_id(gname, sizeof(gname), vol);
+	L("[PS1] codigo %s (%d), volume \"%s\"", gname, r, vol);
+	if (r == -2)
+		fail("ESTE CD NAO E DE PLAYSTATION");
+	if (r < 0)
+		strcpy(gname, "CD-USB");
+
+	locate(ember_files, ep, sizeof(ep));
+	dl = strchr(ep, ':') - ep + 1;			/* "mc0:" / "mass:" */
+	memcpy(devn, ep, dl);
+	devn[dl] = 0;
+	strcpy(edir, ep + dl);
+	*strrchr(edir, '/') = 0;			/* pasta do Ember ("" = raiz) */
+	L("[PS1] carregador %s", ep);
+	snprintf(vpath, sizeof(vpath), "%s%s/bios.bin", devn, edir);
+	if (!exists(vpath))
+		S("   AVISO: BIOS DO PS1 NAO ENCONTRADA NA PASTA DO CARREGADOR");
+	snprintf(gdir, sizeof(gdir), "%s/games/%s", edir, gname);
+	snprintf(vpath, sizeof(vpath), "%s%s/games", devn, edir);
+	fileXioMkdir(vpath, 0777);
+	snprintf(vpath, sizeof(vpath), "%s%s", devn, gdir);
+	fileXioMkdir(vpath, 0777);
+
+	n = 0;
+	n += sprintf(args + n, "root=%s", devn) + 1;
+	n += sprintf(args + n, "dir=%s", gdir) + 1;
+	n += sprintf(args + n, "name=%s", gname) + 1;
+	n += sprintf(args + n, "blocks=16") + 1;	/* maximo; deixa 640 KB livres no IOP */
+#ifndef COM_LOG
+	n += sprintf(args + n, "log=0") + 1;
+#endif
+	if (load_buf("vcd", irx_vcd, size_irx_vcd, n, args) != 0)
+		fail("FALHA AO PREPARAR O DISCO DE PS1");
+	snprintf(vpath, sizeof(vpath), "vcd:%s/%s.cue", gdir, gname);
+	if (!exists(vpath))
+		fail("FALHA AO PREPARAR O DISCO DE PS1");
+
+	title("PRONTO");
+	S("   LEITORA:  %.8s %.16s", inq + 8, inq + 16);
+	S("   JOGO:     %s  (%s)", gname, vol[0] ? vol : "?");
+	S("   TIPO:     PS1 - CD (%d FAIXAS)", t_last - t_first + 1);
+	usb_warning();
+
+	snprintf(vpath, sizeof(vpath), "vcd:%s", ep + dl);
+	snprintf(arg1, sizeof(arg1), "%s/%s.cue", gname, gname);
+	eargv[0] = arg1;
+	L("[PS1] abrindo %s \"%s\" (sem reiniciar o IOP)", vpath, arg1);
+	log_save();
+	padPortClose(0, 0);
+	padEnd();
+	r = exec_noreset(vpath, 1, eargv);
+	pad_ok = 0;
+	L("[PS1] falhou ao abrir: %d", r);
+	log_save();
+	title("FALHA AO INICIAR O JOGO");
+	S("   CODIGO %d", r);
+	for (;;)
+		ee_wait_ms(1000);
+}
+
 int main(int argc, char *argv[])
 {
 	cdusb_status st;
-	static char ndir[160], path[220], cfgdir[200], moddir[200], code[32], vol[33], cwd[200], tomlpath[220];
-	u16 b;
-	const char *np = NULL, *media;
+	static char ndir[200], ndir2[200], path[220], cfgdir[200], moddir[200], code[32], vol[33], cwd[200], tomlpath[220];
+	const char *np, *media;
 	char *nargv[4];
-	int r, i, flat;
+	int r, flat;
 
 	if (!seal_ok()) {
 		init_scr();
@@ -580,44 +821,6 @@ int main(int argc, char *argv[])
 	pad_ok = padPortOpen(0, 0, pad_area) != 0;
 	if (r != 0)
 		fail("FALHA AO CARREGAR O DRIVER DA LEITORA (CDUSB)");
-	/* arquivos do carregador: pendrive (espera ate 5 s) ou cartao de memoria */
-	for (;;) {
-		for (i = 0; i < 20 && !mass_ready(); i++)
-			ee_wait_ms(250);
-		for (i = 0; neutrino_paths[i]; i++)
-			if (exists(neutrino_paths[i])) {
-				np = neutrino_paths[i];
-				break;
-			}
-		if (np)
-			break;
-		L("[NEUTRINO] nao encontrado no pendrive nem no cartao de memoria");
-		title("ARQUIVOS DO CARREGADOR NAO ENCONTRADOS");
-		S("   COLOQUE OS ARQUIVOS NO PENDRIVE OU NO CARTAO DE MEMORIA.");
-		S("   X = PROCURAR DE NOVO      O = SAIR");
-		if (!ask())
-			Exit(0);
-		title("PROCURANDO...");
-	}
-	strcpy(ndir, np);
-	*strrchr(ndir, '/') = 0;			/* "mass:/neutrino" */
-	snprintf(path, sizeof(path), "%s/config/system.toml", ndir);
-	flat = !exists(path);
-	snprintf(cfgdir, sizeof(cfgdir), flat ? "%s" : "%s/config", ndir);
-	snprintf(moddir, sizeof(moddir), flat ? "%s" : "%s/modules", ndir);
-	L("[NEUTRINO] %s (%s)", np, flat ? "pasta plana" : "config/ e modules/");
-	snprintf(path, sizeof(path), "%s/usbcd_bd.irx", moddir);
-	if (install(path, irx_usbcd_bd, size_irx_usbcd_bd, 0) < 0)
-		fail("NAO CONSEGUI GRAVAR O DRIVER DA LEITORA");
-	snprintf(path, sizeof(path), "%s/usbd_mini.irx", moddir);
-	if (!exists(path)) {
-		L("[NEUTRINO] falta %s (vem com o Neutrino)", path);
-		fail("ARQUIVOS DO CARREGADOR INCOMPLETOS");
-	}
-	snprintf(tomlpath, sizeof(tomlpath), "%s/bsd-usbcd.toml", cfgdir);
-	if (write_toml(tomlpath, "", NULL) < 0)
-		fail("NAO CONSEGUI GRAVAR A CONFIGURACAO");
-
 	/* leitora e disco */
 	for (;;) {
 		if (cdusb_get_status(&st) == 0)
@@ -639,39 +842,42 @@ int main(int argc, char *argv[])
 		fail("O DISCO NAO FICOU PRONTO");
 	r = disc_id(code, sizeof(code), vol);
 	L("[DISCO] resultado %d, codigo %s, volume \"%s\"", r, code, vol);
-	if (r == 1)
-		fail("ESTE E UM CD DE PS1: USE O EMBERUSB");
+	if (r == 1 || (r < 0 && r != -2 && ps1_id(path, 48, vol) == 0))
+		run_ps1((const char *)st.dev[dev].inquiry);	/* PS1: nao volta */
 	if (r < 0)
-		fail("ESTE DISCO NAO E DE PLAYSTATION 2");
-
+		fail("ESTE DISCO NAO E DE PLAYSTATION");
 	media = disc_media();
+
+	/* PS2: Neutrino */
+	locate(neutrino_files, ndir, sizeof(ndir));
+	np = ndir;
+	strcpy(path, np);
+	*strrchr(path, '/') = 0;
+	strcpy(ndir2, path);				/* "mc0:/neutrino" */
+	snprintf(path, sizeof(path), "%s/config/system.toml", ndir2);
+	flat = !exists(path);
+	snprintf(cfgdir, sizeof(cfgdir), flat ? "%s" : "%s/config", ndir2);
+	snprintf(moddir, sizeof(moddir), flat ? "%s" : "%s/modules", ndir2);
+	L("[NEUTRINO] %s (%s)", np, flat ? "pasta plana" : "config/ e modules/");
+	snprintf(path, sizeof(path), "%s/usbcd_bd.irx", moddir);
+	if (install(path, irx_usbcd_bd, size_irx_usbcd_bd, 0) < 0)
+		fail("NAO CONSEGUI GRAVAR O DRIVER DA LEITORA");
+	snprintf(path, sizeof(path), "%s/usbd_mini.irx", moddir);
+	if (!exists(path)) {
+		L("[NEUTRINO] falta %s (vem com o Neutrino)", path);
+		fail("ARQUIVOS DO CARREGADOR INCOMPLETOS");
+	}
+	snprintf(tomlpath, sizeof(tomlpath), "%s/bsd-usbcd.toml", cfgdir);
 	if (write_toml(tomlpath, "", media) < 0)
 		fail("NAO CONSEGUI GRAVAR A CONFIGURACAO");
 
 	title("PRONTO");
 	S("   LEITORA:  %.8s %.16s", st.dev[dev].inquiry + 8, st.dev[dev].inquiry + 16);
 	S("   JOGO:     %s  (%s)", code[0] ? code : "?", vol[0] ? vol : "?");
-	S("   MIDIA:    %s", media ? (media[0] == 'c' ? "CD" : "DVD") : "?");
-	S(" ");
-	scr_setfontcolor(0x00d0ff);
-	S("   AO JOGAR PELA USB, PODE HAVER MUITOS ENGASGOS NAS CUTSCENES.");
-	S("   ISSO E UMA LIMITACAO DA VELOCIDADE DA USB E NAO TEM NADA A VER");
-	S("   COM O DESEMPENHO DO SOFTWARE.");
-	scr_setfontcolor(0xffffff);
-	S(" ");
-	S("   X = JOGAR");
-	S("   O = SAIR");
-	log_save();
-	for (;;) {
-		b = pad_new();
-		if (b & PAD_CIRCLE)
-			Exit(0);
-		if (b & PAD_CROSS)
-			break;
-		ee_wait_ms(16);
-	}
+	S("   TIPO:     PS2 - %s", media ? (media[0] == 'c' ? "CD" : "DVD") : "?");
+	usb_warning();
 
-	snprintf(cwd, sizeof(cwd), "-cwd=%s", ndir);
+	snprintf(cwd, sizeof(cwd), "-cwd=%s", ndir2);
 	nargv[0] = "-bsd=usbcd";
 	nargv[1] = "-bsdfs=bd";
 	nargv[2] = "-dvd=bdfs:usbcd0p0";

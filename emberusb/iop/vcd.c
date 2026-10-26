@@ -21,6 +21,7 @@
  *    trava a velocidade de novo e repete a leitura.
  *
  * Argumentos: root=mass: dir=/Ember/games/SLUS-00606 name=SLUS-00606 blocks=8
+ *             log=0 (nao grava VCD.TXT; usado pelo PS2USB)
  */
 #include "irx_imports.h"
 #include "cdusb_iop.h"
@@ -46,6 +47,7 @@ static char gdir[180] = "/Ember/games/CD-USB";
 static char gname[48] = "CD-USB";
 static char cue_path[256], bin_path[256], log_path[256];
 static int nblocks = 8;
+static int log_on = 1;			/* log=0: nao grava VCD.TXT */
 
 static int cd = -1, cdsub;
 static int t_first, t_last, t_lba[101], t_ctrl[101];
@@ -218,7 +220,7 @@ static void log_flush(void)
 	memcpy(out, logbuf, n);
 	loglen = 0;
 	SignalSema(log_lock);
-	if (!n)
+	if (!n || !log_path[0])
 		return;
 	fd = iomanX_open(log_path, FIO_O_WRONLY | FIO_O_CREAT | FIO_O_APPEND, 0666);
 	if (fd < 0)
@@ -1177,6 +1179,8 @@ int _start(int argc, char *argv[])
 			norm(gdir, tmp, sizeof(gdir));
 		} else if (!strncmp(argv[i], "name=", 5))
 			copy_arg(gname, argv[i] + 5, sizeof(gname));
+		else if (!strncmp(argv[i], "log=", 4))
+			log_on = argv[i][4] != '0';
 		else if (!strncmp(argv[i], "blocks=", 7)) {
 			nblocks = strtol(argv[i] + 7, NULL, 10);
 			if (nblocks < 3)
@@ -1187,7 +1191,8 @@ int _start(int argc, char *argv[])
 	}
 	fmtx(cue_path, sizeof(cue_path), "%s/%s.cue", gdir, gname);
 	fmtx(bin_path, sizeof(bin_path), "%s/%s.bin", gdir, gname);
-	fmtx(log_path, sizeof(log_path), "%s%s/VCD.TXT", root, gdir);
+	if (log_on)
+		fmtx(log_path, sizeof(log_path), "%s%s/VCD.TXT", root, gdir);
 
 	lock = new_sema(1);
 	log_lock = new_sema(1);
