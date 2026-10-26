@@ -28,7 +28,7 @@
 
 #include "cdusb_ee.h"
 
-#define VERSAO		"n07"
+#define VERSAO		"n08"
 /* log so na compilacao de diagnostico (make LOG=1); a versao final nao grava log */
 #define LOG_FILE	"mass:/PS2USB.TXT"
 
@@ -363,6 +363,24 @@ static u32 le32(const u8 *p)
 }
 
 /* 0 = PS2 (code = SLUS_xxx.xx), 1 = PS1, < 0 = nao e PlayStation/erro */
+/* n08: CD ou DVD pelo perfil atual da leitora (GET CONFIGURATION) */
+static const char *disc_media(void)
+{
+	static u8 buf[8] __attribute__((aligned(64)));
+	u8 c[12] = {0x46, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0};
+	int prof;
+
+	if (cmd(c, 1, buf, 8, 3000) != CDUSB_OK)
+		return NULL;
+	prof = buf[6] << 8 | buf[7];
+	L("[DISCO] perfil 0x%04x", prof);
+	if (prof >= 0x08 && prof < 0x10)
+		return "cd";
+	if (prof >= 0x10 && prof < 0x40)
+		return "dvd";
+	return NULL;
+}
+
 static int disc_id(char *code, int max, char *vol)
 {
 	const u8 *u = read_sec(16);
@@ -450,7 +468,7 @@ static int install(const char *path, const void *data, int size, int only_if_mis
 }
 
 /* bsd-usbcd.toml; 'args' vai para o usbcd_bd.irx (ex.: "\"fila=1\"") */
-static int write_toml(const char *path, const char *args)
+static int write_toml(const char *path, const char *args, const char *media)
 {
 	static char t[1200];
 	int n, fd;
@@ -482,8 +500,11 @@ static int write_toml(const char *path, const char *args)
 		"file = \"USBD.IRX\"\n"
 		"name = \"USB_driver\"\n"
 		"version = 0x0204\n"
-		"startrv = 2 # 0=RESIDENT_END, 1=NO_RESIDENT_END, 2=REMOVABLE_END\n",
-		args[0] ? "args = [" : "", args, args[0] ? "]\n" : "");
+		"startrv = 2 # 0=RESIDENT_END, 1=NO_RESIDENT_END, 2=REMOVABLE_END\n"
+		"%s%s%s",
+		args[0] ? "args = [" : "", args, args[0] ? "]\n" : "",
+		media ? "\n# n08: tipo do disco da leitora (sem isso o Neutrino chuta pelo tamanho)\n[cdvdman]\nmedia_type = \"" : "",
+		media ? media : "", media ? "\"\n" : "");
 	fd = fileXioOpen(path, FIO_O_WRONLY | FIO_O_CREAT | FIO_O_TRUNC, 0666);
 	if (fd < 0)
 		return -1;
@@ -518,7 +539,7 @@ int main(int argc, char *argv[])
 	cdusb_status st;
 	static char ndir[160], path[220], cfgdir[200], moddir[200], code[32], vol[33], cwd[200], tomlpath[220];
 	u16 b;
-	const char *np = NULL;
+	const char *np = NULL, *media;
 	char *nargv[4];
 	int r, i, flat;
 
@@ -594,7 +615,7 @@ int main(int argc, char *argv[])
 		fail("ARQUIVOS DO CARREGADOR INCOMPLETOS");
 	}
 	snprintf(tomlpath, sizeof(tomlpath), "%s/bsd-usbcd.toml", cfgdir);
-	if (write_toml(tomlpath, "") < 0)
+	if (write_toml(tomlpath, "", NULL) < 0)
 		fail("NAO CONSEGUI GRAVAR A CONFIGURACAO");
 
 	/* leitora e disco */
@@ -623,9 +644,14 @@ int main(int argc, char *argv[])
 	if (r < 0)
 		fail("ESTE DISCO NAO E DE PLAYSTATION 2");
 
+	media = disc_media();
+	if (write_toml(tomlpath, "", media) < 0)
+		fail("NAO CONSEGUI GRAVAR A CONFIGURACAO");
+
 	title("PRONTO");
 	S("   LEITORA:  %.8s %.16s", st.dev[dev].inquiry + 8, st.dev[dev].inquiry + 16);
 	S("   JOGO:     %s  (%s)", code[0] ? code : "?", vol[0] ? vol : "?");
+	S("   MIDIA:    %s", media ? (media[0] == 'c' ? "CD" : "DVD") : "?");
 	S(" ");
 	scr_setfontcolor(0x00d0ff);
 	S("   AO JOGAR PELA USB, PODE HAVER MUITOS ENGASGOS NAS CUTSCENES.");

@@ -36,11 +36,13 @@
  *      melhor (cutscene lisa por mais tempo antes do limite do USB).
  * n04: fila completa por padrao; max=64 para testar comandos maiores.
  * n05: 64 setores por comando por padrao (no teste: levemente melhor).
+ * n08: reaplica a trava de rotacao apos reset da leitora, mais tentativas de
+ *      leitura (a ultima em partes de 16 setores) e zeros alem do fim do disco.
  */
 #include "irx_imports.h"
 
 #define MODNAME "usbcd_bd"
-IRX_ID(MODNAME, 1, 5);
+IRX_ID(MODNAME, 1, 6);
 
 #define SUB_ATAPI	0x02
 #define SUB_SFF8070	0x05
@@ -70,6 +72,7 @@ static u32 tag;
 static int lock_kbs = -1, keep_ms = 2000, is_dvd;
 static u32 disc_sectors, last_lba;
 static volatile u32 last_io;
+static volatile int speed_dirty;		/* n08: o reset da leitora pode soltar a trava de rotacao */
 
 static u8 cbw[32] __attribute__((aligned(64)));
 static u8 csw[16] __attribute__((aligned(64)));
@@ -220,6 +223,7 @@ static void reset_recovery(void)
 	ctrl(USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE, 0xFF, 0, d.ifnum, 0, NULL);
 	clear_halt(1);
 	clear_halt(0);
+	speed_dirty = 1;
 }
 
 static int read_csw(u32 t)
@@ -438,15 +442,32 @@ static int read10(u32 lba, int n, void *dst)
 	return scsi(c, 1, dst, n * SECT, TMO_READ, NULL);
 }
 
-/* leitura com uma nova tentativa depois de esperar a leitora */
+/* leitura com novas tentativas depois de esperar a leitora; n08: reaplica a
+ * trava de rotacao apos qualquer reset e, na ultima tentativa, le em partes */
 static int read_robust(u32 lba, int n, void *dst)
 {
-	int r = read10(lba, n, dst);
-	if (r == R_OK)
-		return 0;
-	if (tur_wait(15000)) {
+	int r, i, k, m;
+
+	if (speed_dirty) {
+		speed_dirty = 0;
 		set_speed();
-		r = read10(lba, n, dst);
+	}
+	r = read10(lba, n, dst);
+	for (i = 0; r != R_OK && i < 3; i++) {
+		if (!tur_wait(15000))
+			break;
+		set_speed();
+		speed_dirty = 0;
+		if (i < 2 || n <= 16) {
+			r = read10(lba, n, dst);
+			continue;
+		}
+		for (k = 0; k < n; k += m) {
+			m = n - k < 16 ? n - k : 16;
+			r = read10(lba + k, m, (u8 *)dst + k * SECT);
+			if (r != R_OK)
+				break;
+		}
 	}
 	return r == R_OK ? 0 : -1;
 }
@@ -511,10 +532,16 @@ static int bd_read(struct block_device *b, u64 sector, void *buffer, u16 count)
 	if (d.state != 2)
 		return -EIO;
 	while (left) {
+		if (lba >= disc_sectors) {		/* n08: alem do fim do disco = zeros */
+			memset(p, 0, left);
+			break;
+		}
 		if (off == 0 && left >= SECT) {
 			u32 n = left / SECT, k;
 			if (n > (u32)max_per_cmd)
 				n = max_per_cmd;
+			if (n > disc_sectors - lba)
+				n = disc_sectors - lba;
 			k = pf_take(lba, n, p);			/* ja veio adiantado? */
 			if (!k) {
 				fg_wait = 1;
