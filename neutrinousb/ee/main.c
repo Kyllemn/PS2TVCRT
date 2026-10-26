@@ -493,7 +493,6 @@ int main(int argc, char *argv[])
 {
 	cdusb_status st;
 	static char ndir[160], path[220], cfgdir[200], moddir[200], code[32], vol[33], cwd[200], tomlpath[220];
-	const char *mode_args = "", *mode_name = "PADRAO (FILA COMPLETA, 64 SETORES)";
 	u16 b;
 	const char *np = NULL;
 	char *nargv[4];
@@ -613,9 +612,8 @@ int main(int argc, char *argv[])
 	S("   COM O DESEMPENHO DO SOFTWARE.");
 	scr_setfontcolor(0xffffff);
 	S(" ");
-	S("   X         = JOGAR");
-	S("   TRIANGULO = JOGAR SEM FILA (SE ALGUM JOGO ESTRANHAR)");
-	S("   O         = SAIR");
+	S("   X = JOGAR");
+	S("   O = SAIR");
 	log_save();
 	for (;;) {
 		b = pad_new();
@@ -623,16 +621,8 @@ int main(int argc, char *argv[])
 			Exit(0);
 		if (b & PAD_CROSS)
 			break;
-		if (b & PAD_TRIANGLE) {
-			mode_args = "\"fila=0\"";
-			mode_name = "SEM FILA (COMO A N01)";
-			break;
-		}
 		ee_wait_ms(16);
 	}
-	S("   MODO: %s", mode_name);
-	if (write_toml(tomlpath, mode_args) < 0)
-		fail("NAO CONSEGUI GRAVAR A CONFIGURACAO NO PENDRIVE");
 
 	snprintf(cwd, sizeof(cwd), "-cwd=%s", ndir);
 	nargv[0] = "-bsd=usbcd";
