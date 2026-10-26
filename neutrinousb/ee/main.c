@@ -28,7 +28,7 @@
 
 #include "cdusb_ee.h"
 
-#define VERSAO		"n04"
+#define VERSAO		"n05"
 #define LOG_FILE	"mass:/NEUTRINOUSB.TXT"
 
 #define IRX(n)	extern unsigned char n[]; extern unsigned int size_##n
@@ -414,7 +414,7 @@ static int write_toml(const char *path, const char *args)
 		"# Leitora de CD/DVD USB externa como dispositivo de bloco (NEUTRINOUSB).\n"
 		"# Uso: neutrino.elf -bsd=usbcd -bsdfs=bd -dvd=bdfs:usbcd0p0\n"
 		"# Opcoes do usbcd_bd.irx: fila=0 (sem fila completa no USB), max=<setores>\n"
-		"# (por comando, ate 64), cache=<KB> (leitura adiantada), speed=<KB/s>, keep=<ms>\n"
+		"# (por comando, padrao 64), cache=<KB> (leitura adiantada), speed=<KB/s>, keep=<ms>\n"
 		"\n"
 		"# Drivers this driver depends on (config file must exist)\n"
 		"depends = [\"i_bdm\"]\n"
@@ -457,7 +457,7 @@ int main(int argc, char *argv[])
 {
 	cdusb_status st;
 	static char ndir[160], path[220], cfgdir[200], moddir[200], code[32], vol[33], cwd[200], tomlpath[220];
-	const char *mode_args = "", *mode_name = "FILA COMPLETA (PADRAO)";
+	const char *mode_args = "", *mode_name = "PADRAO (FILA COMPLETA, 64 SETORES)";
 	u16 b;
 	const char *np = NULL;
 	char *nargv[4];
@@ -558,9 +558,8 @@ int main(int argc, char *argv[])
 	S("   JOGO:     %s  (%s)", code[0] ? code : "?", vol[0] ? vol : "?");
 	S("   NEUTRINO: %s", np);
 	S(" ");
-	S("   X         = JOGAR (FILA COMPLETA, O PADRAO)");
-	S("   QUADRADO  = JOGAR TESTE C: FILA + COMANDOS DE 64 SETORES");
-	S("   TRIANGULO = JOGAR SEM FILA (COMO A N01, PARA COMPARAR)");
+	S("   X         = JOGAR");
+	S("   TRIANGULO = JOGAR SEM FILA (COMO A N01, SE ALGUM JOGO ESTRANHAR)");
 	S("   O         = SAIR");
 	log_save();
 	for (;;) {
@@ -569,11 +568,6 @@ int main(int argc, char *argv[])
 			Exit(0);
 		if (b & PAD_CROSS)
 			break;
-		if (b & PAD_SQUARE) {
-			mode_args = "\"max=64\"";
-			mode_name = "TESTE C: FILA + 64 SETORES";
-			break;
-		}
 		if (b & PAD_TRIANGLE) {
 			mode_args = "\"fila=0\"";
 			mode_name = "SEM FILA (COMO A N01)";

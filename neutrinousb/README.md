@@ -19,7 +19,7 @@ Argumentos do driver (no .toml, `args = [...]`): `speed=<KB/s>` (0 = não
 travar; padrão CD 706, DVD 1385), `keep=<ms>` (manter girando, padrão 2000),
 `cache=<KB>` (leitura adiantada no IOP; padrão 0 = desligada; piorou muito nos
 testes), `fila=0` (desliga a fila completa no USB; padrão ligada desde a n04),
-`max=<setores>` (setores por comando, padrão 32, até 64).
+`max=<setores>` (setores por comando, padrão 64 desde a n05).
 
 n03: na n02 as duas técnicas ligadas juntas pioraram muito as cutscenes; o
 padrão voltou a ser o da n01 e cada técnica virou opção (o lançador escolhe:
@@ -34,3 +34,7 @@ Testes que deram as regras (CDUSB c07–c09, ASUS SDRW-08D1S-U): ver
 n04: a fila completa foi a melhor no teste das cutscenes e virou o padrão.
 Lançador: X = fila (padrão), QUADRADO = fila + 64 setores por comando,
 TRIÂNGULO = sem fila (como a n01).
+
+n05: 64 setores por comando viraram o padrão (no teste, levemente melhor que 32).
+Configuração final: fila completa + 64 setores por comando + velocidade travada
+(CD 4x, DVD 1x), sem leitura adiantada. Lançador: X = jogar, TRIÂNGULO = sem fila.

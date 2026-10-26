@@ -30,16 +30,17 @@
  *             keep=<ms> (0 = sem manter girando; padrao 2000)
  *             cache=<KB> (leitura adiantada; padrao 0 = desligada)
  *             fila=0 (desliga a fila completa; padrao ligada desde a n04)
- *             max=<setores> (por comando; padrao 32, ate 64)
+ *             max=<setores> (por comando; padrao 64 desde a n05)
  * n03: na n02 as duas tecnicas ligadas pioraram muito as cutscenes; cada uma
  *      virou opcao. Teste: leitura adiantada = horrivel; fila completa = a
  *      melhor (cutscene lisa por mais tempo antes do limite do USB).
  * n04: fila completa por padrao; max=64 para testar comandos maiores.
+ * n05: 64 setores por comando por padrao (no teste: levemente melhor).
  */
 #include "irx_imports.h"
 
 #define MODNAME "usbcd_bd"
-IRX_ID(MODNAME, 1, 4);
+IRX_ID(MODNAME, 1, 5);
 
 #define SUB_ATAPI	0x02
 #define SUB_SFF8070	0x05
@@ -77,7 +78,7 @@ static u8 bounce[SECT] __attribute__((aligned(64)));
 
 /* fila completa (n02) */
 static int use_queue = 1;			/* n04: ligada por padrao (fila=0 desliga) */
-static int max_per_cmd = 32;			/* setores por comando (max=, ate 64) */
+static int max_per_cmd = 64;			/* n05: 64 setores por comando (max= muda) */
 static volatile int q_total, q_done, q_err;
 
 /* leitura adiantada (n02) */
