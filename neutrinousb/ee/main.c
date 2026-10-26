@@ -10,7 +10,7 @@
  * 4. abre o Neutrino SEM reiniciar o IOP (ele le a configuracao dele pelo
  *    pendrive antes de reiniciar o IOP sozinho) com:
  *      -bsd=usbcd -bsdfs=bd -dvd=bdfs:usbcd0p0
- * Log: mass:/NEUTRINOUSB.TXT
+ * Log: mass:/PS2USB.TXT (so com make LOG=1)
  */
 #include <stdio.h>
 #include <stdarg.h>
@@ -29,7 +29,8 @@
 #include "cdusb_ee.h"
 
 #define VERSAO		"n06"
-#define LOG_FILE	"mass:/NEUTRINOUSB.TXT"
+/* log so na compilacao de diagnostico (make LOG=1); a versao final nao grava log */
+#define LOG_FILE	"mass:/PS2USB.TXT"
 
 #define IRX(n)	extern const unsigned char n[]; extern unsigned int size_##n
 IRX(irx_iomanx);
@@ -124,8 +125,10 @@ static int seal_ok(void)
 }
 
 /* ------------------------------------------------------------------ log e tela */
+static int log_ok;	/* pendrive acessivel */
+#ifdef COM_LOG
 static char logbuf[64 * 1024];
-static int loglen, log_ok;
+static int loglen;
 
 static void log_add(const char *s)
 {
@@ -148,6 +151,11 @@ static void L(const char *fmt, ...)
 	log_add(s);
 }
 
+#else
+#define log_add(s)	((void)0)
+#define L(...)		((void)0)
+#endif
+
 static void S(const char *fmt, ...)
 {
 	char s[256];
@@ -159,6 +167,7 @@ static void S(const char *fmt, ...)
 	scr_printf("%s\n", s);
 }
 
+#ifdef COM_LOG
 static void log_save(void)
 {
 	int fd;
@@ -170,6 +179,9 @@ static void log_save(void)
 	fileXioWrite(fd, logbuf, loglen);
 	fileXioClose(fd);
 }
+#else
+#define log_save()	((void)0)
+#endif
 
 static void title(const char *sub)
 {

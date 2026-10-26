@@ -1,8 +1,9 @@
-# NEUTRINOUSB.ELF - Retrovolt. Leitor de CDVD Externo (EE)
+# PS2USB.ELF - Retrovolt. Leitor de CDVD Externo (EE)
 # Compilar: /opt/ps2/ps2.sh <repositorio> "make -C cdusb/iop && make -C neutrinousb/iop && make -C emberusb/loader && make -C neutrinousb/ee final"
-# 'final' = strip + selo de integridade (tools/selo.py) + compactacao LZMA (ps2-packer) -> NEUTRINOUSB_FINAL.ELF
-EE_BIN = NEUTRINOUSB.ELF
-FINAL = NEUTRINOUSB_FINAL.ELF
+# 'final' = strip + selo de integridade (tools/selo.py) + compactacao LZMA (ps2-packer) -> PS2USB_FINAL.ELF
+# make LOG=1 ... = versao de diagnostico com log em mass:/PS2USB.TXT
+EE_BIN = PS2USB.ELF
+FINAL = PS2USB_FINAL.ELF
 CDUSB = ../../cdusb
 IRX_OBJS = irx_iomanx.o irx_filexio.o irx_usbd.o irx_cdusb.o irx_bdm.o irx_bdmfs_fatfs.o irx_usbmass_bd.o \
 	   irx_usbcd_bd.o loader_elf.o
@@ -17,6 +18,9 @@ EE_CFLAGS += -ffunction-sections -fdata-sections
 EE_LDFLAGS += -Wl,--gc-sections
 NEWLIB_NANO = 1
 EE_LINKFILE = linkfile
+ifeq ($(LOG),1)
+EE_CFLAGS += -DCOM_LOG
+endif
 
 BIN2C = $(PS2SDK)/bin/bin2c
 IRXDIR = $(PS2SDK)/iop/irx
