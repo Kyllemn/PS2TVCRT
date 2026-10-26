@@ -28,7 +28,7 @@
 
 #include "cdusb_ee.h"
 
-#define VERSAO		"n06"
+#define VERSAO		"n07"
 /* log so na compilacao de diagnostico (make LOG=1); a versao final nao grava log */
 #define LOG_FILE	"mass:/PS2USB.TXT"
 
