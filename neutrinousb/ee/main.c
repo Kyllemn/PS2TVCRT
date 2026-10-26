@@ -188,7 +188,7 @@ static void title(const char *sub)
 	scr_clear();
 	scr_setXY(0, 1);
 	scr_setfontcolor(0x00d0ff);
-	scr_printf("   Retrovolt. Leitor de CDVD Externo - Leonardo Torres 25/10/2026\n");
+	scr_printf("   RETROVOLT. LEITOR DE CDVD EXTERNO - LEONARDO TORRES 25/10/2026\n\n");
 	scr_setfontcolor(0xffffff);
 	if (sub)
 		scr_printf("   %s\n", sub);
@@ -542,21 +542,31 @@ int main(int argc, char *argv[])
 	load_buf("bdmfs_fatfs", irx_bdmfs_fatfs, size_irx_bdmfs_fatfs, 0, NULL);
 	load_buf("usbmass_bd", irx_usbmass_bd, size_irx_usbmass_bd, 0, NULL);
 	fileXioInit();
-	for (i = 0; i < 40; i++) {
-		fd = fileXioDopen("mass:/");
-		if (fd >= 0) {
-			fileXioDclose(fd);
-			log_ok = 1;
-			break;
-		}
-		ee_wait_ms(250);
-	}
 	padInit(0);
 	pad_ok = padPortOpen(0, 0, pad_area) != 0;
 	if (r != 0)
 		fail("FALHA AO CARREGAR O DRIVER DA LEITORA (CDUSB)");
-	if (!log_ok)
-		fail("PENDRIVE NAO ENCONTRADO");
+	/* pendrive: espera 10 s; se nao achar, deixa plugar e procurar de novo sem reiniciar */
+	for (i = 40;;) {
+		while (i-- > 0) {
+			fd = fileXioDopen("mass:/");
+			if (fd >= 0) {
+				fileXioDclose(fd);
+				log_ok = 1;
+				break;
+			}
+			ee_wait_ms(250);
+		}
+		if (log_ok)
+			break;
+		title("PENDRIVE NAO ENCONTRADO");
+		S("   PLUGUE O PENDRIVE COM OS ARQUIVOS DO CARREGADOR.");
+		S("   X = PROCURAR DE NOVO      O = SAIR");
+		if (!ask())
+			Exit(0);
+		title("PROCURANDO O PENDRIVE...");
+		i = 20;
+	}
 
 	/* Neutrino */
 	for (i = 0; neutrino_paths[i]; i++)
