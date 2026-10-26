@@ -30,7 +30,7 @@
 
 #include "cdusb_ee.h"
 
-#define VERSAO		"n09"
+#define VERSAO		"n10"
 /* log so na compilacao de diagnostico (make LOG=1); a versao final nao grava log */
 #define LOG_FILE	"mass:/PS2USB.TXT"
 
@@ -446,35 +446,64 @@ static int file_size(const char *path)
 }
 
 /* grava o arquivo (only_if_missing: so se faltar); devolve 0 = ok */
-static int install(const char *path, const void *data, int size, int only_if_missing)
+/* n10: grava um arquivo; se ja estiver igual nao grava (poupa o cartao de
+ * memoria). Apaga antes e cria de novo: o cartao (mcman) nao aceita O_TRUNC.
+ * Devolve 0 ou o erro (< 0). */
+static int same_file(const char *path, const void *data, int size)
 {
-	int fd, cur = file_size(path);
+	static u8 chk[2048] __attribute__((aligned(64)));
+	int fd, k, off = 0, same = 1;
 
-	/* n03: o driver e sempre regravado (versoes diferentes podem ter o mesmo tamanho) */
-	if (only_if_missing && cur >= 0) {
-		L("[INSTALAR] %s ja esta la (%d bytes)", path, cur);
+	if (file_size(path) != size)
 		return 0;
-	}
-	fd = fileXioOpen(path, FIO_O_WRONLY | FIO_O_CREAT | FIO_O_TRUNC, 0666);
-	if (fd < 0) {
-		L("[INSTALAR] %s: falhou abrir (%d)", path, fd);
-		return -1;
-	}
-	if (fileXioWrite(fd, (void *)data, size) != size) {
-		fileXioClose(fd);
-		L("[INSTALAR] %s: falhou gravar", path);
-		return -1;
+	fd = fileXioOpen(path, FIO_O_RDONLY, 0);
+	if (fd < 0)
+		return 0;
+	while (off < size && same) {
+		k = size - off < (int)sizeof(chk) ? size - off : (int)sizeof(chk);
+		if (fileXioRead(fd, chk, k) != k || memcmp(chk, (const u8 *)data + off, k) != 0)
+			same = 0;
+		off += k;
 	}
 	fileXioClose(fd);
+	return same;
+}
+
+static int write_file(const char *path, const void *data, int size)
+{
+	int fd, r;
+
+	if (same_file(path, data, size)) {
+		L("[INSTALAR] %s ja esta igual (%d bytes)", path, size);
+		return 0;
+	}
+	fileXioRemove(path);
+	fd = fileXioOpen(path, FIO_O_WRONLY | FIO_O_CREAT, 0666);
+	if (fd < 0) {
+		L("[INSTALAR] %s: falhou abrir (%d)", path, fd);
+		return fd;
+	}
+	r = fileXioWrite(fd, (void *)data, size);
+	fileXioClose(fd);
+	if (r != size) {
+		L("[INSTALAR] %s: falhou gravar (%d)", path, r);
+		return r < 0 ? r : -5;
+	}
 	L("[INSTALAR] %s gravado (%d bytes)", path, size);
 	return 0;
+}
+
+/* onde esta o carregador, para a mensagem de erro (sem nomes) */
+static const char *where(const char *path)
+{
+	return path[0] == 'm' && path[1] == 'c' ? "CARTAO DE MEMORIA" : "PENDRIVE";
 }
 
 /* bsd-usbcd.toml; 'args' vai para o usbcd_bd.irx (ex.: "\"fila=1\"") */
 static int write_toml(const char *path, const char *args, const char *media)
 {
 	static char t[1200];
-	int n, fd;
+	int n;
 
 	n = snprintf(t, sizeof(t),
 		"# Name of loaded config, to show to user\n"
@@ -508,16 +537,7 @@ static int write_toml(const char *path, const char *args, const char *media)
 		args[0] ? "args = [" : "", args, args[0] ? "]\n" : "",
 		media ? "\n# n08: tipo do disco da leitora (sem isso o Neutrino chuta pelo tamanho)\n[cdvdman]\nmedia_type = \"" : "",
 		media ? media : "", media ? "\"\n" : "");
-	fd = fileXioOpen(path, FIO_O_WRONLY | FIO_O_CREAT | FIO_O_TRUNC, 0666);
-	if (fd < 0)
-		return -1;
-	if (fileXioWrite(fd, t, n) != n) {
-		fileXioClose(fd);
-		return -1;
-	}
-	fileXioClose(fd);
-	L("[INSTALAR] %s gravado (opcoes: %s)", path, args[0] ? args : "nenhuma");
-	return 0;
+	return write_file(path, t, n);
 }
 
 /* ------------------------------------------------------------------ PS1 (n09) */
@@ -860,16 +880,22 @@ int main(int argc, char *argv[])
 	snprintf(moddir, sizeof(moddir), flat ? "%s" : "%s/modules", ndir2);
 	L("[NEUTRINO] %s (%s)", np, flat ? "pasta plana" : "config/ e modules/");
 	snprintf(path, sizeof(path), "%s/usbcd_bd.irx", moddir);
-	if (install(path, irx_usbcd_bd, size_irx_usbcd_bd, 0) < 0)
-		fail("NAO CONSEGUI GRAVAR O DRIVER DA LEITORA");
+	r = write_file(path, irx_usbcd_bd, size_irx_usbcd_bd);
+	if (r < 0) {
+		snprintf(path, sizeof(path), "NAO CONSEGUI GRAVAR O DRIVER DA LEITORA (%s, ERRO %d)", where(np), r);
+		fail(path);
+	}
 	snprintf(path, sizeof(path), "%s/usbd_mini.irx", moddir);
 	if (!exists(path)) {
 		L("[NEUTRINO] falta %s (vem com o Neutrino)", path);
 		fail("ARQUIVOS DO CARREGADOR INCOMPLETOS");
 	}
 	snprintf(tomlpath, sizeof(tomlpath), "%s/bsd-usbcd.toml", cfgdir);
-	if (write_toml(tomlpath, "", media) < 0)
-		fail("NAO CONSEGUI GRAVAR A CONFIGURACAO");
+	r = write_toml(tomlpath, "", media);
+	if (r < 0) {
+		snprintf(path, sizeof(path), "NAO CONSEGUI GRAVAR A CONFIGURACAO (%s, ERRO %d)", where(np), r);
+		fail(path);
+	}
 
 	title("PRONTO");
 	S("   LEITORA:  %.8s %.16s", st.dev[dev].inquiry + 8, st.dev[dev].inquiry + 16);
