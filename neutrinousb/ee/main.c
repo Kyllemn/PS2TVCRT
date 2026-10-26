@@ -28,7 +28,7 @@
 
 #include "cdusb_ee.h"
 
-#define VERSAO		"n05"
+#define VERSAO		"n06"
 #define LOG_FILE	"mass:/NEUTRINOUSB.TXT"
 
 #define IRX(n)	extern unsigned char n[]; extern unsigned int size_##n
@@ -140,7 +140,7 @@ static void title(const char *sub)
 	scr_clear();
 	scr_setXY(0, 1);
 	scr_setfontcolor(0x00d0ff);
-	scr_printf("   NEUTRINOUSB " VERSAO " - JOGOS DE PS2 PELA LEITORA USB (NEUTRINO)\n");
+	scr_printf("   Retrovolt. Leitor de CDVD Externo - Leonardo Torres 25/10/2026\n");
 	scr_setfontcolor(0xffffff);
 	if (sub)
 		scr_printf("   %s\n", sub);
@@ -285,7 +285,7 @@ static int wait_disc(void)
 			return 1;
 		if (r == CDUSB_CHECK && ((R.sense >> 16) & 0x0f) == 2 && ((R.sense >> 8) & 0xff) == 0x3A) {
 			if (shown != 1)
-				S("   SEM DISCO: COLOQUE O CD DE PS1 NA LEITORA  (O = SAIR)");
+				S("   SEM DISCO: COLOQUE O DISCO DE PS2 NA LEITORA  (O = SAIR)");
 			shown = 1;
 		} else if (r == CDUSB_CHECK && ((R.sense >> 16) & 0x0f) == 6) {
 			continue;
@@ -501,7 +501,7 @@ int main(int argc, char *argv[])
 	if (r != 0)
 		fail("FALHA AO CARREGAR O DRIVER DA LEITORA (CDUSB)");
 	if (!log_ok)
-		fail("PENDRIVE NAO ENCONTRADO (O NEUTRINO FICA NELE)");
+		fail("PENDRIVE NAO ENCONTRADO");
 
 	/* Neutrino */
 	for (i = 0; neutrino_paths[i]; i++)
@@ -510,7 +510,10 @@ int main(int argc, char *argv[])
 			break;
 		}
 	if (!np)
-		fail("NEUTRINO NAO ENCONTRADO: COLOQUE EM mass:/neutrino/neutrino.elf");
+		{
+		L("[NEUTRINO] nao encontrado: precisa de mass:/neutrino/neutrino.elf");
+		fail("ARQUIVOS DO CARREGADOR NAO ENCONTRADOS NO PENDRIVE");
+	}
 	strcpy(ndir, np);
 	*strrchr(ndir, '/') = 0;			/* "mass:/neutrino" */
 	snprintf(path, sizeof(path), "%s/config/system.toml", ndir);
@@ -520,12 +523,12 @@ int main(int argc, char *argv[])
 	L("[NEUTRINO] %s (%s)", np, flat ? "pasta plana" : "config/ e modules/");
 	snprintf(path, sizeof(path), "%s/usbcd_bd.irx", moddir);
 	if (install(path, irx_usbcd_bd, size_irx_usbcd_bd, 0) < 0)
-		fail("NAO CONSEGUI GRAVAR O usbcd_bd.irx NA PASTA DO NEUTRINO");
+		fail("NAO CONSEGUI GRAVAR O DRIVER DA LEITORA NO PENDRIVE");
 	snprintf(path, sizeof(path), "%s/usbd_mini.irx", moddir);
 	install(path, irx_usbd_mini, size_irx_usbd_mini, 1);
 	snprintf(tomlpath, sizeof(tomlpath), "%s/bsd-usbcd.toml", cfgdir);
 	if (write_toml(tomlpath, "") < 0)
-		fail("NAO CONSEGUI GRAVAR O bsd-usbcd.toml NA PASTA DO NEUTRINO");
+		fail("NAO CONSEGUI GRAVAR A CONFIGURACAO NO PENDRIVE");
 
 	/* leitora e disco */
 	for (;;) {
@@ -556,7 +559,6 @@ int main(int argc, char *argv[])
 	title("PRONTO");
 	S("   LEITORA:  %.8s %.16s", st.dev[dev].inquiry + 8, st.dev[dev].inquiry + 16);
 	S("   JOGO:     %s  (%s)", code[0] ? code : "?", vol[0] ? vol : "?");
-	S("   NEUTRINO: %s", np);
 	S(" ");
 	S("   X         = JOGAR");
 	S("   TRIANGULO = JOGAR SEM FILA (COMO A N01, SE ALGUM JOGO ESTRANHAR)");
@@ -577,7 +579,7 @@ int main(int argc, char *argv[])
 	}
 	S("   MODO: %s", mode_name);
 	if (write_toml(tomlpath, mode_args) < 0)
-		fail("NAO CONSEGUI GRAVAR O bsd-usbcd.toml NA PASTA DO NEUTRINO");
+		fail("NAO CONSEGUI GRAVAR A CONFIGURACAO NO PENDRIVE");
 
 	snprintf(cwd, sizeof(cwd), "-cwd=%s", ndir);
 	nargv[0] = "-bsd=usbcd";
@@ -592,8 +594,8 @@ int main(int argc, char *argv[])
 	pad_ok = 0;
 	L("[NEUTRINO] falhou ao abrir: %d", r);
 	log_save();
-	title("FALHA AO ABRIR O NEUTRINO");
-	S("   %s: %d", np, r);
+	title("FALHA AO INICIAR O JOGO");
+	S("   CODIGO %d (VER O LOG NO PENDRIVE)", r);
 	for (;;)
 		ee_wait_ms(1000);
 	(void)argc;
