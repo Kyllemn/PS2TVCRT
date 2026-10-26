@@ -101,12 +101,14 @@ static void put_lba(u8 *c, int lba)
 	c[2] = lba >> 24; c[3] = lba >> 16; c[4] = lba >> 8; c[5] = lba;
 }
 
+static int q_mode;		/* c10: 1 = READ(10) com fila completa no USB (dir 3) */
+
 static int read10(int lba, int n)
 {
 	u8 c[12] = {0x28, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 	put_lba(c, lba);
 	c[7] = n >> 8; c[8] = n;
-	return cmd(c, 1, n * 2048, TMO_READ);
+	return cmd(c, q_mode ? 3 : 1, n * 2048, TMO_READ);
 }
 
 /* READ CD: tipo 1 = musica (CD-DA), 0 = qualquer; flags 0x10 = so a parte do usuario,
@@ -1486,6 +1488,8 @@ void ps1_summary(const ps1_result *p, const char *log_file)
  *  4. busca em varias distancias e troca de camada;
  *  5. travadas frente/volta, tempo real (300 e 600 KB/s, cache de 128 KB,
  *     com pulos) e motor, na velocidade travada;
+ *  c10: a sequencia tambem com a fila completa no USB (comando + pedacos de
+ *     4 KB + resposta de uma vez), para medir o ganho do NEUTRINOUSB n04.
  */
 #define PS2_SEEKS	6
 static ps2_result *qr;
@@ -1795,6 +1799,8 @@ void ps2_run(int d, const cdusb_dev_info *info, ps2_result *p)
 			p->sp[i].seek[k] = -1;
 	}
 	p->seq300.cuts = p->jmp300.cuts = p->jmp600.cuts = -1;
+	p->qkbs[0] = p->qkbs[1] = p->qkbs[2] = -1;
+	q_mode = 0;
 	for (i = 0; i < 3; i++)
 		p->motor_ms[i] = -1;
 
@@ -1849,6 +1855,26 @@ void ps2_run(int d, const cdusb_dev_info *info, ps2_result *p)
 		get_caps();
 		p->sp[i].cur_kbs = dr.cur_kbs;
 		ps2_speed_block(i, start);
+		if (dead())
+			goto out;
+	}
+
+	/* c10: a mesma sequencia com a fila completa no USB (o NEUTRINOUSB n04 usa) */
+	{
+		static const int pers[3] = {8, 16, 19};
+		int k, w;
+		S("   FILA COMPLETA NO USB: SEQUENCIA 8/16/19 SETORES...");
+		L("[PS2] ======== fila completa no USB (travada) ========");
+		q_mode = 1;
+		for (k = 0; k < 3; k++) {
+			p->qkbs[k] = ps2_bench(start, pers[k], BENCH_MS, &w);
+			p->qworst[k] = w;
+			if (dead())
+				break;
+		}
+		q_mode = 0;
+		L("[PS2] fila completa: %d / %d / %d KB/s (sem fila: %d / %d / %d)", p->qkbs[0], p->qkbs[1], p->qkbs[2],
+		  p->sp[1].kbs[0], p->sp[1].kbs[1], p->sp[1].kbs[2]);
 		if (dead())
 			goto out;
 	}
@@ -1928,6 +1954,9 @@ void ps2_summary(const ps2_result *p, const char *log_file)
 				if (v->seek[k] >= 0)
 					S("     BUSCA %d MB%s: %d MS", p->seek_mb[k], k == 5 ? " (CAMADA)" : "", v->seek[k]);
 		}
+		if (p->qkbs[1] >= 0)
+			S("   FILA COMPLETA 8/16/19: %d / %d / %d KB/S (PIOR %d/%d/%d MS)", p->qkbs[0], p->qkbs[1],
+			  p->qkbs[2], p->qworst[0], p->qworst[1], p->qworst[2]);
 		S("   TRAVADAS FRENTE/VOLTA: %d (PIOR %d MS)", p->st_n, p->st_max);
 		if (p->seq300.cuts >= 0)
 			S("   300 KB/S SEQUENCIA: %d CORTES, PIOR %d MS", p->seq300.cuts, p->seq300.max_ms);

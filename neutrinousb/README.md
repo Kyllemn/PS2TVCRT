@@ -17,8 +17,9 @@ Para usar no seu lançador: copie `usbcd_bd.irx` para `modules/` e
 `bsd-usbcd.toml` para `config/` do Neutrino e chame com os argumentos acima.
 Argumentos do driver (no .toml, `args = [...]`): `speed=<KB/s>` (0 = não
 travar; padrão CD 706, DVD 1385), `keep=<ms>` (manter girando, padrão 2000),
-`cache=<KB>` (leitura adiantada no IOP; padrão 0 = desligada), `fila=1` (liga a
-fila completa no USB; padrão desligada).
+`cache=<KB>` (leitura adiantada no IOP; padrão 0 = desligada; piorou muito nos
+testes), `fila=0` (desliga a fila completa no USB; padrão ligada desde a n04),
+`max=<setores>` (setores por comando, padrão 32, até 64).
 
 n03: na n02 as duas técnicas ligadas juntas pioraram muito as cutscenes; o
 padrão voltou a ser o da n01 e cada técnica virou opção (o lançador escolhe:
@@ -29,3 +30,7 @@ vez, como o usbmass_bd) e leitura adiantada em anel enquanto o jogo processa.
 
 Testes que deram as regras (CDUSB c07–c09, ASUS SDRW-08D1S-U): ver
 `../cdusb` e o histórico.
+
+n04: a fila completa foi a melhor no teste das cutscenes e virou o padrão.
+Lançador: X = fila (padrão), QUADRADO = fila + 64 setores por comando,
+TRIÂNGULO = sem fila (como a n01).

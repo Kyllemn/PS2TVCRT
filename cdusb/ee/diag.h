@@ -95,6 +95,7 @@ typedef struct {
 	char system[16], code[16];
 	ps2_speed sp[2];			/* [0] velocidade do leitor, [1] travada */
 	int seek_mb[6];
+	int qkbs[3], qworst[3];			/* c10: sequencia com a fila completa */
 	int st_n, st_max;
 	ps1_pace seq300, jmp300, jmp600;
 	int motor_ms[3];

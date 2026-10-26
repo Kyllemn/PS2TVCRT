@@ -167,14 +167,14 @@ int cdusb_scsi(int dev, const u8 *cdb, int cdb_len, int dir, void *data, int len
 	if (dir == 2 && len)
 		memcpy(q->out, data, len);
 
-	rsize = (sizeof(cdusb_scsi_resp) + (dir == 1 ? len : 0) + 63) & ~63;
+	rsize = (sizeof(cdusb_scsi_resp) + ((dir == 1 || dir == 3) ? len : 0) + 63) & ~63;
 	r = call(CDUSB_CMD_SCSI, q, sizeof(*q), rbuf, rsize, timeout_ms + 3000);
 	if (r < 0) {
 		res->result = r;
 		return r;
 	}
 	memcpy(res, rbuf, sizeof(*res));
-	if (dir == 1 && len && data)
+	if ((dir == 1 || dir == 3) && len && data)
 		memcpy(data, rbuf + sizeof(cdusb_scsi_resp), len);
 	return res->result;
 }

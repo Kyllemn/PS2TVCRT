@@ -292,6 +292,93 @@ static int scsi(cddev *d, const u8 *cdb, int cdb_len, int dir, u8 *data, u32 len
 	return CDUSB_OK;
 }
 
+/*
+ * c10: leitura com fila completa: comando, todos os pedacos de 4 KB e a
+ * resposta pedidos de uma vez (como o usbmass_bd da ps2sdk e o usbcd_bd do
+ * NEUTRINOUSB), para medir o ganho. So leitura.
+ */
+static volatile int q_total, q_done, q_err;
+
+static void q_cb(int rc, int bytes, void *arg)
+{
+	(void)bytes;
+	if ((u32)arg != xfer_gen)
+		return;
+	if (rc != USB_RC_OK && !q_err)
+		q_err = rc ? rc : -1;
+	if (++q_done == q_total)
+		SignalSema(xfer_sema);
+}
+
+static int scsi_queued(cddev *d, const u8 *cdb, int cdb_len, u8 *data, u32 len, int ms, int *residue, int *sense,
+		       int *usb_rc)
+{
+	u32 t, off;
+	void *g;
+	int rc;
+
+	if (residue) *residue = 0;
+	if (sense) *sense = 0;
+	if (usb_rc) *usb_rc = 0;
+	d->info.cmds++;
+	t = ++tag;
+	memset(cbw, 0, 31);
+	cbw[0] = 0x55; cbw[1] = 0x53; cbw[2] = 0x42; cbw[3] = 0x43;
+	cbw[4] = t; cbw[5] = t >> 8; cbw[6] = t >> 16; cbw[7] = t >> 24;
+	cbw[8] = len; cbw[9] = len >> 8; cbw[10] = len >> 16; cbw[11] = len >> 24;
+	cbw[12] = 0x80;
+	cbw[14] = cdb_len;
+	memcpy(cbw + 15, cdb, cdb_len);
+	memset(csw, 0, 13);
+
+	g = (void *)xfer_gen;
+	q_done = 0;
+	q_err = 0;
+	q_total = 2 + (len + USB_CHUNK - 1) / USB_CHUNK;
+	rc = sceUsbdBulkTransfer(d->epOut, cbw, 31, q_cb, g);
+	for (off = 0; rc == USB_RC_OK && off < len; off += USB_CHUNK)
+		rc = sceUsbdBulkTransfer(d->epIn, data + off, len - off > USB_CHUNK ? USB_CHUNK : len - off, q_cb, g);
+	if (rc == USB_RC_OK)
+		rc = sceUsbdBulkTransfer(d->epIn, csw, 13, q_cb, g);
+	if (rc != USB_RC_OK) {
+		DelayThread(50 * 1000);
+		xfer_gen++;
+		while (PollSema(xfer_sema) == 0)
+			;
+		reset_recovery(d);
+		if (usb_rc) *usb_rc = rc;
+		return CDUSB_E_USB;
+	}
+	rc = xfer_wait(ms);
+	if (rc == CDUSB_E_TIMEOUT || q_err) {
+		if (rc == CDUSB_E_TIMEOUT) d->info.timeouts++;
+		if (usb_rc) *usb_rc = rc == CDUSB_E_TIMEOUT ? rc : q_err;
+		reset_recovery(d);
+		return rc == CDUSB_E_TIMEOUT ? CDUSB_E_TIMEOUT : CDUSB_E_USB;
+	}
+	if ((csw[0] | csw[1] << 8 | csw[2] << 16 | (u32)csw[3] << 24) != CSW_SIG ||
+	    (csw[4] | csw[5] << 8 | csw[6] << 16 | (u32)csw[7] << 24) != t) {
+		reset_recovery(d);
+		return CDUSB_PHASE;
+	}
+	if (residue)
+		*residue = csw[8] | csw[9] << 8 | csw[10] << 16 | csw[11] << 24;
+	if (csw[12] == 1) {
+		if (sense) {
+			u8 rs[12] = {0x03, 0, 0, 0, 18, 0, 0, 0, 0, 0, 0, 0};
+			memset(small_buf, 0, 18);
+			if (scsi(d, rs, 12, 1, small_buf, 18, 3000, NULL, NULL, NULL) == CDUSB_OK)
+				*sense = (small_buf[2] & 0x0f) << 16 | small_buf[12] << 8 | small_buf[13];
+		}
+		return CDUSB_CHECK;
+	}
+	if (csw[12] != 0) {
+		reset_recovery(d);
+		return CDUSB_PHASE;
+	}
+	return CDUSB_OK;
+}
+
 /* ------------------------------------------------------------------ dispositivos */
 static int is_cd_id(u32 id)
 {
@@ -556,7 +643,7 @@ static void *rpc_fn(int fno, void *buf, int size)
 		memcpy(&q, buf, sizeof(q));
 		memset(r, 0, sizeof(*r));
 		if (q.dev < 0 || q.dev >= CDUSB_MAXDEV || q.len < 0 || q.len > CDUSB_DATA_MAX ||
-		    q.cdb_len < 6 || q.cdb_len > 16 || (q.dir == 2 && q.len > 64) || q.dir < 0 || q.dir > 2) {
+		    q.cdb_len < 6 || q.cdb_len > 16 || (q.dir == 2 && q.len > 64) || q.dir < 0 || q.dir > 3) {
 			r->result = CDUSB_E_ARGS;
 			break;
 		}
@@ -570,8 +657,12 @@ static void *rpc_fn(int fno, void *buf, int size)
 			r->result = CDUSB_E_NODEV;
 		} else {
 			GetSystemTime(&t0);
-			r->result = scsi(d, q.cdb, q.cdb_len, q.dir, data, q.len, q.timeout_ms,
-					 &r->residue, &r->sense, &r->usb_rc);
+			if (q.dir == 3)
+				r->result = scsi_queued(d, q.cdb, q.cdb_len, data, q.len, q.timeout_ms, &r->residue,
+							&r->sense, &r->usb_rc);
+			else
+				r->result = scsi(d, q.cdb, q.cdb_len, q.dir, data, q.len, q.timeout_ms,
+						 &r->residue, &r->sense, &r->usb_rc);
 			GetSystemTime(&t1);
 			/* diferenca de 64 bits, sem libgcc */
 			t1.hi -= t0.hi + (t1.lo < t0.lo);

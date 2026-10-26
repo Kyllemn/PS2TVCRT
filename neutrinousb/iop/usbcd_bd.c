@@ -29,14 +29,17 @@
  * Argumentos: speed=<KB/s> (0 = nao travar; padrao: CD 706, DVD 1385)
  *             keep=<ms> (0 = sem manter girando; padrao 2000)
  *             cache=<KB> (leitura adiantada; padrao 0 = desligada)
- *             fila=1 (liga a fila completa; padrao desligada)
- * n03: na n02 as duas tecnicas ligadas pioraram muito as cutscenes; o padrao
- *      volta a ser o da n01 e cada uma vira opcao para testar separada.
+ *             fila=0 (desliga a fila completa; padrao ligada desde a n04)
+ *             max=<setores> (por comando; padrao 32, ate 64)
+ * n03: na n02 as duas tecnicas ligadas pioraram muito as cutscenes; cada uma
+ *      virou opcao. Teste: leitura adiantada = horrivel; fila completa = a
+ *      melhor (cutscene lisa por mais tempo antes do limite do USB).
+ * n04: fila completa por padrao; max=64 para testar comandos maiores.
  */
 #include "irx_imports.h"
 
 #define MODNAME "usbcd_bd"
-IRX_ID(MODNAME, 1, 3);
+IRX_ID(MODNAME, 1, 4);
 
 #define SUB_ATAPI	0x02
 #define SUB_SFF8070	0x05
@@ -44,7 +47,7 @@ IRX_ID(MODNAME, 1, 3);
 #define PROTO_BULK	0x50
 #define USB_CHUNK	4096
 #define SECT		2048
-#define MAX_PER_CMD	32
+#define MAX_PER_CMD	64		/* teto de max= */
 #define TMO_READ	8000
 
 enum { R_OK = 0, R_CHECK = 1, R_PHASE = 2, R_USB = -1, R_TIMEOUT = -100 };
@@ -73,7 +76,8 @@ static u8 small[64] __attribute__((aligned(64)));
 static u8 bounce[SECT] __attribute__((aligned(64)));
 
 /* fila completa (n02) */
-static int use_queue;				/* n03: desligado (fila=1 liga) */
+static int use_queue = 1;			/* n04: ligada por padrao (fila=0 desliga) */
+static int max_per_cmd = 32;			/* setores por comando (max=, ate 64) */
 static volatile int q_total, q_done, q_err;
 
 /* leitura adiantada (n02) */
@@ -508,8 +512,8 @@ static int bd_read(struct block_device *b, u64 sector, void *buffer, u16 count)
 	while (left) {
 		if (off == 0 && left >= SECT) {
 			u32 n = left / SECT, k;
-			if (n > MAX_PER_CMD)
-				n = MAX_PER_CMD;
+			if (n > (u32)max_per_cmd)
+				n = max_per_cmd;
 			k = pf_take(lba, n, p);			/* ja veio adiantado? */
 			if (!k) {
 				fg_wait = 1;
@@ -835,6 +839,13 @@ int _start(int argc, char *argv[])
 			cache_kb = strtol(argv[i] + 6, NULL, 10);
 		else if (!strncmp(argv[i], "fila=", 5))
 			use_queue = strtol(argv[i] + 5, NULL, 10) != 0;
+		else if (!strncmp(argv[i], "max=", 4)) {
+			max_per_cmd = strtol(argv[i] + 4, NULL, 10);
+			if (max_per_cmd < 1)
+				max_per_cmd = 1;
+			if (max_per_cmd > MAX_PER_CMD)
+				max_per_cmd = MAX_PER_CMD;
+		}
 	}
 	if (cache_kb > 0) {
 		pf_cap = cache_kb * 1024 / SECT;

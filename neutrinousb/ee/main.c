@@ -28,7 +28,7 @@
 
 #include "cdusb_ee.h"
 
-#define VERSAO		"n03"
+#define VERSAO		"n04"
 #define LOG_FILE	"mass:/NEUTRINOUSB.TXT"
 
 #define IRX(n)	extern unsigned char n[]; extern unsigned int size_##n
@@ -413,8 +413,8 @@ static int write_toml(const char *path, const char *args)
 		"\n"
 		"# Leitora de CD/DVD USB externa como dispositivo de bloco (NEUTRINOUSB).\n"
 		"# Uso: neutrino.elf -bsd=usbcd -bsdfs=bd -dvd=bdfs:usbcd0p0\n"
-		"# Opcoes do usbcd_bd.irx: fila=1 (fila completa no USB), cache=<KB> (leitura\n"
-		"# adiantada), speed=<KB/s>, keep=<ms>\n"
+		"# Opcoes do usbcd_bd.irx: fila=0 (sem fila completa no USB), max=<setores>\n"
+		"# (por comando, ate 64), cache=<KB> (leitura adiantada), speed=<KB/s>, keep=<ms>\n"
 		"\n"
 		"# Drivers this driver depends on (config file must exist)\n"
 		"depends = [\"i_bdm\"]\n"
@@ -457,7 +457,7 @@ int main(int argc, char *argv[])
 {
 	cdusb_status st;
 	static char ndir[160], path[220], cfgdir[200], moddir[200], code[32], vol[33], cwd[200], tomlpath[220];
-	const char *mode_args = "", *mode_name = "NORMAL (COMO A N01)";
+	const char *mode_args = "", *mode_name = "FILA COMPLETA (PADRAO)";
 	u16 b;
 	const char *np = NULL;
 	char *nargv[4];
@@ -558,9 +558,9 @@ int main(int argc, char *argv[])
 	S("   JOGO:     %s  (%s)", code[0] ? code : "?", vol[0] ? vol : "?");
 	S("   NEUTRINO: %s", np);
 	S(" ");
-	S("   X         = JOGAR (NORMAL, COMO A N01)");
-	S("   QUADRADO  = JOGAR TESTE A: FILA COMPLETA NO USB");
-	S("   TRIANGULO = JOGAR TESTE B: LEITURA ADIANTADA (128 KB)");
+	S("   X         = JOGAR (FILA COMPLETA, O PADRAO)");
+	S("   QUADRADO  = JOGAR TESTE C: FILA + COMANDOS DE 64 SETORES");
+	S("   TRIANGULO = JOGAR SEM FILA (COMO A N01, PARA COMPARAR)");
 	S("   O         = SAIR");
 	log_save();
 	for (;;) {
@@ -570,13 +570,13 @@ int main(int argc, char *argv[])
 		if (b & PAD_CROSS)
 			break;
 		if (b & PAD_SQUARE) {
-			mode_args = "\"fila=1\"";
-			mode_name = "TESTE A: FILA COMPLETA";
+			mode_args = "\"max=64\"";
+			mode_name = "TESTE C: FILA + 64 SETORES";
 			break;
 		}
 		if (b & PAD_TRIANGLE) {
-			mode_args = "\"cache=128\"";
-			mode_name = "TESTE B: LEITURA ADIANTADA";
+			mode_args = "\"fila=0\"";
+			mode_name = "SEM FILA (COMO A N01)";
 			break;
 		}
 		ee_wait_ms(16);

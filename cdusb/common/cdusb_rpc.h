@@ -61,7 +61,8 @@ typedef struct {
 
 typedef struct {
 	int dev;		/* indice em cdusb_status.dev */
-	int dir;		/* 0 sem dados, 1 leitor -> PS2, 2 PS2 -> leitor */
+	int dir;		/* 0 sem dados, 1 leitor -> PS2, 2 PS2 -> leitor,
+				 * 3 leitor -> PS2 com fila completa no USB (c10: teste) */
 	int len;		/* bytes de dados (<= CDUSB_DATA_MAX; saida <= 64) */
 	int timeout_ms;
 	int cdb_len;		/* 6, 10 ou 12 */
