@@ -63,3 +63,20 @@ leitora e so a nossa camada.
 
 Proximo passo deste estudo: ler, nucleo por nucleo, como cada um le setores
 crus, subcanal e faixas de musica (CDDA) e onde a leitura acontece (thread).
+
+## Video por nucleo (aprovado)
+- Ao iniciar um nucleo (e sempre que o jogo mudar de resolucao), entregar a
+  resolucao/frequencia NATIVA do console (DynaRes/SwitchRes).
+- Aviso no rodape DIREITO por ~5 s e some: a resolucao entregue, ex.
+  "320X240P 59.94HZ", "640X480I 59.94HZ". So informativo.
+- Dreamcast: nativo e 480i (tremida inerente ao entrelacado na TV de tubo,
+  pior em linhas finas). Opcao no nucleo: "480I NATIVO" (padrao) ou
+  "240P ESTAVEL" (metade da resolucao vertical, sem tremer).
+
+## Cadeia de video do autor
+HDMI (Pi 5) > adaptador HDMI-VGA > conversor VGA-componente > TV de tubo
+(15 kHz, 240p). Ja funciona com o ReplayOS. O Pi OS padrao liga em 31 kHz+
+(TV nao mostra): preparar tudo no PC, EDID propria so com modos de 15 kHz
+(boot ja em 240p), instalador automatico no 1o boot, SSH/Wi-Fi para log.
+Primeiro teste: tela que alterna sozinha entre variantes de 240p (com o nome
+de cada uma na tela e no log), para achar o sinal certo num boot so.
