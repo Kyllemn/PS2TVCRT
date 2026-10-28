@@ -9,7 +9,10 @@ HDMI > componente para TV de tubo). Detalhes tecnicos e fases ficam no plano.
   (120,130,160); destaque laranja (255,140,40).
 - Tarja laranja vertical nos DOIS lados da tela.
 - Topo: "RETROVOLT" a esquerda, relogio a direita.
-- Embaixo do relogio (alinhado a direita, cinza mais apagado), 3 linhas:
+- Ao lado (a esquerda) do relogio: icone de Wi-Fi + nome da rede quando
+  conectado; "SEM WI-FI" quando nao conectado. Em fonte pequena (3x5).
+- Embaixo do relogio (alinhado a direita, cinza mais apagado, fonte pequena
+  3x5 para nao poluir), 3 linhas:
   temperatura + uso da CPU ("47C  CPU 12%"), memoria ("RAM 1.2/4GB") e o
   dispositivo de jogos com o espaco usado ("USB 41% USADO" ou "SD ...").
   O dispositivo (SD ou pendrive) e escolhido em OPCOES > PASTAS DE JOGOS.

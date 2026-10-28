@@ -1,14 +1,22 @@
 import sys
 exec(open(sys.argv[2]).read().split("# ===================== D: VIDRO")[0].replace("exec(open(sys.argv[2]).read()","exec(open(sys.argv[3]).read()"))
 OUT=sys.argv[1]
+exec(open(sys.argv[3].replace('themes.py','tiny.py')).read())
 NAV=(12,18,40); OR=(255,140,40); IV=(240,236,225); SL=(120,130,160)
 def editF(tab, foot_r):
     c=C(NAV)
     c.rect(0,0,6,H,OR); c.rect(W-6,0,6,H,OR)
     c.txt(16,6,"RETROVOLT",IV); c.rtxt(W-12,6,"12:34",IV)
-    c.rtxt(W-12,17,"47C  CPU 12%",(95,105,140))
-    c.rtxt(W-12,27,"RAM 1.2/4GB",(95,105,140))
-    c.rtxt(W-12,37,"USB 41% USADO",(95,105,140))
+    INF=(95,105,140)
+    # Wi-Fi ao lado do relogio
+    wx=W-12-5*8-10-7*4
+    rstxt(c,W-12-5*8-10,8,"CASA_5G",SL)
+    for r,row in enumerate(WIFI):
+        for k,v in enumerate(row):
+            if v=='#': c.p(wx-10+k,8+r,(90,220,140))
+    rstxt(c,W-12,20,"47C  CPU 12%",INF)
+    rstxt(c,W-12,28,"RAM 1.2/4GB",INF)
+    rstxt(c,W-12,36,"USB 41% USADO",INF)
     x=16
     for n,t in enumerate(TABS):
         on=(n==tab)
