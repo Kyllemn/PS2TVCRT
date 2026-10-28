@@ -5,7 +5,10 @@ NAV=(12,18,40); OR=(255,140,40); IV=(240,236,225); SL=(120,130,160)
 def editF(tab, foot_r):
     c=C(NAV)
     c.rect(0,0,6,H,OR); c.rect(W-6,0,6,H,OR)
-    c.txt(16,8,"RETROVOLT",IV); c.rtxt(W-12,8,"12:34",SL)
+    c.txt(16,6,"RETROVOLT",IV); c.rtxt(W-12,6,"12:34",IV)
+    c.rtxt(W-12,17,"47C  CPU 12%",(95,105,140))
+    c.rtxt(W-12,27,"RAM 1.2/4GB",(95,105,140))
+    c.rtxt(W-12,37,"USB 41% USADO",(95,105,140))
     x=16
     for n,t in enumerate(TABS):
         on=(n==tab)
