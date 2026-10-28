@@ -1,5 +1,13 @@
 # RETROVOLT Pi — plano tecnico (decisoes aprovadas)
 
+## Hardware do autor
+- Raspberry Pi 5 com **2 GB** de RAM. Orcamento previsto: sistema enxuto
+  ~250 MB, nucleo + emulacao ~100-300 MB, video (GPU/CMA) ~64-256 MB.
+  Cache de disco: ate ~1 GB, adaptativo (sempre deixar >= 400 MB livres;
+  se faltar memoria, descarta o que foi usado ha mais tempo).
+- Um disco inteiro (ate ~700 MB) cabe; guardar so o disco ATUAL (ao trocar
+  de disco em jogo de varios CDs, o anterior sai da memoria).
+
 ## Leitora (fase R03)
 - Qualquer leitora USB de CD/DVD (deteccao pelo TIPO, nunca pela marca;
   usb-storage/uas + sr do Linux). Correcoes por modelo em arquivo de config.
