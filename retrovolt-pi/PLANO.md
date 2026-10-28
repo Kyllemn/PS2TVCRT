@@ -20,17 +20,22 @@
   1. comando padrao para a leitora nao entrar em repouso (power condition /
      standby desligado);
   2. garantia: se ficar ~2 s sem uso, le 1 setor (keep-alive, como no PS2).
-- Copia da trilha de dados inteira para a RAM ao inserir o disco:
-  LIGADA para Sega CD, Neo Geo CD e PC Engine CD (dados pequenos + faixas
-  de musica). Musica tocada com buffer de alguns segundos.
+- (Nos modos SILENCIOSA/RAPIDA) copia inteira pensada primeiro para Sega CD,
+  Neo Geo CD e PC Engine CD. Musica sempre com buffer de alguns segundos.
 - PS1: SEM copia inteira de inicio (discos variados: so dados, dados + faixas
   de musica, XA/FMV intercalado na trilha de dados, ate ~650 MB). Usa leitura
   adiantada agressiva + cache crescente (tudo que foi lido fica na RAM) e, como
   opcao, copia em segundo plano com prioridade baixa.
 - Velocidade: travada na mais baixa aceita (SET CD SPEED + SET STREAMING,
-  reaplicados apos qualquer reset). Modo padrao da leitora: **SILENCIOSA**
-  (copia devagar; terminada a copia do disco inteiro, o motor para).
-  Opcoes: RAPIDA (copia rapido e depois silencio) e SEM COPIA.
+  reaplicados apos qualquer reset).
+- Modo padrao da leitora: **AO VIVO com janela de 32 MB** (se der ruim, aumentar):
+  a leitora acompanha o jogo em tempo real (LED pisca nos loadings); a cada
+  leitura do jogo ela copia 32 MB adiante e descansa (keep-alive, girando
+  devagar); volta a ler perto do fim da janela ou num salto do jogo.
+  Recentes guardados ate 100 MB (descarta o mais antigo).
+  Janela ajustavel nas opcoes: 8 / 32 / 100 MB.
+- Outros modos: SILENCIOSA (copia o disco inteiro devagar e para o motor) e
+  RAPIDA (copia inteiro rapido e para).
 - Opcao por nucleo: imitar o tempo de loading original (desligada por padrao).
 - Teste da leitora em OPCOES > LEITORA (modelo, dados, musica, leitura crua,
   velocidade, busca, tempo do motor).
