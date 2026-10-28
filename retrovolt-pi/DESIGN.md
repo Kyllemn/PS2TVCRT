@@ -11,11 +11,6 @@ HDMI > componente para TV de tubo). Detalhes tecnicos e fases ficam no plano.
 - Topo: "RETROVOLT" a esquerda, relogio a direita.
 - Ao lado (a esquerda) do relogio: icone de Wi-Fi + nome da rede quando
   conectado; "SEM WI-FI" quando nao conectado. Em fonte pequena (3x5).
-- Embaixo do relogio (alinhado a direita, cinza mais apagado, fonte pequena
-  3x5 para nao poluir), 3 linhas:
-  temperatura + uso da CPU ("47C  CPU 12%"), memoria ("RAM 1.2/4GB") e o
-  dispositivo de jogos com o espaco usado ("USB 41% USADO" ou "SD ...").
-  O dispositivo (SD ou pendrive) e escolhido em OPCOES > PASTAS DE JOGOS.
 - Abas DISCO / JOGOS / OPCOES, trocadas com L1/R1, SEM numeros, fonte normal
   (8x8, mesmo tamanho do resto); aba ativa em marfim com sublinhado laranja.
 - Listas uma embaixo da outra, sem numeros e sem contagem de itens.
@@ -34,7 +29,10 @@ HDMI > componente para TV de tubo). Detalhes tecnicos e fases ficam no plano.
    do console selecionado, SEM moldura, trocando conforme a selecao.
    As imagens serao enviadas pelo autor no futuro.
 3. OPCOES: volume geral, video, convergencia (laterais amarelas), controles,
-   Wi-Fi, leitora, pastas de jogos, sistema, REINICIAR e DESLIGAR (vermelho).
+   Wi-Fi, leitora, pastas de jogos, sistema, INFO, REINICIAR e DESLIGAR (vermelho).
+   INFO: temperatura, uso da CPU, memoria (RAM) e o dispositivo de jogos
+   (SD ou pendrive, escolhido em PASTAS DE JOGOS) com o espaco usado.
+   (Essas informacoes NAO ficam mais embaixo do relogio.)
 
 ## Menu dentro do jogo (a desenhar)
 Opcoes do nucleo, volume do nucleo, botoes, convergencia, salvar configuracao,
