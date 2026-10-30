@@ -93,3 +93,16 @@ Os arquivos do jogo NUNCA entram no git; aqui so ferramentas e notas.
   entrada 0 (PAC de 9 secoes) em 0x8C380000. Formato exato ainda nao batido.
 - Proximo passo: save state do Flycast para ler a fonte direto da RAM.
 - Acentos sao opcionais (decisao do autor); pontuacao . , ? ! ... obrigatoria.
+
+## Fonte localizada (save state do Flycast)
+- Save state (.state) = "#RZIP" (blocos zlib); RAM principal dentro dele.
+- Fonte "MFD " em RAM 0x8C75F800 = SYSTEM.DAT offset 0x424E0 (entrada 0,
+  PAC com deslocamentos em unidades de 2 bytes), 0x90020 bytes, 4608 glifos.
+- Glifo: 128 bytes = 32x16 pixels, 2 bits/pixel, textura twiddled em dois
+  blocos 16x16 lado a lado, 1o pixel nos bits 7-6 (tools/mfd.py). Tom 1 =
+  traco, 2/3 = borda. O jogo roda em 640x240: 32x16 aparece quadrado.
+- Solucao: 2 letras por glifo (tools/pares.py, insere2.py). Codigos usados:
+  faixa de kanji 0x89xx-0x97xx com byte baixo invalido no Shift-JIS (0x00-0x3F,
+  0x7F, 0xFD, 0xFE): ~1000 vagas que nenhum texto japones usa. Se faltar,
+  usar kanji que a traducao/menus nao usam.
+- Teste t04: 17 falas com acentos, ~38 letras por linha.
