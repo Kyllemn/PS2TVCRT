@@ -61,3 +61,22 @@ Os arquivos do jogo NUNCA entram no git; aqui so ferramentas e notas.
 - gdls.py: lista os arquivos do track03 (ISO9660 do GD).
 - gdx.py: extrai os arquivos (menos SFD e PCM).
 - scan.py: varre os blocos PSI22 do SCENARIO e conta as falas.
+
+## Gramatica completa do script (30/10)
+- **501 de 501 blocos** do SCENARIO.DAT lidos do inicio ao fim, com todos os
+  saltos caindo em inicio de instrucao (tools/learn3.py; formatos em
+  tools/psi_spec.json).
+- Formatos: E = expressao (RPN terminada em 0; tag 1 = const u32 alinhada,
+  2/3/4 = variavel u16, >= 0x80 operador); V = expressao que comeca por
+  variavel (atribuicao, op 0x01); S = u16; L = u32 alinhado (salto);
+  T = [n][n caracteres].
+  Ops com subcomando: 0x08, 0x09, 0x0A, 0x0B. Sem argumentos: 0x0C, 0x12,
+  0x17, 0x18, 0x2A. Texto: 0x14, 0x15, 0x20 (T), 0x1D (T + L), (0x08,0x15)
+  = E + T (nome de quem fala).
+- Roteiro extraido (tools/extrai.py): **10.343 textos, ~200 mil caracteres**
+  (3190 FALA op 0x14, 6807 FALA op 0x15, 292 opcoes, 48 perguntas, 6 nomes).
+- Codigos especiais no texto: 0xA0FF = quebra de linha (7368x). Varios
+  codigos 0x82xx/0x81xx fora do Shift-JIS padrao = **glifos proprios da fonte
+  (gaiji)**, ex. {825c} = kanji de "しびれ". Ou seja: o jogo ja usa codigos
+  livres para desenhar caracteres proprios -> mesmo caminho para os acentos.
+- O texto extraido NAO vai para o git (e texto do jogo); fica so local.
