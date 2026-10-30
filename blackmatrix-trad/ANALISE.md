@@ -23,7 +23,19 @@ Os arquivos do jogo NUNCA entram no git; aqui so ferramentas e notas.
   Opcodes de texto vistos: 0x15 (2367x), 0x14 (1894x), 0x1D, 0x20.
   O script tem saltos/deslocamentos: trocar o tamanho do texto exige
   recalcular essas referencias (parser completo do bytecode).
+- Bloco PSI22: "PSI22.00", u32 0, u32 tamanho do codigo (bytes); codigo a
+  partir de +0x10; resto do setor em zero (folga para crescer). Blocos so de
+  0x11 sao vazios/reservados.
+- Instrucao de texto: [op u16][n u16][n caracteres u16]. Valores de 32 bits
+  (ex.: enderecos de salto) ficam ALINHADOS em 4 bytes (aparece uma palavra 0
+  de enchimento quando o texto tem n par). Enderecos de salto = deslocamento em
+  bytes desde o inicio do codigo (ex.: "18 17 3 [0] 2dc" = salta para 0x2dc).
+- Proximo passo: achar o interpretador no 1ST_READ.BIN (SH-4; capstone 5 tem
+  SH) para ter o tamanho exato de cada opcode e todos os tipos de argumento,
+  e so entao escrever o extrator/reinseridor com recalculo dos saltos.
 - Texto sem compressao (otimo).
+- Idioma alvo: **portugues do Brasil** (precisa de acentos: a e i o u com
+  agudo, a e o com circunflexo, a o com til, c cedilha, a com crase).
 
 ## Volume de texto (estimativa)
 - SCENARIO.DAT: 562 blocos; contagem estruturada inicial 4690 falas /
