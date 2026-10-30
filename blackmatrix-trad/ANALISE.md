@@ -80,3 +80,16 @@ Os arquivos do jogo NUNCA entram no git; aqui so ferramentas e notas.
   (gaiji)**, ex. {825c} = kanji de "しびれ". Ou seja: o jogo ja usa codigos
   livres para desenhar caracteres proprios -> mesmo caminho para os acentos.
 - O texto extraido NAO vai para o git (e texto do jogo); fica so local.
+
+## Fonte (estudo, 31/10)
+- Teste t03: o jogo NAO tem meia largura; valores 0x00XX viram outros glifos.
+- 1ST_READ.BIN 0x8C05DD2E: codigo Shift-JIS -> indice da fonte:
+  0x8140-0x81BF -> codigo-0x8140; 0x8240-0x83BF -> codigo-0x81C0;
+  0x889F-0x9872 -> codigo-0x869F (kanji nivel 1); fora disso indice=codigo.
+- 0x8C05DD1A: endereco do glifo = *(0x8C1D8318) + indice*128 + 16
+  (128 bytes por glifo; 16 de cabecalho).
+- 0x8C05D5C4 copia a fonte (memmove) para o buffer; chamada pela rotina
+  0x8C047368, que carrega o SYSTEM.DAT (arquivo 11 da tabela de nomes)
+  entrada 0 (PAC de 9 secoes) em 0x8C380000. Formato exato ainda nao batido.
+- Proximo passo: save state do Flycast para ler a fonte direto da RAM.
+- Acentos sao opcionais (decisao do autor); pontuacao . , ? ! ... obrigatoria.
