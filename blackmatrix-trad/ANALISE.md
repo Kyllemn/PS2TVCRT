@@ -127,3 +127,10 @@ Os arquivos do jogo NUNCA entram no git; aqui so ferramentas e notas.
 - Travamento ao pular falas rapido acontece tambem no jogo original naquele emulador; em outra plataforma nao trava.
 - Pendente para a v2: 英 (0x8970) foi reaproveitado pelo par "ak"; proteger kanji do SYSTEM.DAT
   (tela de nome: かな カナ 英字 戻る 終了 em SYSTEM.DAT 0x1cd8f2) e traduzir para Hira/Kata/ABC/Apag/Fim.
+
+## Fase 2 (imagens) — v2
+- Texturas PVRT sem compressao (ARGB1555/RGB565, twiddled): tools/pvr.py le e grava.
+- HUD (botoes na tela): EVENT.DAT, PVRT em 0x53310 (unica copia) -> img_hud.py.
+- Configuracao (表示する etc.) e itens da ajuda: SYSTEM.DAT 0x6294d0 e 0x6494f0 -> img_sys.py.
+- Tela de nome: tabela em SYSTEM.DAT 0x1cd8f0 (rotulos) e 0x1cd9b0 (nomes, [u16 n][7 celulas]) -> nome_sys.py.
+- Imagens entre capitulos ficam em japones (decisao do usuario).
