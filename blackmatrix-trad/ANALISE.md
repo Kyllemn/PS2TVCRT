@@ -33,6 +33,18 @@ Os arquivos do jogo NUNCA entram no git; aqui so ferramentas e notas.
 - Proximo passo: achar o interpretador no 1ST_READ.BIN (SH-4; capstone 5 tem
   SH) para ter o tamanho exato de cada opcode e todos os tipos de argumento,
   e so entao escrever o extrator/reinseridor com recalculo dos saltos.
+- Gramatica (deduzida dos dados, parser em tools/psi.py, 94 de 501 blocos ja
+  fecham certinho no tamanho do codigo):
+  - instrucao = [op u16] + argumentos; muitas tem [sub u16] logo apos o op
+    (0x08, 0x09, 0x0a...);
+  - expressao em notacao polonesa reversa terminada por 0: tag 1 = constante
+    u32 alinhada; tags 2/3/4 = variaveis/flags (u16); >= 0x80 = operadores
+    (0x90 = igual, 0x96 = e/ou...);
+  - 0x02 = se-falso-salta [u32 alvo][expr]; 0x03 = salta [u32 alvo];
+  - 0x14/0x15/0x20 = texto [n][n caracteres]; 0x1D = opcao de menu
+    [n][texto][u32 alvo]; 0x12/0x17/0x18/0x19 = sem argumentos (0x12 = fim).
+- Tabela de comandos no executavel: candidatos testados nao bateram; a
+  deducao pelos dados esta rendendo mais.
 - Texto sem compressao (otimo).
 - Idioma alvo: **portugues do Brasil** (precisa de acentos: a e i o u com
   agudo, a e o com circunflexo, a o com til, c cedilha, a com crase).
