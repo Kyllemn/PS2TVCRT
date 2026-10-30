@@ -106,3 +106,6 @@ Os arquivos do jogo NUNCA entram no git; aqui so ferramentas e notas.
   0x7F, 0xFD, 0xFE): ~1000 vagas que nenhum texto japones usa. Se faltar,
   usar kanji que a traducao/menus nao usam.
 - Teste t04: 17 falas com acentos, ~38 letras por linha.
+- t05/t06: o jogo so desenha as colunas 0-23 do glifo (as 24-31 ficam
+  vazias em toda a fonte original) -> 2 letras de 12 colunas; na tela o
+  glifo sai ~1,1x na largura e ~2x na altura. "i" desenhado a mao.

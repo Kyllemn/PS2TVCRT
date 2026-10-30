@@ -5,10 +5,13 @@ convertemos para a textura."""
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 FONT='/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf'
-SX,SY=0.8,2.0                 # escala textura -> tela
+SX,SY=1.1,2.0                 # escala textura -> tela (medida nas fotos)
 TW,TH=32,16                   # textura
-CW,CH=int(round(TW*SX*4)),int(round(TH*SY*4))   # tela em 4x (super-amostragem)
-F=ImageFont.truetype(FONT,int(CH*0.78))
+UW=24                         # o jogo so desenha as colunas 0-23 da textura
+CW,CH=int(round(UW*SX*4)),int(round(TH*SY*4))   # tela em 4x (super-amostragem)
+F=ImageFont.truetype(FONT,int(CH*0.74))
+F2=ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',int(CH*0.74))
+FINOS=set('lj')
 def livres():
     out=[]
     for hi in range(0x89,0x98):
@@ -20,17 +23,36 @@ def glifo_par(par):
     im=Image.new('L',(CW,CH),0); d=ImageDraw.Draw(im)
     half=CW/2
     for k,ch in enumerate(par):
-        bb=d.textbbox((0,0),ch,font=F)
+        f=F2 if ch in FINOS else F
+        bb=d.textbbox((0,0),ch,font=f)
         w=bb[2]-bb[0]
         x=k*half+(half-w)/2-bb[0]
-        d.text((x,CH*0.06),ch,font=F,fill=255)
-    a=np.array(im.resize((TW,TH),Image.BOX),dtype=np.float32)
-    g=np.zeros((TH,TW),np.uint8); g[a>=80]=1
+        d.text((x,CH*0.06),ch,font=f,fill=255)
+    a=np.array(im.resize((UW,TH),Image.BOX),dtype=np.float32)
+    g=np.zeros((TH,TW),np.uint8); g[:,:UW][a>=80]=1
+    # 'i' desenhado a mao: na resolucao da fonte o pingo grudava na haste
+    for k,ch in enumerate(par):
+        if ch in 'iíìî':
+            x0=k*12; g[:,x0:x0+12]=0
+            t,b=_xh()
+            g[t:b+1,x0+5:x0+7]=1
+            if ch=='i': g[t-3:t-1,x0+5:x0+7]=1
+            elif ch=='í': g[t-3,x0+7]=1; g[t-2,x0+6]=1
+            elif ch=='ì': g[t-3,x0+4]=1; g[t-2,x0+5]=1
+            else: g[t-3,x0+5:x0+7]=1; g[t-2,x0+4]=1; g[t-2,x0+7]=1
     return g
+_XH=None
+def _xh():
+    global _XH
+    if _XH is None:
+        im=Image.new('L',(CW,CH),0); ImageDraw.Draw(im).text((0,CH*0.06),'n',font=F,fill=255)
+        a=np.array(im.resize((UW,TH),Image.BOX))>=80
+        rows=np.where(a.any(axis=1))[0]; _XH=(int(rows[0]),int(rows[-1]))
+    return _XH
 def tela(g):
     """simula a tela: textura 32x16 -> proporcao real"""
-    im=Image.fromarray((g*255).astype(np.uint8))
-    return np.array(im.resize((int(TW*SX*2),int(TH*SY*2)),Image.NEAREST))
+    im=Image.fromarray((g[:,:UW]*255).astype(np.uint8))
+    return np.array(im.resize((int(UW*SX*2),int(TH*SY*2)),Image.NEAREST))
 def preview(linhas,arq):
     rows=[]
     for t in linhas:
