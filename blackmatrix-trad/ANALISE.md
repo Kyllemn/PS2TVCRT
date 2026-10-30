@@ -109,3 +109,14 @@ Os arquivos do jogo NUNCA entram no git; aqui so ferramentas e notas.
 - t05/t06: o jogo so desenha as colunas 0-23 do glifo (as 24-31 ficam
   vazias em toda a fonte original) -> 2 letras de 12 colunas; na tela o
   glifo sai ~1,1x na largura e ~2x na altura. "i" desenhado a mao.
+
+## Textos do executavel (1ST_READ.BIN)
+- ~200 registros [n u16][n caracteres u16] entre 0x837AC e 0x8A200
+  (tools/exe_txt.py): menus, ajuda da configuracao, lojas, avisos de
+  memoria, popups ("彼女にします。" 0x891C2, "は　いいいえ" 0x83D3C = 2 campos
+  de 3). Linhas de 19 celulas completadas com espaco largo.
+- tools/insere_exe.py troca no mesmo lugar (mesmo n); '|' = campos de
+  largura fixa. Com os pares (2 letras por celula) o portugues costuma caber.
+- Telas como "表示する / 表示しない / 手動設定 / 初期設定" e os titulos
+  (CONFIGURATION, MESSAGE...) sao IMAGENS, nao texto: ficam para a fase de
+  imagens.
