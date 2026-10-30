@@ -120,3 +120,10 @@ Os arquivos do jogo NUNCA entram no git; aqui so ferramentas e notas.
 - Telas como "表示する / 表示しない / 手動設定 / 初期設定" e os titulos
   (CONFIGURATION, MESSAGE...) sao IMAGENS, nao texto: ficam para a fase de
   imagens.
+
+## Fase 1 (textos) — OK
+- Patch BlackMatrixAD_D1_PTBR_v1.xdelta, track03 final MD5 46584b093309bea6754d08ae8f0a62dc.
+- Ferramentas no commit 0409bb8 (build.sh monta tudo). Testado pelo usuario.
+- Travamento ao pular falas rapido acontece tambem no jogo original naquele emulador; em outra plataforma nao trava.
+- Pendente para a v2: 英 (0x8970) foi reaproveitado pelo par "ak"; proteger kanji do SYSTEM.DAT
+  (tela de nome: かな カナ 英字 戻る 終了 em SYSTEM.DAT 0x1cd8f2) e traduzir para Hira/Kata/ABC/Apag/Fim.
