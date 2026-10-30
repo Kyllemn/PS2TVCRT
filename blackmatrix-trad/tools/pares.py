@@ -12,11 +12,24 @@ CW,CH=int(round(UW*SX*4)),int(round(TH*SY*4))   # tela em 4x (super-amostragem)
 F=ImageFont.truetype(FONT,int(CH*0.74))
 F2=ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',int(CH*0.74))
 FINOS=set('lj')
+import os
 def livres():
+    """Ordem: (1) codigos com byte baixo invalido no Shift-JIS (nenhum texto
+    usa); (2) kanji de nivel 1 que nao aparecem em nenhum texto do jogo;
+    (3) kanji que so apareciam nos textos que foram traduzidos."""
     out=[]
     for hi in range(0x89,0x98):
         for lo in list(range(0x00,0x40))+[0x7f,0xfd,0xfe]:
             out.append(hi<<8|lo)
+    usados=set()
+    f=os.path.join(os.path.dirname(os.path.abspath(__file__)),'kanji_usados.txt')
+    if os.path.exists(f): usados={int(x,16) for x in open(f).read().split()}
+    kanji=[]
+    for hi in range(0x88,0x99):
+        for lo in list(range(0x40,0x7f))+list(range(0x80,0xfd)):
+            c=hi<<8|lo
+            if 0x889f<=c<=0x9872: kanji.append(c)
+    out+=[c for c in kanji if c not in usados]+[c for c in kanji if c in usados]
     return out
 def indice(code): return (code+0x7961)&0xffff
 def glifo_par(par):

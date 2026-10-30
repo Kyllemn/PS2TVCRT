@@ -1,0 +1,3 @@
+RAW no build (insere2): ○×△◇◎■□ｰ -> gravar SJIS cru, nao parear
+RAW tambem: letras gregas (ΑΒΓΘΗΖ...) = codigos de controle nos PERGUNTA de minigame
+REGRA geral: qualquer char fora de ASCII imprimivel + letras latinas acentuadas -> gravar SJIS cru (ex ★●◎◇□☆♂♀▲▼ ×)
