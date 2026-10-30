@@ -9,4 +9,5 @@ python3 -I $T/nome_sys.py $T $S/bm_files/SYSTEM.DAT $B/mapa.json $B/SYSTEM_nome.
 python3 -I $T/insere3.py $S/bm_files/SCENARIO.DAT $B/SYSTEM_nome.DAT $T/psi_spec.json $B/roteiro_pt.tsv $T $B/SCENARIO.DAT $B/SYSTEM_fonte.DAT $B/mapa.json
 python3 -I $T/img_sys.py $T $B/SYSTEM_fonte.DAT $B/SYSTEM.DAT
 python3 -I $T/img_hud.py $T $S/bm_files/EVENT.DAT $B/EVENT.DAT
-python3 -I $T/grava_track.py $S/bm_dl/arquivo.bin $T/lista.txt $B/track03.bin SCENARIO.DAT=$B/SCENARIO.DAT SYSTEM.DAT=$B/SYSTEM.DAT 1ST_READ.BIN=$B/1ST_READ.BIN PARAMETA.DAT=$B/PARAMETA.DAT EVENT.DAT=$B/EVENT.DAT
+python3 -I $T/img_bat.py $T $S/bm_files/CHAR.DAT $B/CHAR.DAT
+python3 -I $T/grava_track.py $S/bm_dl/arquivo.bin $T/lista.txt $B/track03.bin SCENARIO.DAT=$B/SCENARIO.DAT SYSTEM.DAT=$B/SYSTEM.DAT 1ST_READ.BIN=$B/1ST_READ.BIN PARAMETA.DAT=$B/PARAMETA.DAT EVENT.DAT=$B/EVENT.DAT CHAR.DAT=$B/CHAR.DAT
