@@ -228,3 +228,8 @@ as falas dubladas (PROLOGUE, MS*) nao tem legenda nenhuma. Opcional: legendar ao
   largas do teclado ABC do jogo (Ａｂｅｌ...), max 6: Michet, Vaikun, Jul.
 - CDI v6e: formato classico audio/dados (LAYOUT=ad, LBA 11702) + regiao JUE + TOC1 11852 + logo + nomes. Pesquisa:
   procedimento padrao = binhack + scramble + IP.BIN; alguns DC novos recusam audio/dados (dados/dados e preferido).
+- CAUSA do travamento com BIOS real: a gdFs 1.08, ao montar o disco, pede o status do leitor e exige tipo de disco 0x80
+  (GD-ROM): 0x8c09dfb0 'mov.w #0x80; cmp/eq; bt ok; bra erro'. CD-R informa 0x20 (CD-ROM XA) -> erro de montagem, o jogo
+  fica tentando de novo (sem crash). HLE responde diferente e passa; savestate passa porque a montagem ja foi feita.
+  Teste de regiao (core em Japan) nao mudou nada. v7: 'bra erro' (0x8dfb8, a0f4) -> nop. Layout dados/dados + regiao JUE
+  + TOC1 + logo + nomes. Exe do CDI difere do GDI so em 0x8dfb8, 0x8e754, 0x8eb20, 0xd2844.

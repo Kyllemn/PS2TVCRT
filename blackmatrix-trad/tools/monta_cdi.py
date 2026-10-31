@@ -3,6 +3,7 @@
 - layout dados/dados (igual ao Volgarr, cdi4dc -d): ISO na sessao 1 a partir do LBA 0, sessao 2 so com o boot
 - 1ST_READ (gdFs): FAD 45150 (inicio do GD) -> 150 e FAD 45166 (CD001) -> 166; depois o arquivo e embaralhado
 - IP.BIN = 16 primeiros setores do track03, com a TOC1 (0x104) apontando para a faixa de dados do CD
+- 1ST_READ (gdFs): aceita disco que nao seja GD-ROM (checagem do tipo de disco desligada)
 - IP.BIN sem trava de regiao (JUE), como o MSR e o Volgarr
 - logo opcional na tela da SEGA: imagem MR em IP.BIN+0x3820 (ate 8192 bytes, como o makeip do KallistiOS)
 uso: monta_cdi.py track03.bin pasta_sfd saida.cdi [logo.mr]"""
@@ -67,6 +68,11 @@ for el, nm, sz in arqs:
         off = 0xd2844                                          # gdFs: FAD do descritor de volume (CD001)
         assert struct.unpack('<I', d[off:off + 4])[0] == 45166 and d[off + 8:off + 13] == b'CD001'
         d[off:off + 4] = struct.pack('<I', BASE_ISO + 150 + 16)
+        # gdFs 1.08 so aceita disco tipo GD-ROM (0x80) ao montar: 'cmp/eq; bt ok; bra erro' em 0x8c09dfb4.
+        # Num CD-R o leitor informa 0x20 (CD-ROM XA) e o jogo trava depois da tela da SEGA. Troca o 'bra erro' por nop.
+        off = 0x8dfb8
+        assert struct.unpack('<HHH', d[off - 4:off + 2]) == (0x3340, 0x8901, 0xa0f4), d[off - 4:off + 2].hex()
+        d[off:off + 2] = struct.pack('<H', 0x0009)
         # nao pode sobrar nenhuma constante do GD
         assert all(struct.unpack('<I', d[i:i + 4])[0] not in (45150, 45166) for i in range(0, len(d) - 3, 2))
         exe = bytes(d)
