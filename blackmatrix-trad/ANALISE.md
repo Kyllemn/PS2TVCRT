@@ -222,3 +222,9 @@ as falas dubladas (PROLOGUE, MS*) nao tem legenda nenhuma. Opcional: legendar ao
   codigo de boot do IP.BIN (nosso: Sega 1999; MSR: Sega 2000) e 1ST_READ do MSR gravado sem embaralhar.
   Testes enviados (patches pequenos sobre o v6d): A = boot 0x5820-0x8000 do MSR (BOOT2=...), B = 1ST_READ sem embaralhar
   (SEM_SCRAMBLE=1). monta_cdi aceita essas duas variaveis de ambiente.
+- Testes no ReplayOS (BIOS real): A (boot do MSR) reinicia sem parar; B (1ST_READ sem embaralhar) da "Fatal SH4 exception"
+  -> a BIOS real desembaralha, e no v6d o jogo comeca a rodar mas trava sem erro (esperando o leitor?).
+- Nomes padrao da tela de nome: com pares apareciam quadrados (fonte grande do campo nao tem pares). Agora com letras
+  largas do teclado ABC do jogo (Ａｂｅｌ...), max 6: Michet, Vaikun, Jul.
+- CDI v6e: formato classico audio/dados (LAYOUT=ad, LBA 11702) + regiao JUE + TOC1 11852 + logo + nomes. Pesquisa:
+  procedimento padrao = binhack + scramble + IP.BIN; alguns DC novos recusam audio/dados (dados/dados e preferido).

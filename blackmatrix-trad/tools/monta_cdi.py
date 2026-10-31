@@ -8,7 +8,9 @@
 uso: monta_cdi.py track03.bin pasta_sfd saida.cdi [logo.mr]"""
 import sys, os, struct, hashlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import cdi
-BASE_ISO = 0
+# LAYOUT=ad: audio/dados (dados no LBA 11702); padrao dd: dados/dados (dados no LBA 0)
+LAYOUT = os.environ.get('LAYOUT', 'dd')
+BASE_ISO = cdi.MSINFO if LAYOUT == 'ad' else 0
 track, pasta_sfd, saida = sys.argv[1:4]; logo = sys.argv[4] if len(sys.argv) > 4 and sys.argv[4] != '-' else None
 # testes: BOOT2=arquivo com IP.BIN de referencia (usa o codigo de boot 0x5820-0x8000 dele); SEM_SCRAMBLE=1
 BOOT2 = os.environ.get('BOOT2'); SEM_SCRAMBLE = os.environ.get('SEM_SCRAMBLE') == '1'
@@ -76,11 +78,14 @@ for el, nm, sz in arqs:
 print('arquivos', len(lista), '| SFD trocados', trocados)
 iso, lbas = cdi.monta_iso(ipbin, pvd, lista, data_dir, BASE_ISO)
 mb = len(iso) / 2 ** 20
-fim = len(iso) // 2048 + 2 + 11400 + 302
+fim = (BASE_ISO + len(iso) // 2048 + 2) if LAYOUT == 'ad' else (len(iso) // 2048 + 2 + 11400 + 302)
 print('ISO %.1f MiB (%d setores), disco termina no LBA %d' % (mb, len(iso) // 2048, fim))
 assert fim < 359849, 'nao cabe num CD-R de 80 min'
 def prog(a, b):
     if a == b or a % (4096 * 32) == 0: print('  setores %d/%d' % (a, b), flush=True)
-blocos, lba2 = cdi.grava_cdi_dd(iso, saida, progresso=prog)
+if LAYOUT == 'ad':
+    blocos = cdi.grava_cdi(iso, saida, progresso=prog); lba2 = cdi.MSINFO
+else:
+    blocos, lba2 = cdi.grava_cdi_dd(iso, saida, progresso=prog)
 print('CDI gravado:', saida, '| faixa 1:', blocos, 'setores | faixa de boot no LBA', lba2, '| %.1f MiB' % (os.path.getsize(saida) / 2 ** 20))
 open(saida + '.lbas.txt', 'w').write(''.join('%s\t%d\t%s\n' % (nm, lbas[nm], hashlib.md5(d).hexdigest()) for nm, d in lista))
