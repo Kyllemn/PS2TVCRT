@@ -239,3 +239,5 @@ as falas dubladas (PROLOGUE, MS*) nao tem legenda nenhuma. Opcional: legendar ao
   depois compara "1/2"/produto com o do disco de boot (0x8c008000). Em CD-R a BIOS falha. v8: 0x925a4 -> rts; mov #0,r0
   e literal 0x92568 (0x8c008100) -> 0x8c008000. Na troca para o disco 2 o jogo nao vai aceitar o disco 2 sozinho:
   reiniciar e dar boot pelo disco 2 (que carrega o save).
+- CDI v8 TESTADO pelo usuario no ReplayOS com BIOS real: boot, New Game, videos e dialogos passados rapido - tudo OK.
+  v8 = candidato final do disco 1 (md5 10d24e80f05af847523e41a38b996376). GDI correspondente: patch GDI_v7.
