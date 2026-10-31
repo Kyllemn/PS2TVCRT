@@ -233,3 +233,9 @@ as falas dubladas (PROLOGUE, MS*) nao tem legenda nenhuma. Opcional: legendar ao
   fica tentando de novo (sem crash). HLE responde diferente e passa; savestate passa porque a montagem ja foi feita.
   Teste de regiao (core em Japan) nao mudou nada. v7: 'bra erro' (0x8dfb8, a0f4) -> nop. Layout dados/dados + regiao JUE
   + TOC1 + logo + nomes. Exe do CDI difere do GDI so em 0x8dfb8, 0x8e754, 0x8eb20, 0xd2844.
+- New Game no CDI v7 (BIOS real, ReplayOS): tela escurece e volta ao titulo. GDI traduzido com BIOS real: OK. CDI com os
+  videos ORIGINAIS: mesmo erro -> nao sao os videos. Causa: checagem de disco do jogo de 2 discos (tarefa 0x8c046fce):
+  chama a BIOS (vetor 0x8c0000e0, r4=2, funcao 0x8c0a25a4) que copia o cabecalho do disco no leitor para 0x8c008100;
+  depois compara "1/2"/produto com o do disco de boot (0x8c008000). Em CD-R a BIOS falha. v8: 0x925a4 -> rts; mov #0,r0
+  e literal 0x92568 (0x8c008100) -> 0x8c008000. Na troca para o disco 2 o jogo nao vai aceitar o disco 2 sozinho:
+  reiniciar e dar boot pelo disco 2 (que carrega o save).

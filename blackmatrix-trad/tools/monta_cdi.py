@@ -4,6 +4,7 @@
 - 1ST_READ (gdFs): FAD 45150 (inicio do GD) -> 150 e FAD 45166 (CD001) -> 166; depois o arquivo e embaralhado
 - IP.BIN = 16 primeiros setores do track03, com a TOC1 (0x104) apontando para a faixa de dados do CD
 - 1ST_READ (gdFs): aceita disco que nao seja GD-ROM (checagem do tipo de disco desligada)
+- 1ST_READ: checagem de disco do New Game sem chamar a BIOS (usa o cabecalho do proprio disco de boot)
 - IP.BIN sem trava de regiao (JUE), como o MSR e o Volgarr
 - logo opcional na tela da SEGA: imagem MR em IP.BIN+0x3820 (ate 8192 bytes, como o makeip do KallistiOS)
 uso: monta_cdi.py track03.bin pasta_sfd saida.cdi [logo.mr]"""
@@ -73,6 +74,16 @@ for el, nm, sz in arqs:
         off = 0x8dfb8
         assert struct.unpack('<HHH', d[off - 4:off + 2]) == (0x3340, 0x8901, 0xa0f4), d[off - 4:off + 2].hex()
         d[off:off + 2] = struct.pack('<H', 0x0009)
+        # Checagem de disco do New Game (jogo de 2 discos): o jogo chama a BIOS (vetor 0x8c0000e0, r4=2) para ler o
+        # cabecalho do disco no leitor em 0x8c008100 e compara com o do disco de boot (0x8c008000). Num CD-R essa funcao
+        # da BIOS falha e o jogo volta para a tela de titulo. Aqui: a chamada (0x8c0a25a4) devolve 0 na hora e a
+        # leitura do 2o cabecalho aponta para o do proprio disco de boot (literal 0x8c0a2568: 0x8c008100 -> 0x8c008000).
+        off = 0x925a4
+        assert struct.unpack('<2H', d[off:off + 4]) == (0x4f22, 0xd30a), d[off:off + 4].hex()
+        d[off:off + 4] = struct.pack('<2H', 0x000b, 0xe000)            # rts ; mov #0,r0
+        off = 0x92568
+        assert struct.unpack('<I', d[off:off + 4])[0] == 0x8c008100
+        d[off:off + 4] = struct.pack('<I', 0x8c008000)
         # nao pode sobrar nenhuma constante do GD
         assert all(struct.unpack('<I', d[i:i + 4])[0] not in (45150, 45166) for i in range(0, len(d) - 3, 2))
         exe = bytes(d)
@@ -86,7 +97,7 @@ iso, lbas = cdi.monta_iso(ipbin, pvd, lista, data_dir, BASE_ISO)
 mb = len(iso) / 2 ** 20
 fim = (BASE_ISO + len(iso) // 2048 + 2) if LAYOUT == 'ad' else (len(iso) // 2048 + 2 + 11400 + 302)
 print('ISO %.1f MiB (%d setores), disco termina no LBA %d' % (mb, len(iso) // 2048, fim))
-assert fim < 359849, 'nao cabe num CD-R de 80 min'
+assert fim < 359849 or os.environ.get('SEM_LIMITE') == '1', 'nao cabe num CD-R de 80 min'
 def prog(a, b):
     if a == b or a % (4096 * 32) == 0: print('  setores %d/%d' % (a, b), flush=True)
 if LAYOUT == 'ad':
