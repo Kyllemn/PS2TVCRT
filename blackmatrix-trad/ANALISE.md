@@ -134,4 +134,4 @@ Os arquivos do jogo NUNCA entram no git; aqui so ferramentas e notas.
 - Configuracao (表示する etc.) e itens da ajuda: SYSTEM.DAT 0x6294d0 e 0x6494f0 -> img_sys.py.
 - Tela de nome: tabela em SYSTEM.DAT 0x1cd8f0 (rotulos) e 0x1cd9b0 (nomes, [u16 n][7 celulas]) -> nome_sys.py.
 - Imagens entre capitulos ficam em japones (decisao do usuario).
-- Batalha: CHAR.DAT, PVRT em 0x1350 -> img_bat.py. トウケン e a coluna cinza vertical (通潜常在) ficaram sem traduzir.
+- Batalha: CHAR.DAT, PVRT em 0x1350 -> img_bat.py. トウケン=Espada (v3b); a coluna cinza vertical (通潜常在) ficaram sem traduzir.
