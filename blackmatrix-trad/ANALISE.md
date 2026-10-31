@@ -205,3 +205,8 @@ as falas dubladas (PROLOGUE, MS*) nao tem legenda nenhuma. Opcional: legendar ao
   monta_cdi.py em IP.BIN+0x3820 (area vazia de 8192 bytes no IP.BIN do jogo). So muda os setores 7-10 do disco.
 - CDI v6 do disco 1 = v5b + logo. md5 7ddd865fc2c3bd67db6ed714ee4d1f3b. Testes do usuario no v5b: boota no Flycast PC
   com BIOS real; no Flycast do ReplayOS (BIOS real) fica na tela da SEGA - pendente, usuario vai investigar do lado dele.
+- CDI v6b: trocado para o layout dados/dados (cdi4dc -d), o mesmo do Volgarr (CDI de referencia do usuario que boota no
+  ReplayOS e no console). Sessao 1 = ISO inteiro a partir do LBA 0; sessao 2 = faixa de boot de 302 setores no LBA
+  (setores da faixa 1 + 11400) com os 18 primeiros setores do ISO. gdFs: 45150 -> 150 e 45166 -> 166.
+  Cabecalho do CDI comparado byte a byte com o do Volgarr: so mudam contagens, LBA da faixa 2, espaco usado e nome.
+  tools/le_cdi_dd.py le como a BIOS (sessao 2 -> PVD -> arquivos na sessao 1). md5 ab496ca3c01ad3c8e6a66cd9e5796ad5.

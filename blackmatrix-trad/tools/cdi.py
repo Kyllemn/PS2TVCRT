@@ -55,7 +55,7 @@ def dirrec(name, lba, size, date, flags):
     if len(r) % 2: r += b'\0'
     return bytes([len(r)]) + r[1:]
 
-def monta_iso(ipbin, pvd_orig, arquivos, data_dir):
+def monta_iso(ipbin, pvd_orig, arquivos, data_dir, MSINFO=MSINFO):
     """arquivos: lista ordenada (nome, bytes) na ordem do disco. Devolve a imagem (setores de 2048)."""
     assert len(ipbin) == 32768
     nomes = sorted(arquivos, key=lambda a: a[0])
@@ -65,7 +65,7 @@ def monta_iso(ipbin, pvd_orig, arquivos, data_dir):
             if len(cur) + len(r) > 2048: out += cur + b'\0' * (2048 - len(cur)); cur = bytearray()
             cur += r
         return bytes(out + cur + b'\0' * (2048 - len(cur)))
-    def registros(root, nsec, pos):
+    def registros(root, nsec, pos, MSINFO=MSINFO):
         r = [dirrec(b'\0', MSINFO + root, nsec * 2048, data_dir, 2), dirrec(b'\1', MSINFO + root, nsec * 2048, data_dir, 2)]
         return r + [dirrec(nm.encode() + b';1', MSINFO + pos.get(nm, 0), len(d), data_dir, 0) for nm, d in nomes]
     ROOT = 20
@@ -158,6 +158,15 @@ SECTOR2 = [(0x00000, 0x02), (0x00002, 0x96), (0x00006, 0x9c), (0x00007, 0x04), (
     (0x0005e, 0xff), (0x0005f, 0xff), (0x00060, 0xff), (0x00061, 0xff), (0x00062, 0x01), (0x00066, 0x80), (0x0006a, 0x02),
     (0x0006e, 0x10), (0x00072, 0x44), (0x00073, 0xac), (0x000a0, 0xff), (0x000a1, 0xff), (0x000a2, 0xff), (0x000a3, 0xff),
     (0x000b0, 0x02), (0x000b8, 0xb6), (0x000b9, 0x2d)]
+DD_SECTOR1 = [(0x00000, 0x02), (0x00002, 0x96), (0x00006, 0x9c), (0x00007, 0x04), (0x00010, 0x02), (0x00038, 0x01), (0x0003c, 0x04),
+    (0x0005a, 0xff), (0x0005b, 0xff), (0x0005c, 0xff), (0x0005d, 0xff), (0x0005e, 0xff), (0x0005f, 0xff), (0x00060, 0xff),
+    (0x00061, 0xff), (0x00062, 0x01), (0x00066, 0x80), (0x0006a, 0x02), (0x0006e, 0x10), (0x00072, 0x44), (0x00073, 0xac),
+    (0x000a0, 0xff), (0x000a1, 0xff), (0x000a2, 0xff), (0x000a3, 0xff), (0x000b0, 0x02), (0x000bd, 0x01)]
+DD_SECTOR2 = [(0x00000, 0x02), (0x00002, 0x96), (0x00006, 0x2e), (0x00007, 0x01), (0x00010, 0x02), (0x00018, 0x01), (0x00024, 0xc4),
+    (0x00025, 0x01), (0x00038, 0x01), (0x0003c, 0x04), (0x00041, 0xc4), (0x00042, 0x01), (0x0005a, 0xff), (0x0005b, 0xff),
+    (0x0005c, 0xff), (0x0005d, 0xff), (0x0005e, 0xff), (0x0005f, 0xff), (0x00060, 0xff), (0x00061, 0xff), (0x00062, 0x01),
+    (0x00066, 0x80), (0x0006a, 0x02), (0x0006e, 0x10), (0x00072, 0x44), (0x00073, 0xac), (0x000a0, 0xff), (0x000a1, 0xff),
+    (0x000a2, 0xff), (0x000a3, 0xff), (0x000b0, 0x02)]
 HEAD_NEXT = [(0x0000b, 0x02), (0x00016, 0x80), (0x00017, 0x40), (0x00018, 0x7e), (0x00019, 0x05), (0x0001d, 0x98)]
 HEAD_END = [(0x00001, 0x01), (0x00005, 0x01), (0x00026, 0x06), (0x00029, 0x80)]
 MARK = bytes([0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF])
@@ -196,3 +205,42 @@ def grava_cdi(iso, saida, nome_cdi=b'C:\\BlackMatrixAD.cdi', progresso=None):
     cab += struct.pack('<I', len(cab) + 4)
     f.write(cab); f.close()
     return blocos
+
+def grava_cdi_dd(iso, saida, nome_cdi=b'C:\\BlackMatrixAD.cdi', progresso=None):
+    """Modo dados/dados (cdi4dc -d): sessao 1 = ISO inteiro a partir do LBA 0 (ISO montado com base 0);
+    sessao 2 = faixa de boot de 302 setores com os 18 primeiros setores do ISO (IP.BIN + descritores),
+    no LBA (setores da faixa 1 + 11400)."""
+    assert len(iso) % 2048 == 0 and iso[0:32].startswith(b'SEGA SEGAKATANA SEGA ENTERPRISES')
+    vol = iso[0x8028:0x8048]
+    n = len(iso) // 2048
+    f = open(saida, 'wb')
+    for _ in range(150): f.write(GAP1)            # pre-gap da faixa 1
+    arr = np.frombuffer(iso, np.uint8).reshape(n, 2048)
+    L = 4096
+    for i in range(0, n, L):
+        f.write(setores_m2f1(arr[i:i + L]).tobytes())
+        if progresso: progresso(min(n, i + L), n)
+    blocos = n + 2
+    while blocos < 302:
+        f.write(b'\0' * 2336); blocos += 1
+    f.write(GAP1); f.write(GAP1)
+    for _ in range(75): f.write(GAP1)             # pre-gap da faixa 2
+    for _ in range(75): f.write(GAP2)
+    f.write(setores_m2f1(arr[0:18]).tobytes())    # faixa de boot: IP.BIN + descritores
+    f.write(b'\0' * 2336 * (300 - 18))
+    f.write(GAP1); f.write(GAP1)
+    pos_cab = f.tell()
+    usado = (301 + MSINFO + (blocos - 1)) - 150
+    cab = bytearray(struct.pack('<HHI', 2, 1, 0))
+    s1 = _fill(195, DD_SECTOR1)
+    s1[0x06:0x0a] = struct.pack('<I', blocos)
+    s1[0x24:0x28] = struct.pack('<I', blocos + 150)
+    s1[0x41:0x45] = struct.pack('<I', blocos + 150)
+    cab += _inicio_cab(nome_cdi) + s1
+    s2 = _fill(195, DD_SECTOR2); lba2 = blocos + 11400
+    s2[0x20:0x24] = struct.pack('<I', lba2); s2[0xb8:0xbc] = struct.pack('<I', lba2)
+    cab += _inicio_cab(nome_cdi) + s2
+    cab += _inicio_cab(nome_cdi) + struct.pack('<I', usado) + bytes([len(vol)]) + vol + _fill(42, HEAD_END)
+    cab += struct.pack('<I', len(cab) + 4)
+    f.write(cab); f.close()
+    return blocos, lba2
