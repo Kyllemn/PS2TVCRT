@@ -163,3 +163,7 @@ Ferramentas: tools/varre_jp.py e varre_jp2.py (ignora os pixels das texturas; pr
    e "章"/"プレイヤー名". O jogo preenche o capitulo e o nome; precisa manter as posicoes.
 5. Imagens: cartas de abertura de capitulo (EVENT 140-145), icones 縦横突殴鞭弓 (SYSTEM 0x21890, linha 16), coluna cinza 通潜常在.
 Sem texto: SOUND, MAGIC, MAP, OASOBI, FACE, GRAPHIC, CHAR (fora das imagens ja feitas) e o roteiro (100%).
+Segunda varredura (31/10, tools/varre3.py): disco inteiro, inclusive PCM.DAT e Shift-JIS nos dois sentidos,
+com kanji fora da lista do roteiro e katakana de meia largura. Nao achou nada alem da lista acima.
+PCM.DAT so tem audio. Videos SFD: textos em ingles (OPDEMO), sem legenda japonesa gravada na imagem;
+as falas dubladas (PROLOGUE, MS*) nao tem legenda nenhuma. Opcional: legendar ao reencodar os videos para o .cdi.
