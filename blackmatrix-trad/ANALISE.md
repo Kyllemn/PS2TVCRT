@@ -167,3 +167,18 @@ Segunda varredura (31/10, tools/varre3.py): disco inteiro, inclusive PCM.DAT e S
 com kanji fora da lista do roteiro e katakana de meia largura. Nao achou nada alem da lista acima.
 PCM.DAT so tem audio. Videos SFD: textos em ingles (OPDEMO), sem legenda japonesa gravada na imagem;
 as falas dubladas (PROLOGUE, MS*) nao tem legenda nenhuma. Opcional: legendar ao reencodar os videos para o .cdi.
+
+## v5 (31/10) - fecha o disco 1
+- Itens de campo: tools/idco.py (EVENT bloco 9, 62 nomes / 90 registros; trad/idco_pt.tsv fora do git).
+- Mensagens do exe com o nome do item (0xB001 = 'ｰ' no exe_pt.tsv), AP insuficiente, status de paralisia.
+- Save no VMU: tools/vmu.py. Modelo "B.Matrix Cap<n>  PT-BR"; o laco que copiava o nome (celulas da
+  fonte do jogo = lixo no menu do Dreamcast) foi desligado: 1ST_READ 0x1f58 'mov #12,r7' -> 'mov #0,r7'.
+- 12 descricoes com gaiji: trad/param_extra.tsv (offset do campo, linha1, linha2) lido pelo insere_param.
+- Credito na primeira fala das 6 aberturas (SCENARIO blocos 8-13, pos 00d2): trad/especial.tsv
+  (bloco, pos, texto), aplicado pelo junta_roteiro. Sem linha vazia ("//" nao existe no roteiro original).
+- Tela de titulo: tools/img_titulo.py (SYSTEM, PAC do bloco 1, SCL em 0x11ba00) - credito embaixo do "Disc 1".
+- Cartoes de abertura de capitulo: tools/img_abertura.py (EVENT SCL 140-145, inpaint + texto).
+- Icones de tipo de ataque: tools/img_icone.py -> VE HO ES IM CH AR (letras 5x7 a mao).
+- Fica em japones de proposito: coluna cinza 通潜常在 da batalha (decisao do usuario).
+- Verificado: confere.py 0 problemas, tabela CMP2 do SCENARIO intacta, 1356 pares sem colidir com kanji usado,
+  arquivos na trilha iguais ao build, patch aplica e bate. Patch v5: md5 a5fcb86cdbf8d7c8b818bed4d59867cb.

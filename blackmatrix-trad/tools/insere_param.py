@@ -46,5 +46,12 @@ for l in open(campos,encoding='utf-8'):
     else: continue
     d[off-2:off]=struct.pack('<H',tam)
     d[off:off+2*fld]=struct.pack('<%dH'%fld,*codes); feitos+=1
+# v5: descricoes com gaiji que o param_txt pulou (offset do campo, linha 1, linha 2)
+import os
+if os.path.exists(trad+'/param_extra.tsv'):
+    for l in open(trad+'/param_extra.tsv',encoding='utf-8'):
+        off,a,b=l.rstrip('\n').split('\t'); off=int(off,16)
+        assert struct.unpack('<H',d[off-2:off])[0]==38
+        d[off:off+76]=struct.pack('<38H',*(linha(a)+linha(b))); feitos+=1
 open(out,'wb').write(bytes(d)); json.dump(mapa,open(mapf,'w'),ensure_ascii=False,indent=0)
 print('campos traduzidos',feitos,'| problemas',falta,'| pares no mapa',len(mapa))

@@ -10,8 +10,14 @@ for f in sorted(glob.glob(trad+'/pt_*.tsv')):
 fila={}
 for l in open(trad+'/fila.tsv',encoding='utf-8'):
     i,b,ty,jp=l.rstrip('\n').split('\t',3); fila.setdefault(jp,i)
+# trocas pontuais por bloco/posicao (ex.: credito na primeira fala de cada abertura)
+import os
+esp={}
+if os.path.exists(trad+'/especial.tsv'):
+    for l in open(trad+'/especial.tsv',encoding='utf-8'):
+        b,at,t=l.rstrip('\n').split('\t'); esp[(int(b),at)]=t
 o=open(out,'w',encoding='utf-8'); n=0
 for l in open(rot,encoding='utf-8'):
     b,at,ty,jp=l.rstrip('\n').split('\t',3)
-    o.write('%d\t%s\t%s\n'%(int(b),at,d[fila[jp]])); n+=1
+    o.write('%d\t%s\t%s\n'%(int(b),at,esp.get((int(b),at),d[fila[jp]]))); n+=1
 print('roteiro',n,'linhas')

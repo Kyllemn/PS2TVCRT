@@ -13,6 +13,7 @@ def cod(p):
     if p not in mapa: mapa[p]=livres.pop(0)
     return mapa[p]
 def cru(ch):
+    if ch=='ｰ': return 0xb001
     b=ch.encode('shift_jis'); return b[0]<<8|b[1]
 def enc(t):
     codes=[]; linha0=0; buf=''
