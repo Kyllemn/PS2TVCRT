@@ -150,3 +150,16 @@ Os arquivos do jogo NUNCA entram no git; aqui so ferramentas e notas.
 - Troca de disco: SYSTEM blocos 5 e 6, PAC com duas telas SCL cada (img_disco).
 - Relatorio de batalha: PARAMETA 0x1bfdd0 (img_rel).
 - Ficam em japones: cartas de abertura de capitulo (EVENT 140-145), icones 縦横突殴鞭弓, coluna cinza 通潜常在.
+
+## Pendencias para a v5 (varredura completa, 31/10)
+Ferramentas: tools/varre_jp.py e varre_jp2.py (ignora os pixels das texturas; procura texto que sobrou nos arquivos ja montados).
+1. Itens de campo: EVENT.DAT bloco 9 ("IDCO"), 0xe3000. Registros de 0x20 bytes, u16 tamanho em +0x10 e nome logo depois
+   (cabe ate 9 celulas). 90 registros, 62 nomes: comidas, flores, roupas, presentes, animais, pratos.
+   E dai que vem o "ガーベラ Get!" no campo.
+2. 1ST_READ: registros [n][celulas] com o codigo do nome (0xB001) que o exe_txt pulou: 8 mensagens de loja/equipamento
+   (descartar, remover, comprar, vender, purificar, despertar), mais "『nome』を入手", "AP insuficiente" e o status com gaiji (paralisia).
+3. PARAMETA.DAT: 12 descricoes com gaiji ({825c}, {82f3}{82f4}, {829e}) ou "HP" em ASCII, que o param_txt pulou.
+4. Descricao do save no VMU: 1ST_READ 0x86b0a, Shift-JIS normal (big-endian) com katakana de meia largura
+   e "章"/"プレイヤー名". O jogo preenche o capitulo e o nome; precisa manter as posicoes.
+5. Imagens: cartas de abertura de capitulo (EVENT 140-145), icones 縦横突殴鞭弓 (SYSTEM 0x21890, linha 16), coluna cinza 通潜常在.
+Sem texto: SOUND, MAGIC, MAP, OASOBI, FACE, GRAPHIC, CHAR (fora das imagens ja feitas) e o roteiro (100%).
