@@ -2,10 +2,11 @@
 - arquivos na mesma ordem do GD; SFD trocados pelos reencodados (pasta_sfd)
 - 1ST_READ (gdFs): FAD 45150 (inicio do GD) -> 11852 e FAD 45166 (CD001) -> 11868; depois o arquivo e embaralhado
 - IP.BIN = 16 primeiros setores do track03
-uso: monta_cdi.py track03.bin pasta_sfd saida.cdi"""
+- logo opcional na tela da SEGA: imagem MR em IP.BIN+0x3820 (ate 8192 bytes, como o makeip do KallistiOS)
+uso: monta_cdi.py track03.bin pasta_sfd saida.cdi [logo.mr]"""
 import sys, os, struct, hashlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import cdi
-track, pasta_sfd, saida = sys.argv[1:4]
+track, pasta_sfd, saida = sys.argv[1:4]; logo = sys.argv[4] if len(sys.argv) > 4 else None
 BASE = 45000
 f = open(track, 'rb')
 def sec(l, n=1):
@@ -14,6 +15,12 @@ def sec(l, n=1):
         f.seek((l - BASE + i) * 2352 + 16); out += f.read(2048)
     return bytes(out)
 ipbin = sec(BASE, 16); pvd = sec(BASE + 16)
+if logo:
+    mr = open(logo, 'rb').read()
+    assert mr[:2] == b'MR' and len(mr) <= 8192 and struct.unpack('<I', mr[2:6])[0] == len(mr)
+    assert ipbin[0x3820:0x5820] == b'\0' * 8192, 'area do logo no IP.BIN nao esta vazia'
+    ipbin = ipbin[:0x3820] + mr + ipbin[0x3820 + len(mr):]
+    print('logo MR', len(mr), 'bytes em IP.BIN+0x3820')
 rl, = struct.unpack('<I', pvd[158:162]); rs, = struct.unpack('<I', pvd[166:170])
 raiz = sec(rl, (rs + 2047) // 2048)
 arqs = []; o = 0; data_dir = pvd[156 + 18:156 + 25]

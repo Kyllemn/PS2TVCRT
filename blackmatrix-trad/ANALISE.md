@@ -200,3 +200,6 @@ as falas dubladas (PROLOGUE, MS*) nao tem legenda nenhuma. Opcional: legendar ao
 - tools/monta_cdi.py monta; tools/le_cdi.py le de volta (faixas, ISO, 46 arquivos por md5, 1ST_READ, EDC).
 - Resultado: ISO 638 MiB, termina no LBA 338571 (~41 MiB de folga). Patch track03 original -> CDI: 127 MB,
   aplica com xdelta padrao. CDI v5b md5 388eab607eaf698c151d27a9ba2bd7df.
+- Logo da Retro Volt na tela de licenca da SEGA: tools/logo_retrovolt.mr (320x90, 14 cores, 7573 bytes, fundo no cinza
+  da tela = "transparente"), gerado com tools/mr_logo.py (mesmo formato/compressao do makeip do KallistiOS) e posto pelo
+  monta_cdi.py em IP.BIN+0x3820 (area vazia de 8192 bytes no IP.BIN do jogo). So muda os setores 7-10 do disco.
