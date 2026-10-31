@@ -139,3 +139,14 @@ Os arquivos do jogo NUNCA entram no git; aqui so ferramentas e notas.
 ## Pendencias para a proxima release (acumular, nao gerar patch a cada item)
 - Coluna cinza vertical em CHAR.DAT (x176-189, y192-255): 通/潜/常/在 = pedacos de 通常 (Normal) e 潜在 (Poder)
   na versao cinza (opcao desativada). Ver no jogo como e montada antes de traduzir.
+
+## v4 (imagens, parte 2)
+- Formato SCL (telas 640x240 de blocos 16x16): tabela u32 40x15 em +0x20; v -> textura v>>16,
+  coluna (v>>12)&15, linha (v>>4)&0xff. tools/scl.py monta, remonta e reaproveita blocos iguais.
+- Menus do acampamento/loja: SYSTEM 0x21890 (img_menu). Capitulos/Porta/Slot: SYSTEM 0x608810 (img_cap).
+- Placas de lugar: EVENT (25 texturas com barra marrom; img_lugar acha pelo conteudo).
+- Instrucoes dos minijogos (EVENT blocos 30-33), legendas (218, 219), fins de capitulo (224, 282, 314, 332, 340, 350): img_scl.
+- Escolha do mestre: SYSTEM bloco 3 (img_escolha, apaga o japones reconstruindo o fundo).
+- Troca de disco: SYSTEM blocos 5 e 6, PAC com duas telas SCL cada (img_disco).
+- Relatorio de batalha: PARAMETA 0x1bfdd0 (img_rel).
+- Ficam em japones: cartas de abertura de capitulo (EVENT 140-145), icones 縦横突殴鞭弓, coluna cinza 通潜常在.
