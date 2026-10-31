@@ -203,3 +203,5 @@ as falas dubladas (PROLOGUE, MS*) nao tem legenda nenhuma. Opcional: legendar ao
 - Logo da Retro Volt na tela de licenca da SEGA: tools/logo_retrovolt.mr (320x90, 14 cores, 7573 bytes, fundo no cinza
   da tela = "transparente"), gerado com tools/mr_logo.py (mesmo formato/compressao do makeip do KallistiOS) e posto pelo
   monta_cdi.py em IP.BIN+0x3820 (area vazia de 8192 bytes no IP.BIN do jogo). So muda os setores 7-10 do disco.
+- CDI v6 do disco 1 = v5b + logo. md5 7ddd865fc2c3bd67db6ed714ee4d1f3b. Testes do usuario no v5b: boota no Flycast PC
+  com BIOS real; no Flycast do ReplayOS (BIOS real) fica na tela da SEGA - pendente, usuario vai investigar do lado dele.
