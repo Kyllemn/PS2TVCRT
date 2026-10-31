@@ -210,3 +210,6 @@ as falas dubladas (PROLOGUE, MS*) nao tem legenda nenhuma. Opcional: legendar ao
   (setores da faixa 1 + 11400) com os 18 primeiros setores do ISO. gdFs: 45150 -> 150 e 45166 -> 166.
   Cabecalho do CDI comparado byte a byte com o do Volgarr: so mudam contagens, LBA da faixa 2, espaco usado e nome.
   tools/le_cdi_dd.py le como a BIOS (sessao 2 -> PVD -> arquivos na sessao 1). md5 ab496ca3c01ad3c8e6a66cd9e5796ad5.
+- CDI v6c: IP.BIN tinha a TOC1 do GD em 0x100 ("TOC1" + 0x4100B05E = faixa de dados em FAD 45150); o jogo le dados
+  do IP.BIN na memoria (0x8c008000/0x8c008100). Ajustada para 0x41000096 (FAD 150, faixa de dados do CD). v6b bootava no
+  Flycast PC mas travava no ReplayOS na passagem da tela da SEGA para o jogo.

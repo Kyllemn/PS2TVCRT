@@ -2,7 +2,7 @@
 - arquivos na mesma ordem do GD; SFD trocados pelos reencodados (pasta_sfd)
 - layout dados/dados (igual ao Volgarr, cdi4dc -d): ISO na sessao 1 a partir do LBA 0, sessao 2 so com o boot
 - 1ST_READ (gdFs): FAD 45150 (inicio do GD) -> 150 e FAD 45166 (CD001) -> 166; depois o arquivo e embaralhado
-- IP.BIN = 16 primeiros setores do track03
+- IP.BIN = 16 primeiros setores do track03, com a TOC1 (0x104) apontando para a faixa de dados do CD
 - logo opcional na tela da SEGA: imagem MR em IP.BIN+0x3820 (ate 8192 bytes, como o makeip do KallistiOS)
 uso: monta_cdi.py track03.bin pasta_sfd saida.cdi [logo.mr]"""
 import sys, os, struct, hashlib
@@ -17,6 +17,9 @@ def sec(l, n=1):
         f.seek((l - BASE + i) * 2352 + 16); out += f.read(2048)
     return bytes(out)
 ipbin = sec(BASE, 16); pvd = sec(BASE + 16)
+# TOC1 do IP.BIN (tabela de faixas do GD: dados em FAD 45150) -> faixa de dados do CD em FAD BASE_ISO+150
+assert ipbin[0x100:0x108] == b'TOC1' + struct.pack('<I', 0x41000000 | 45150)
+ipbin = ipbin[:0x104] + struct.pack('<I', 0x41000000 | (BASE_ISO + 150)) + ipbin[0x108:]
 if logo:
     mr = open(logo, 'rb').read()
     assert mr[:2] == b'MR' and len(mr) <= 8192 and struct.unpack('<I', mr[2:6])[0] == len(mr)
