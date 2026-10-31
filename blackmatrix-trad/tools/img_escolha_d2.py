@@ -1,4 +1,4 @@
-"""Disco 2: tela 'ご主人様を / 選んで下さい' (SYSTEM.DAT bloco 3, SCL de fundo branco e texto preto grosso).
+"""Disco 2: tela de escolha do mestre (SYSTEM.DAT bloco 3, SCL de fundo branco e texto preto grosso).
 uso: img_escolha_d2.py tools SYSTEM_entrada SYSTEM_saida [previa.png]"""
 import sys, struct, numpy as np
 from PIL import Image, ImageDraw, ImageFont
