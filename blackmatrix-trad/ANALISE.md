@@ -256,3 +256,6 @@ as falas dubladas (PROLOGUE, MS*) nao tem legenda nenhuma. Opcional: legendar ao
 - Varredura de texto (varre_jp2/varre3) em EVENT/SYSTEM/MAP do d2: so a tela de nome (bloco 2, ja transplantado).
 - track03 do d2: grava_track com tools/lista_d2.txt. Patch GDI d2 v1.
 - Videos do d2: 32 SFD a 1500 kbps (sobra espaco: resto do disco = 411 MiB).
+- CDI do disco 2 v1: mesma receita do CDI v8 do d1 (dados/dados, patches da gdFs e da checagem de disco, regiao JUE,
+  TOC1, logo). Exe identico ao do v8 (aprovado nos testes). ISO 573 MiB, termina no LBA 305272.
+  md5 .cdi 3c2b0779c0926600920b425670742ef1 | md5 track03 GDI d2 traduzido ae9477843154bcf7912e430b0fcbe793.
