@@ -217,3 +217,8 @@ as falas dubladas (PROLOGUE, MS*) nao tem legenda nenhuma. Opcional: legendar ao
   que bootam no ReplayOS (Volgarr e Metropolis Street Racer), os dois sao "JUE" com os 3 textos de regiao. Console/BIOS
   em regiao USA para na tela da SEGA (sintoma do ReplayOS). v6d: IP.BIN sem trava de regiao (JUE + 3 textos).
   Obs. do MSR: ele poe a faixa de dados no LBA 45000 (sem patch no exe) e usa subcabecalho 00 00 08 00.
+- ReplayOS: v6d boota com BIOS HLE, trava com BIOS real; Volgarr e MSR bootam com BIOS real. Flycast (master) nao trata
+  CDI com dados no LBA 45000 como GD (GuessDiscType so ve modo das faixas -> CdRom_XA). Diferencas que sobram contra o MSR:
+  codigo de boot do IP.BIN (nosso: Sega 1999; MSR: Sega 2000) e 1ST_READ do MSR gravado sem embaralhar.
+  Testes enviados (patches pequenos sobre o v6d): A = boot 0x5820-0x8000 do MSR (BOOT2=...), B = 1ST_READ sem embaralhar
+  (SEM_SCRAMBLE=1). monta_cdi aceita essas duas variaveis de ambiente.

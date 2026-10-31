@@ -9,7 +9,9 @@ uso: monta_cdi.py track03.bin pasta_sfd saida.cdi [logo.mr]"""
 import sys, os, struct, hashlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import cdi
 BASE_ISO = 0
-track, pasta_sfd, saida = sys.argv[1:4]; logo = sys.argv[4] if len(sys.argv) > 4 else None
+track, pasta_sfd, saida = sys.argv[1:4]; logo = sys.argv[4] if len(sys.argv) > 4 and sys.argv[4] != '-' else None
+# testes: BOOT2=arquivo com IP.BIN de referencia (usa o codigo de boot 0x5820-0x8000 dele); SEM_SCRAMBLE=1
+BOOT2 = os.environ.get('BOOT2'); SEM_SCRAMBLE = os.environ.get('SEM_SCRAMBLE') == '1'
 BASE = 45000
 f = open(track, 'rb')
 def sec(l, n=1):
@@ -35,6 +37,10 @@ if logo:
     assert ipbin[0x3820:0x5820] == b'\0' * 8192, 'area do logo no IP.BIN nao esta vazia'
     ipbin = ipbin[:0x3820] + mr + ipbin[0x3820 + len(mr):]
     print('logo MR', len(mr), 'bytes em IP.BIN+0x3820')
+if BOOT2:
+    ref = open(BOOT2, 'rb').read(); assert len(ref) == 32768 and ref[:16] == b'SEGA SEGAKATANA '
+    ipbin = ipbin[:0x5820] + ref[0x5820:0x8000]
+    print('codigo de boot 0x5820-0x8000 copiado de', BOOT2)
 rl, = struct.unpack('<I', pvd[158:162]); rs, = struct.unpack('<I', pvd[166:170])
 raiz = sec(rl, (rs + 2047) // 2048)
 arqs = []; o = 0; data_dir = pvd[156 + 18:156 + 25]
@@ -61,8 +67,11 @@ for el, nm, sz in arqs:
         d[off:off + 4] = struct.pack('<I', BASE_ISO + 150 + 16)
         # nao pode sobrar nenhuma constante do GD
         assert all(struct.unpack('<I', d[i:i + 4])[0] not in (45150, 45166) for i in range(0, len(d) - 3, 2))
-        exe = bytes(d); d = cdi.scramble(exe)
-        assert cdi.descramble(d) == exe
+        exe = bytes(d)
+        if not SEM_SCRAMBLE:
+            d = cdi.scramble(exe); assert cdi.descramble(d) == exe
+        else:
+            d = exe; print('1ST_READ SEM embaralhar (teste)')
     lista.append((nm, d))
 print('arquivos', len(lista), '| SFD trocados', trocados)
 iso, lbas = cdi.monta_iso(ipbin, pvd, lista, data_dir, BASE_ISO)
