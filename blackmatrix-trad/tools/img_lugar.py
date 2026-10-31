@@ -6,6 +6,9 @@ LISTA=['Ação livre','Jardim de Pandora','Cidade','Prisão de Gólgota','Colina
  'Templo do Sol','Pequena colina','Arena','Vestiário','Pavilhão oeste','Vale de Kederon','Casa',
  'Casa do Filipe','Cidade da Ganância/Pandemônio','Mansão de Mammon','Pátio','Quintal','Canaã, cidade da Gula',
  'Mansão de Baal','Salão principal','Cozinha','Grande salão','Fora da mansão']
+import os
+if os.environ.get('LUGARES'):   # disco 2: lista propria, uma placa por linha, na ordem em que aparecem no arquivo
+    LISTA=[l.rstrip('\n') for l in open(os.environ['LUGARES'],encoding='utf-8') if l.strip()]
 d=bytearray(open(src,'rb').read())
 import re
 offs=[m.start() for m in re.finditer(b'PVRT',d)]
@@ -31,6 +34,8 @@ for o in alvo:
     a=img[0:90,0:248,3]>0; ys=np.where(a.any(1))[0]; y0,y1=ys.min(),ys.max()+1
     img[0:90,0:248]=0
     linhas=t.split('/'); hl=(y1-y0)//len(linhas)
+    if hl<16:   # mais linhas que o original: aumenta a area em volta do mesmo centro
+        hl=18; c=(y0+y1)//2; y0=max(0,c-hl*len(linhas)//2); y1=min(90,y0+hl*len(linhas))
     for i,ln in enumerate(linhas):
         pinta.escreve(img,2,y0+i*hl,246,y0+(i+1)*hl,ln,BR,(8,8,8),False,min(15,hl-6),limpa=False)
     d[o+16:o+16+w*h*2]=pvr.encode(img,pf,df)

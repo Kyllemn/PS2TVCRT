@@ -6,7 +6,8 @@ import sys, numpy as np
 sys.path.insert(0, sys.argv[1]); import scl
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 src, out = sys.argv[2:4]
-A,B=0x11ba00,0x17c590
+import os
+A,B=0x11ba00,int(os.environ.get("TIT_FIM","0x17c590"),16)
 d=bytearray(open(src,'rb').read()); blk=bytes(d[A:B]); assert blk[:4]==b'SCL '
 offs,texs,tab=scl.ler(blk); img=scl.monta(texs,tab)
 TXT='Tradução: Leonardo Torres'

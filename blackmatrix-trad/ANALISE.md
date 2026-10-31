@@ -241,3 +241,18 @@ as falas dubladas (PROLOGUE, MS*) nao tem legenda nenhuma. Opcional: legendar ao
   reiniciar e dar boot pelo disco 2 (que carrega o save).
 - CDI v8 TESTADO pelo usuario no ReplayOS com BIOS real: boot, New Game, videos e dialogos passados rapido - tudo OK.
   v8 = candidato final do disco 1 (md5 10d24e80f05af847523e41a38b996376). GDI correspondente: patch GDI_v7.
+
+## Disco 2
+- Arquivos iguais ao disco 1 (original): SCENARIO (todo o roteiro dos dois discos), 1ST_READ, PARAMETA, CHAR, FACE, OASOBI,
+  MAGIC, GRAPHIC, SOUND -> usam direto os traduzidos do disco 1 (mesmo mapa de pares e mesma fonte).
+- SYSTEM: blocos 0,2,5,6,7,8 iguais ao d1 (em outras posicoes) -> tools/transplanta_blocos.py copia os blocos traduzidos
+  (fonte, tela de nome, menus, capitulos/slots, troca de disco). Bloco 1 = titulo "Disc 2" (img_titulo, mesmo layout).
+  Bloco 3 = outra tela "ご主人様を選んで下さい" (fundo branco) -> tools/img_escolha_d2.py. Bloco 4 = retratos (texto em
+  ingles), bloco 9 = PVX com numeros/"Normal!!/Advanced!!" (ingles).
+- EVENT do d2 e outro arquivo (622 blocos, 314 vazios): sem IDCO, sem o HUD do d1 (procurado por pixel em todos os
+  arquivos do d2), sem minijogos. Tem: 24 placas de lugar (img_lugar com LUGARES=trad/lugares_d2.txt), cartoes de
+  capitulo 7-11 + final nos SCL 146-151 (img_abertura com CAPITULOS=trad/capitulos_d2.json e AREA_X=56,584), fins de
+  capitulo 380/402/431/488/499 e 52 telas pretas do final com texto vertical (tools/img_fim_d2.py, uma versao por mestre).
+- Varredura de texto (varre_jp2/varre3) em EVENT/SYSTEM/MAP do d2: so a tela de nome (bloco 2, ja transplantado).
+- track03 do d2: grava_track com tools/lista_d2.txt. Patch GDI d2 v1.
+- Videos do d2: 32 SFD a 1500 kbps (sobra espaco: resto do disco = 411 MiB).
