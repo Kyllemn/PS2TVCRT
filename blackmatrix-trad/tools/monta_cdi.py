@@ -3,6 +3,7 @@
 - layout dados/dados (igual ao Volgarr, cdi4dc -d): ISO na sessao 1 a partir do LBA 0, sessao 2 so com o boot
 - 1ST_READ (gdFs): FAD 45150 (inicio do GD) -> 150 e FAD 45166 (CD001) -> 166; depois o arquivo e embaralhado
 - IP.BIN = 16 primeiros setores do track03, com a TOC1 (0x104) apontando para a faixa de dados do CD
+- IP.BIN sem trava de regiao (JUE), como o MSR e o Volgarr
 - logo opcional na tela da SEGA: imagem MR em IP.BIN+0x3820 (ate 8192 bytes, como o makeip do KallistiOS)
 uso: monta_cdi.py track03.bin pasta_sfd saida.cdi [logo.mr]"""
 import sys, os, struct, hashlib
@@ -20,6 +21,14 @@ ipbin = sec(BASE, 16); pvd = sec(BASE + 16)
 # TOC1 do IP.BIN (tabela de faixas do GD: dados em FAD 45150) -> faixa de dados do CD em FAD BASE_ISO+150
 assert ipbin[0x100:0x108] == b'TOC1' + struct.pack('<I', 0x41000000 | 45150)
 ipbin = ipbin[:0x104] + struct.pack('<I', 0x41000000 | (BASE_ISO + 150)) + ipbin[0x108:]
+# sem trava de regiao (como todo CD-R de boot automatico): simbolos de area JUE + textos das 3 regioes
+assert ipbin[0x30:0x38] == b'J       '
+ipbin = ipbin[:0x30] + b'JUE     ' + ipbin[0x38:]
+reg = bytearray(ipbin[0x3700:0x3800])
+for k, txt in enumerate((b'For JAPAN,TAIWAN,PHILIPINES.', b'For USA and CANADA.', b'For EUROPE.')):
+    o = k * 32; assert reg[o:o + 4] == b'\x0e\xa0\x09\x00'
+    reg[o + 4:o + 32] = txt.ljust(28)
+ipbin = ipbin[:0x3700] + bytes(reg) + ipbin[0x3800:]
 if logo:
     mr = open(logo, 'rb').read()
     assert mr[:2] == b'MR' and len(mr) <= 8192 and struct.unpack('<I', mr[2:6])[0] == len(mr)

@@ -213,3 +213,7 @@ as falas dubladas (PROLOGUE, MS*) nao tem legenda nenhuma. Opcional: legendar ao
 - CDI v6c: IP.BIN tinha a TOC1 do GD em 0x100 ("TOC1" + 0x4100B05E = faixa de dados em FAD 45150); o jogo le dados
   do IP.BIN na memoria (0x8c008000/0x8c008100). Ajustada para 0x41000096 (FAD 150, faixa de dados do CD). v6b bootava no
   Flycast PC mas travava no ReplayOS na passagem da tela da SEGA para o jogo.
+- CDI v6d: o IP.BIN do jogo e so do Japao (area "J" e so o texto "For JAPAN,TAIWAN,PHILIPINES."). Comparando com dois CDIs
+  que bootam no ReplayOS (Volgarr e Metropolis Street Racer), os dois sao "JUE" com os 3 textos de regiao. Console/BIOS
+  em regiao USA para na tela da SEGA (sintoma do ReplayOS). v6d: IP.BIN sem trava de regiao (JUE + 3 textos).
+  Obs. do MSR: ele poe a faixa de dados no LBA 45000 (sem patch no exe) e usa subcabecalho 00 00 08 00.
