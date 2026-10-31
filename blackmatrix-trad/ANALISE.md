@@ -135,3 +135,7 @@ Os arquivos do jogo NUNCA entram no git; aqui so ferramentas e notas.
 - Tela de nome: tabela em SYSTEM.DAT 0x1cd8f0 (rotulos) e 0x1cd9b0 (nomes, [u16 n][7 celulas]) -> nome_sys.py.
 - Imagens entre capitulos ficam em japones (decisao do usuario).
 - Batalha: CHAR.DAT, PVRT em 0x1350 -> img_bat.py. トウケン=Espada (v3b); a coluna cinza vertical (通潜常在) ficaram sem traduzir.
+
+## Pendencias para a proxima release (acumular, nao gerar patch a cada item)
+- Coluna cinza vertical em CHAR.DAT (x176-189, y192-255): 通/潜/常/在 = pedacos de 通常 (Normal) e 潜在 (Poder)
+  na versao cinza (opcao desativada). Ver no jogo como e montada antes de traduzir.
