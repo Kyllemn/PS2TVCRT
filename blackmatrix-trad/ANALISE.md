@@ -190,11 +190,13 @@ as falas dubladas (PROLOGUE, MS*) nao tem legenda nenhuma. Opcional: legendar ao
   byte a byte; pacotes de video de 2018 bytes + 12 de cabecalho como o SFDMUX; PTS/DTS na figura que comeca no pacote,
   DTS de I/P = (ordem+1)*quadro como o original). 354 -> 139 MiB. Conferido: 32 arquivos, audio e cabecalho identicos,
   mesma contagem de quadros.
-- Exe: duas checagens 'FAD >= 45150' (inicio do GD) em 0x8e754 e 0x8eb20 -> 11852 (11702+150), como o binhack faz.
+- Exe (biblioteca gdFs 1.08): duas checagens 'FAD >= 45150' (inicio do GD) em 0x8e754 e 0x8eb20 -> 11852 (11702+150) e
+  o FAD do descritor de volume 'CD001' em 0xd2844: 45166 -> 11868. Sem esse terceiro o jogo trava na tela da SEGA
+  (v5 do CDI travava; v5b corrige). O monta_cdi confere que nao sobra nenhum 45150/45166.
   Sem checagem de tipo de disco; o jogo abre tudo por nome.
 - tools/cdi.py: ISO9660 com base no LBA 11702 (IP.BIN do GD nos setores 0-15), 1ST_READ embaralhado (algoritmo do
   scramble.c do KallistiOS) e CDI audio/dados no layout do cdi4dc (img4dc, SiZiOUS, GPLv3; tabelas de GAP/cabecalho
   vem dele), EDC/ECC Modo 2 Forma 1 vetorizado (conferido contra setores reais do GD).
 - tools/monta_cdi.py monta; tools/le_cdi.py le de volta (faixas, ISO, 46 arquivos por md5, 1ST_READ, EDC).
 - Resultado: ISO 638 MiB, termina no LBA 338571 (~41 MiB de folga). Patch track03 original -> CDI: 127 MB,
-  aplica com xdelta padrao. CDI md5 51151b26c8efa0cf4f25f220212269f5.
+  aplica com xdelta padrao. CDI v5b md5 388eab607eaf698c151d27a9ba2bd7df.

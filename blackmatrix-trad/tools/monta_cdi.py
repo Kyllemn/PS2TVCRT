@@ -1,6 +1,6 @@
 """Monta o CDI de boot automatico (CD-R) a partir do track03 do GD ja traduzido.
 - arquivos na mesma ordem do GD; SFD trocados pelos reencodados (pasta_sfd)
-- 1ST_READ: checagem 'FAD >= 45150' (inicio do GD) passa para 11852 (11702 + 150) e o arquivo e embaralhado
+- 1ST_READ (gdFs): FAD 45150 (inicio do GD) -> 11852 e FAD 45166 (CD001) -> 11868; depois o arquivo e embaralhado
 - IP.BIN = 16 primeiros setores do track03
 uso: monta_cdi.py track03.bin pasta_sfd saida.cdi"""
 import sys, os, struct, hashlib
@@ -32,9 +32,14 @@ for el, nm, sz in arqs:
         d = open(os.path.join(pasta_sfd, nm), 'rb').read(); trocados += 1
     if nm == '1ST_READ.BIN':
         d = bytearray(d)
-        for off in (0x8e754, 0x8eb20):
+        for off in (0x8e754, 0x8eb20):                         # gdFs: FAD minimo (inicio da area de dados)
             assert struct.unpack('<I', d[off:off + 4])[0] == 45150, hex(off)
             d[off:off + 4] = struct.pack('<I', cdi.MSINFO + 150)
+        off = 0xd2844                                          # gdFs: FAD do descritor de volume (CD001)
+        assert struct.unpack('<I', d[off:off + 4])[0] == 45166 and d[off + 8:off + 13] == b'CD001'
+        d[off:off + 4] = struct.pack('<I', cdi.MSINFO + 150 + 16)
+        # nao pode sobrar nenhuma constante do GD
+        assert all(struct.unpack('<I', d[i:i + 4])[0] not in (45150, 45166) for i in range(0, len(d) - 3, 2))
         exe = bytes(d); d = cdi.scramble(exe)
         assert cdi.descramble(d) == exe
     lista.append((nm, d))
