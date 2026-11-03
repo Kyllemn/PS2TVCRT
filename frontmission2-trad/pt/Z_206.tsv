@@ -28,3 +28,186 @@
 7598	{Sobre enderecos.}
 75ac	{Sobre senhas.}
 75c0	{Sobre digitacao.}
+68ec	{Recepcao}
+6900	{Deposito Subterraneo}
+7b2c	{Isso mesmo.}
+5490	{Todas as cidades deste}|{pais sao assim}？
+54c4	{Como assim}|{"assim"}？
+54ec	{Tao sombrias, com lixo}|{espalhado por todo lado.}
+5524	{Que bom ver que }$04{estao}|{todos bem.}
+5558	{Ei, }$04{Lila, veio nos}|{buscar}？
+5584	{Meu pai espera no}|{escritorio.}
+55ac	{Escritorio}？
+55be	{Ela quer dizer o QG.}?!{Mas a placa na porta}|{diz "Burg}|{Transportes".}
+561b	{Por aqui, por favor.}
+5638	{Por que ta tao}|{aereo}？
+565c	{Hm}？$04{ Ah, e que}|{a cidade onde nasci}$05|{e perto daqui}…$05{eu,}|{sabe como e}…
+56c4	{Hum, }$04{sua terra, e}？…?!+005G{e um retrato em}|{miniatura do pais.}?!{Predios enferrujados,}|{mercados sem vida,}|{ruas cheias de}|{pobres}…?!{todos perdidos sobre}|{que futuro podem}|{ter}…
+57b0	{O que fez o Ven tao}|{decidido a dar o}|{golpe}…？
+57ec	{E ai, }@toms{.}
+5800	{Onde voces se}|{meteram}？
+5824	{Achamos uma arena}！
+583b	{Uma arena}？{ De wanzers}？
+5858	{Viemos buscar voce,}|@toms.?|+007D{A dona }@eimy{ tambem,}|{claro.}
+589e	%{E voce,}|@arex？?!%{Quer ir na}|{arena}？|*　ＹＥＳ|　ＮＯ
+58ec	{Claro, }$04{parece uma boa}|{distracao.}
+591c	{Eu vou tambem, }$04+003E{e}|{voce, }@jony？
+5954	{E, }$03{eu vou junto.}
+5974	{Nao, }$03{to de boa.}
+5990	{Tambem nao quero}|{ir.}
+59b0	{Tambem passo. To}|{bem cansado.}
+59d4	{Certo. }+005D{Entao vamos}|{so nos.}
+5a14	%{Pronto pra ir}？|*　ＮＯ|　ＹＥＳ
+5a40	+018C{Rapido, ou perdemos}|{a hora marcada.}
+5a74	+018A{Bom, }$04{se cuidem.}
+5a98	{Te devemos uma.}
+5aac	{Esquece, eu e que}|{devo agradecer}|{a voces.}
+5ae8	{Quem vai mostrar}|{o caminho}？
+5b10	{Um piloto meu de wanzer}|{e a Lila.}
+5b50	{E, ela pilota}|{wanzer desde}|{pequena.}?!{Nao e novata.}
+5ba4	{Entao, pessoal, }$04{vamos}|{partir.}
+5bd0	{O Saribash ta na}|{recepcao}？
+5bf8	{Sim}…$06{mas, }@toms…{voce}|{devia saber }$05{que meu pai}|{ta muito}…
+5c40	{Ja sei. Ta de}|{mau humor, ne}？{ Normal,}|{e}?!{porque a cidade foi}|{toda destruida.}
+5cbc	{Relaxa, }$04{vai ficar}|{tudo bem, Lila.}?!+005E{Bom, pessoal, vamos}|{ao escritorio.}
+5d1c	{Lila}…$03{desculpa por}?!{tocar num assunto tao}|{chato ontem}…
+5d6c	{Ah, nao, }$04{tudo bem. }$04{Nao}|{se preocupe.}
+5da4	@jony{, vamos.}
+5db8	{E}+002F…$03{bom, entao}|{ja vou.}
+5de8	{Certo.}
+5df4	{Lugar}|{impressionante.}
+5e14	{Vai ver nao tem}|{outra diversao}|{por aqui.}
+6784	{Fale com o guarda.}
+67c4	{Gerente:}
+67d8	{Campeao:}
+67e5	{Pedir explicacao.}
+6800	{Ir a Arena.}
+6810	{Sair da Arena.}
+6826	{Sair da Sala Reserva.}
+6858	{Explicacao}
+6868	{Ir ao Bar.}
+687c	{Sair do Bar.}
+68e0	{Corredor}
+6921	{Reserva da Arena}
+694c	{Sala}
+6958	{QG}
+6960	{Deposito}
+696e	{Guarda}
+697c	{Ir ao QG do Saribash.}
+6998	{Ir a}|{recepcao.}
+69b8	{Ir ao deposito}|{subterraneo.}
+69e0	{Sair do QG.}
+69f4	{Sair do deposito}|{subterraneo.}
+6a1c	{Sair da cidade.}
+6a30	{Sair da recepcao.}
+6a4f	{Fale com o guarda.}
+6a68	{O chefe me contou.}|{Eis o endereco e a}|{senha da empresa.}|{Pela loja online}|{da rede, da pra}|{pedir nossos produtos}|{de qualquer lugar.}
+6b14	{Bem-vindo.}
+6b20	{Chegaram os novos}|{modelos da Leonora.}|{Toma isso.}$05{ E o}|{endereco da Leonora}|{na rede.}
+6b8a	{Consegui o endereco}|{da Jade Metal Lyman.}$05|{Por favor, }$05{use.}
+6bd4	{Sempre muito}|{grato. Aqui o endereco}|{da Diable Avionics.}|{Fique a vontade.}
+6c34	{Peguei a senha da Vince}|{com um contrabandista.}|{Com o endereco certo}|{da pra dar uma espiada.}
+6c99	{Obrigado.}
+6ca8	{Da pra equipar armas}|{e itens ate o limite}|{do motor do wanzer,}|{mas com menos peso}|{as pernas andam}|{mais rapido.}
+6d2c	{Se for pro corpo a}|{corpo, va o mais leve}|{possivel. Senao}|{eles desviam.}
+6d8c	{Destrua inimigos o}|{bastante e fique famoso,}|{e eles se rendem so}|{de voce chegar perto.}|{Queria ser durao}|{assim um dia.}|{}
+6e2c	{Almoxarife}
+6e40	{Almoxarife:}
+6e57	{Soldado OCU:}
+6e6a	{Guarda:}
+7628	{Consegui o endereco}|{da Jade Metal Lyman.}$05|{Por favor, }$05{use.}
+6ea4	{Fale com o dono.}
+6ebc	{Fale c/ Martin.}
+6ed8	{Fale c/ Nick Saudoso.}
+6ef3	{Fale c/ Bob Festeiro.}
+6f0c	{Fale c/ Rozanna}|{Festeira.}
+6f2c	{Fale c/ Elena}|{Obstinada.}
+6f50	{Dono:}
+6f5c	{Martin Solitario:}
+6f70	{Nick Saudoso:}
+6f83	{Bob Festeiro:}
+6f94	{Rozanna Festeira:}
+6fac	{Elena Obstinada:}
+6ff0	{Fale c/ Teddy Ansioso.}
+7008	{Fale c/ Carl Serio.}
+7022	{Fale c/ Harry Saudade.}
+703d	{Fale c/ Butch Duro.}
+7054	{Fale c/ Ann Fa.}
+706c	{Fale c/ Dorothy, fa}|{de lutadores.}
+709c	{Teddy Ansioso:}
+70ac	{Carl Serio:}
+70be	{Harry Saudade:}
+70d1	{Butch Duro:}
+70e0	{Ann Fa:}
+70f0	{Dorothy, fa de luta:}
+710c	{Fica entre nos, mas}|{saiba que os alordeses}|{tem alergia a}|{O.C.U.}
+7170	{Glup, essa bebida e}|{boa}！?!{Fica melhor porque os}|{revolucionarios estao}|{derrubando a O.C.U.}！！?!{Ei, }$07{bebe voce tambem}！！
+720c	{Quem pensa em}|{ir pra fronteira}|{e melhor desistir.}?!{Nao importa quem}|{seja. Seria pego}|{e executado.}
+72a0	{A capital ta numa}|{situacao terrivel.}?!{Mas nao tem como }$07{a}|{guerra chegar aqui.}
+7306	{Revolucao nao tem}|{nada a ver comigo.}?!{Com uma boa bebida}|{na mao, nao tenho}|{do que}|{reclamar.}
+738c	{Lutadores fortes sao}|{herois nesta}|{cidade. }$07{Talvez eu}|{devesse virar um.}
+73f0	{Ai}…?!{quando luto, e como}|{se lembrasse de algo}|{perdido ha muito}…?!{ai}…
+7450	{O campeao desta arena}|{e um homem misterioso}！?!{Ele nunca }$07{tira o}|{capacete na luta}！?!{Quase ninguem conhece}|{o rosto dele}！
+74e4	{Homem so vive de}|{verdade na luta. }$07{Nao}|{suporto homem que}|{esqueceu de lutar}！
+75e3	{Explicacao da Arena.}
+7600	{Sala Reserva}
+7618	{Sala Reserva}
+7674	{Ei, me faz um favor}$04|{e se acalma}？
+76a8	{Me acalmar}！？{ Nao e}|{brincadeira, }@toms{.}?!{O Ven}…{esse desgracado}|{bombardeou a capital}！?!{Quantos civis acha}|{que morreram}|{la}！？
+7744	{Eu entendo, Saribash, }$05{eu}|{entendo.}
+7774	…{droga, foi culpa minha}|{por querer mover}|{aquele contrabando}？
+77c8	@toms…{aqui o seu}|{pagamento}…?!{mas nao va embora ainda}…
+7808	{E sair do}|{pais}？
+7834	{Me de um tempo}…+018H|{nao consigo pensar}|{direito agora}…
+787c	{Entendi. }+005E{Vamos,}|{pessoal, }$04{vamos deixar}|{ele um pouco so.}?!+005G…{Ue}？{ Cade o}|@roky{ e o}|@lose？
+7900	{Foram beber assim}|{que chegamos}|{na cidade.}
+794c	{Ha, esses dois nao}|{tem jeito.}?!+005D{Bom, }$04{por que }$04{nao vamos}|{com eles}？
+79a4	{Desculpe. Deixe meu}|{pai sozinho mais}|{um pouco.}
+79e4	{Ja se acalmou, }$05|{Saribash}？
+7a08	{E, }$04{desculpa por aquilo.}|{Nao conseguir}|{controlar as emocoes}|{e sinal da minha}|{idade.}
+7a78	{Bom, eu tambem nao}|{sou nenhum garoto.}
+7aac	{E como vamos sair}|{do pais}？
+7adc	{Sim, o plano ta pronto.}|{Ate falei com a}|{O.C.U.}
+7b1c	{A O.C.U.}？
+7b3c	{Desculpe}…+018H{acho que}|{nao consigo pensar}|{em nada agora}…
+7b88	{Ah, }$04{sao voces. }+018F|{Desculpem por explodir}|{com voces antes.}
+7bd4	{Nao se preocupe.}$05+001E|{Queremos saber}|{como }$04{vamos}|{sair do pais.}
+7c40	{Ah, sim, o plano ja}|{esta feito.}?!+018E{Mas voce tambem foge}？$05|{Voce e alordes,}|{nao e}？
+7cbc	{Ei, esquece,}|{cada um tem sua}|{historia}…?!+018C{Chame o }@toms{ aqui.}|{Com todos}|{reunidos, falamos}|{do plano.}
+7d4c	@toms{ e os outros}|{nao estao. Nao explico}|{sem eles.}
+7d94	{Mas}…
+7da0	{O que foi, Saribash}？
+7dbc	@toms{, se voce}|{topar, queria que voce}|{e seus homens ficassem}|{no pais.}
+7e10	{Por que}？
+7e20	{Decidi enfrentar o Ven.}?!{Nao posso ficar parado}|{vendo ele ferir este}|{pais.}?!+018G{Por isso quero sua}|{ajuda. Claro, voces}|{serao pagos}$05…
+7ed0	{Ta brincando}…$05{nossa}|{vida nao e comprada}|+003C{nem vendida. Nunca}|{que eu aceito isso}！！
+7f40	{Entendo, }$04{Saribash.}
+7f6c	@lose！$04{ }@roky！|{O que voces dois}|{vao fazer}？
+7fa4	{Hum}$05…$05$05{por que }+007D{nao. }$04{Eu}|{fico, chefe.}
+7fec	{Conta comigo tambem.}
+8008	{Eu}…$05{mesmo ficando}|{neste pais, nao}|{poderia fazer nada.}
+8054	{Pensa igual}？
+8070	{E}…
+807c	{Entao ta decidido,}$04|{Saribash. Nos, soldados}|{rasos, ficamos com}|{voce.}
+80d4	{Valeu, }@toms{.}
+80e8	{Nao precisa.}$05|{O importante: da pra}|{levar esses tres}|{inteiros ao litoral}？
+8148	{Sim, deixo isso com}|{voce.}
+816c	{Bom, }$04{vamos nos}|{preparar.}
+8198	{Preparem-se logo pra}|{partir.}?!{Usem o deposito}|{subterraneo pra}|{manutencao dos wanzers.}
+81fc	{Se pudesse, pediria}|{a todos que ficassem}|{neste pais.}
+8248	{O Saribash ja deve}|{ter esfriado a cabeca.}
+827c	@toms！$05{ O Saribash}|{quer te ver. }$03{Vamos}|{voltar ao QG.}
+82c8	{Pera, }$06{ta ficando}|{bom agora.}
+82f8	{Affe, todos }$04{queremos}|{sair deste pais logo.}?!+002B{Vamos}$04{.}
+836c	{Explicar a arena.}
+8384	{Explicar lutas solo.}
+839c	{Explicar lutas em time.}
+83b4	{Fim da explicacao.}
+83c8	{Na arena, seus wanzers}|{enfrentam os de}|{outros}|{competidores.}?!{Ha dois tipos de}|{luta: 1x1, "Lutas Solo",}|{e ate 5x5, "Lutas}|{em Time".}?!{Vencendo, voce ganha}|{dinheiro e premios.}|{Por outro}|{lado,}?!{se perder a luta,}|{ficamos com o valor}|{que pagou pra entrar.}
+8524	{Lutas solo sao 1x1.}|{Antes da batalha,}|{voce escolhe 5 vezes}|{a arma que vai}|{usar em cada rodada.}|{Elas sao usadas em}|{sequencia por 5 rodadas}|{ate haver um}|{vencedor. Atencao:}|{se uma arma}|{escolhida ficar}|{inutil (se o braco}|{onde ela esta for}|{destruido), voce}|{nao age na rodada}|{em que ia}|{usa-la. Por exemplo,}|{se escolher a arma}|{do braco esquerdo}|{5 vezes seguidas,}|{assim que esse braco}|{for destruido, nao}|{podera mais}|{atacar.}|{Para vencer,}|{destrua o corpo}|{do wanzer rival}|{ou inutilize suas}|{armas.}
+87f0	{Essas lutas tem ate}|{5x5}|{combatentes. O time}|{inimigo sempre tem 5}|{maquinas, mas voce}|{pode mandar de 1 a}|{5 wanzers.}|{As regras sao iguais}|{as de uma batalha}|{normal. Porem, nao da}|{pra roubar pecas}|{do inimigo. Alem disso,}|{nao ha opcao de}|{render-se ou desistir.}|{Para vencer,}|{derrote o lider}|{inimigo.}
+8984	{Ah, toma uma}|{senha da rede.}|{Com ela voce ve dados}|{dos outros lutadores}|{da arena. Informacao}|{pode fazer a diferenca}|{entre vitoria e}|{derrota.}
+8a3c	{Como esperado de }@cody|{, que vitoria}|{esplendida. Mereceu}|{o posto de campeao}|{da arena. So de}|{voce lutar, o publico}|{vibra mais que o}|{normal}…@cody…$05{volta}|{pra ca? Com ou}|{sem voce}…
+8b38	{Desculpe, gerente}…$05{eu}…
+8b58	{Tudo bem. Se tem algo}|{que precisa fazer,}|{faca isso primeiro.}|{Nao sei se isto}|{ajuda no que voce}|{vai fazer agora, mas}|{leve este COM. E um}|{computador, o Onrush.}|@cody…$05{Sempre}|{tera um lugar}|{aqui pra voce}|{voltar.}
+8c84	{Obrigado, gerente.}
