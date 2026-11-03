@@ -1,0 +1,75 @@
+1495	{Tutorial:}|{"Status de arma"}
+14c1	{Tutorial:}|{"Itens basicos"}
+14f9	{Tutorial:}|{"Status do piloto"}
+1529	{Tutorial:}|{"Danos de status"}
+1559	{Tutorial:}|{"Defesa com escudo"}
+1581	{Tutorial:}|{"Sistema AP: recarga"}
+15b3	{Tutorial:}|{"Movimento e custo"}
+15ea	{Ha varias armas com}|{caracteristicas proprias.}|?!{Pra ver os detalhes de}|{uma arma, abra a janela}|{de status durante o}|{jogo.}
+167d	{Esta e a janela de status}|{das armas.}?!{Aqui aparecem os}|{dados da arma e as}|{pecas onde estao.?!{Vamos ver cada item}|{pela arma da L.Hand.}?!{Name:}|{Nome da arma}|{equipada. Agora e uma}|{Juri EX.}?!{Type:}|{Tipo da arma e o}|{elemento. Esta e MG}|{(Metralhadora), tipo}|{Perfurante.}?!%{Quer ver}{ a}|{lista de armas}？|*　{Sim}|　{Nao}
+182c	{Os tipos de arma estao no}|{tutorial}|{"Armas e blindagens".}?!{AT:}|{Poder de ataque da arma.}|{Mostrado como}|{"dano}×{numero de tiros".}?!{12}×{5 e "12 de dano"}|{vezes "5 tiros".}?!{Mas o poder de ataque}|{depende da blindagem}|{do inimigo.}?!{Hit:}|{Precisao da arma.}|{}?!{O numero aparece em}|％{. A precisao desta}|{arma e 73}％{.}?!{Rng:}|{Alcance efetivo da}|{arma.}|{Mostrado como}|{"alcance min-max".}?!{O alcance desta arma e}|{1 casa. Ela ataca}|{inimigos dentro do}|{alcance.}?!{Bt:}|{Mostra balas atuais e}|{total.}?!{Cada ataque gasta}|{1 bala.}?!{Com 9 balas, da pra}|{atacar ate 9}|{vezes.}?!{Sem balas, nao da}|{pra atacar.}?!{Sem balas, use o}|{item Ammo pra}|{recarregar a arma.}?!{Armas corpo a corpo}|{nao usam balas.}?!{Back:}|{Nome e tipo da}|{mochila.}?!{Se tiver duvidas}|{sobre a janela}|{de armas,}?!{use a Ajuda}|{com o botao}|{Select.}
+1c60	{- Fim do tutorial -}
+1c7b	{Pente de municao nao}|{recarrega arma de}|{outro tipo.}?!{Por exemplo, metralhadora}|{so recarrega com}|{municao de metralhadora}|{e nada mais.
+1d26	{- Fim do tutorial -}
+1d47	{Ammo:}|{Recarrega a municao.}?!{Recarrega de 0 ate}|{o maximo, mas nao}|{passa do maximo.}|{}?!{Abra a janela}|{e use o Ammo.
+1df1	{Restore:}|{Recupera pecas}|{que chegaram a 0 HP.}?!{O L.Arm do wanzer foi}|{destruido, entao da pra}|{usar o Restore.}?!{Abra a janela}|{e use o Restore.}
+1e9b	{Pra usar item em combate,}|{equipe-o numa mochila}|{antes de comecar}|{a batalha.}?!{Usar um item}|{custa 4 AP.}?!{Agora vamos explicar}|{os itens basicos.}?!{Repair:}|{Recupera o HP de cada}|{peca.}?!{Mas nao recupera}|{pecas com}|{0 HP.}?!{Este wanzer ta avariado,}|{entao da }{pra}|{repara-lo.}?!{Abra a janela}|{e use o Repair.}
+2042	{O piloto tem varias}|{habilidades.}?!{Pra ver as habilidades}|{do piloto, abra}|{a janela de status}|{durante o jogo.}
+2694	{- Fim do tutorial -}
+2833	{- Fim do tutorial -}
+3418	{- Fim do tutorial -}
+3bfb	{- Fim do tutorial -}
+3c92	{Pente de municao nao}|{recarrega arma de}|{outro tipo.}?!{Por exemplo, metralhadora}|{so recarrega com}|{municao de metralhadora}|{e nada mais.
+3d3d	{- Fim do tutorial -}
+3e77	{- Fim do tutorial -}
+20c3	{Nesta janela aparecem}|{as habilidades do}|{piloto.}?!{Vamos ver cada}|{item.}?!{Ash}　　{Bounder:}|{Nome do piloto e}|{apelido do wanzer.}?!{Honor:}|{Pontos de Honra.}|{}?!{Ganha 1 ponto por}|{peca inimiga destruida.}|{Uma estrela aparece}|{com pontos suficientes.}?!{Com 3 estrelas ou}|{mais, aprende-se}|{Habilidades de Honra.}?!{Act Point:}|{AP do piloto.}?!{Mostra o AP}|{atual}／{maximo.}?!{Total:}|{Nivel geral do piloto.}?!{Fight:}|{Nivel de combate}|{corpo a corpo.}?!{Nivel maior,}|{melhor corpo a corpo.}?!{Short:}|{Nivel de combate de}|{curto alcance.}?!{Nivel maior,}|{melhor curto alcance.}?!{Long:}|{Nivel de combate de}|{longo alcance.}?!{Nivel maior,}|{melhor longo alcance.}?!{Fight, Short e Long}|{sao os tres tipos}|{de combate que o piloto}|{pode treinar.}?!{Especialistas num tipo}|{sobem de nivel mais}|{rapido que os outros.}?!{Cont:}|{Habilidade de controle.}|{Afeta o combate de}|{curto alcance.}?!{Sight:}|{Habilidade de visao.}|{Afeta curto e}|{longo}|{alcance.}?!{Mech:}|{Habilidade mecanica}|（{operacao}）{.}|{Afeta longo}|{alcance.}?!{Vital:}|{Vitalidade do piloto.}|{Afeta o combate}|{corpo a corpo.}?!{Skill:}|{Habilidades equipadas.}?!{Se tiver duvidas}|{sobre o status,}?!{use a Ajuda}|{do jogo com o}|{botao Select.
+26b5	{L.Lock-on vem de}|{armas de mira como}|{radar. Esse status}|{dura 1 turno.}
+270f	{Ha tambem anomalias so}|{dos inimigos.}?!{Surrendering:}|{Piloto prestes a desistir.}|{Nao age nesse}|{estado.}?!{Surrendered:}|{Piloto se rende e foge}|{da batalha. Nao}|{volta ao mapa.}?!{Essas 2 }{anomalias}|{nao afetam o}|{jogador.}
+2854	{S.Lock-on vem de}|{armas de mira como}|{radar. Esse status}|{dura 1 turno.}
+28ae	{L.Lock-on:}|{O inimigo mirou de}|{longe no piloto.}?!{Com L.Lock-on, ataques}|{de longo alcance ficam}|{dificeis de desviar.}?!{(Veja seu status}|{quando o turno acabar)}
+2962	{Panico vem de armas}|{que causam Panico, ou}|{de Habilidades de}|{Panico.}?!{Tambem ocorre se}|{varios inimigos atacam}|{a unidade no mesmo}|{turno.}?!{A chance de recuperar}|{e 50}％{ apos 1}|{turno, 75}％{ apos 2}|{turnos e 100}％|{apos 3 turnos.}
+2a7f	{S.Lock-on:}|{O inimigo mirou de}|{perto no piloto.}?!{Com S.Lock-on, ataques}|{de curto alcance ficam}|{dificeis de desviar.}?!{(Veja seu status}|{quando o turno acabar)}
+2b33	{Terror vem de armas}|{que causam Terror, ou}|{de Habilidades de}|{Terror.}?!{A chance de recuperar}|{e 50}％{ apos 1}|{turno, 75}％{ apos 2}|{turnos e 100}％|{apos 3 turnos.}
+2bf9	{Panic:}|{O piloto entra em}|{panico.}?!{Em Panico, gasta mais}|{AP que o}|{normal.}?!{(Veja seu status|{quando o turno acabar)}
+2c97	{Atordoamento vem de}|{armas que causam Stun,}|{ou de Habilidades de}|{Stun.}?!{A chance de recuperar}|{e 50}％{ apos 1}|{turno, 75}％{ apos 2}|{turnos e 100}％|{apos 3 turnos.}
+2d5d	{Terror:}|{O piloto fica}|{apavorado.}?!{Nao da pra atacar}|{em Terror.}?!{(Veja seu status}|{quando o turno acabar)
+2de9	{Alem do dano normal,}|{existe o dano de}|{status.}?!{As unidades podem sofrer}|{varias anomalias}|{no jogo.}?!{Vamos ver cada}|{anomalia.
+2e94	{Stun:}|{O piloto fica}|{atordoado.}?!{Com Stun ativo,}|{nao da pra agir.}?!{(Veja seu status}|{quando o turno acabar)}
+2f28	{Quando o inimigo ataca,}|{da pra defender com o}|{Escudo, se equipado.}?!{Se o Escudo segurar,}|{o dano do ataque}|{cai pra 0.}?!{Vamos levar um}|{ataque pra ver}|{a diferenca.}?!{Primeiro, escolha Evade.}?!{Pra encerrar o turno,}|{deixe o inimigo acertar.}
+304d	{No Turno do Jogador,}|{o AP recarrega todo}|{depois do Turno Inimigo.}?!{Mas ha fatores que}|{afetam a recarga.}
+30d0	{A unidade perde }－２|{por inimigo adjacente}|{no proximo turno.}
+311c	{Nesse caso, com AP 7,}|{so recarrega 5.
+3151	{A unidade perde }－１|{por inimigo na}|{diagonal.}
+3195	{Nesse caso, com AP 7,}|{so recarrega 6.
+31ca	{Ja aliados perto}|{aumentam a}|{recarga.}
+320e	{Aliados perto dao}|{um bonus de }＋１{.}
+3243	{Com AP 7, recarrega}|{6. Ha um inimigo}|{adjacente}（－２）|{e um aliado perto.
+329e	{Nesse caso, quanto}|{AP sera recarregado}？|（{O AP maximo e 7}）
+32fd	{Certo}！
+3308	{Ha 1 inimigo adjacente}|（－１）{e outro}|{na diagonal.}（－１）?!{Com o aliado perto}（＋１）{,}|{a resposta certa e 5.}
+3395	{Da pra ficar cercado}|{pelo inimigo e sem}|{AP pra mover ou}|{desviar.}?!{Mas isso vale pro}|{inimigo tambem.
+343b	{O movimento do wanzer}|{depende da potencia}|{e do peso do}|{wanzer.}?!{Mais potencia, mais}|{movimento.}?!{O peso das pecas e}|{armas, porem,}|{reduz o movimento.}
+3508	{Nesta tela de status,}|{o movimento aparece}|{como "Move".}?!{Indica quanto a unidade}|{pode andar.
+357c	{Mas o custo de movimento}|{e quantas casas da}|{pra andar dependem}|{do terreno.}?!{O tipo de perna tambem}|{afeta o custo.}?!{2 Pernas andam bem no}|{plano, mas nao em}|{pedra ou areia.}?!{Cada tipo de perna tem}|{terrenos bons e ruins}|{pra andar.}?!{O custo e menor no}|{terreno bom e maior}|{no ruim.}?!{Pra ver a diferenca,}|{mova a unidade}|{pelo mapa.}
+3729	%{Escolha a perna.}|*　{2 Legs}|　{4 Legs}|　{Mais}
+375d	%{Que pernas vai usar}？|*　{Esteira}|　{Rodas}|　{Hover}
+3799	%{Escolha o terreno.}|*　{Mato}|　{Cidade}
+37c4	{O terreno pode ter}|{subidas. Passar por}|{elas}{ gasta mais Move.}?!{O custo de Move}|{depende das pernas.}|{Cada tipo tem um limite}|{do que consegue subir.}?!{Por exemplo, 2 Pernas}|{sobem ladeiras}|{ingremes.}?!{Agora mova a}|{unidade pelo mapa.
+38f5	%{Escolha a perna.}|*　{2 Legs}|　{4 Legs}|　{Mais}
+3929	%{Que pernas vai usar}？|*　{Esteira}|　{Rodas}|　{Hover}
+397f	{Sem Escudo, nao da}|{pra evitar o dano.}?!{Agora vamos usar}|{o Escudo.}?!{Pra encerrar o turno,}|{deixe o inimigo acertar.}
+3a08	{Sem Escudo, nao da}|{pra evitar o dano.}
+3a3f	{O Escudo funcionou.}?!{Veja, o ataque}|{inimigo deu 0 de dano.
+3a88	{O Escudo nem sempre}|{funciona.}?!{A defesa depende}|{do tamanho do Escudo.}|{Maior tamanho, mais}|{defesas.}?!{Escudos tambem tem taxa}|{de defesa de emergencia.}?!{Mesmo sem escolher,}|{o Escudo pode ser}|{usado sozinho.}?!{Valor maior, mais}|{defesa automatica.
+3bc2	%{Quer continuar}？|*　{Sim}|　{Encerrar tutorial}
+3c38	%{Encerrar}？|*　{Sim}|　{Nao}
+3c5d	%{Usou o Ammo}？|*　{Sim}|　{Vou tentar de novo}
+3d5e	%{Usou o Restore}？|*　{Sim}|　{Vou tentar de novo}
+3d93	%{Usou o Repair}？|*　{Sim}|　{Vou tentar de novo}
+3dc8	%{Encerrar}？|*　{Sim}|　{Nao}
+3e04	%{Encerrar}？|*　{Sim}|　{Nao}
+3e29	%{Quer parar agora}？|*　{Nao}|　{Trocar wanzer}|　{Encerrar tutorial}
+3e92	%{Encerrar tutorial}？|*　{Nao}|　{Trocar wanzer}|　{Proxima aula}
+3ed8	%{Encerrar}？|*　{Sim}|　{Nao}
+3efd	%{Encerrar}？|*　{Sim}|　{Nao}
+4531	{PC   (Soco)}|{KN   (Soqueira)}|{RD   (Bastao)}|{MG   (Metralhadora)}|{RF   (Rifle)}|{SG   (Escopeta)}|{AC   (Canhao autom.)}|{FT   (Lanca-chamas)}|{BZ   (Bazuca)}|{GR   (Lanca-granadas)}|{MS   (Lanca-misseis)}|{RK   (Lanca-foguetes)}|{AM   (Missil AA)}|{AR   (Foguete AA)}|{CB   (Bomba cluster)}|{CN   (Canhao)}|
