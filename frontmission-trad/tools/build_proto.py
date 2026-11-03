@@ -8,6 +8,26 @@ city={o['off']:rewrap(o['en']) for o in C if o['en']}
 trans=collections.defaultdict(dict)
 for o in M:
     if o['en']: trans[o['file']][o['off']]=rewrap(o['en'])
+# revisao manual dos pares suspeitos (rev1.tsv: indice em suspeitos.json -> ingles)
+SUS=json.load(open('/root/fm1/suspeitos.json'))
+for ln in open('/root/fm1/rev1.tsv',encoding='utf-8'):
+    ln=ln.rstrip('\n')
+    if not ln.strip(): continue
+    i,en=ln.split('\t',1); e=SUS[int(i)]; en=rewrap(en.replace('\\n','\n'))
+    if e['file']==41: city[e['off']]=en
+    else: trans[e['file']][e['off']]=en
+# correcoes por arquivo/offset (rev2.tsv: arquivo, offset, ingles)
+for ln in open('/root/fm1/rev2.tsv',encoding='utf-8'):
+    ln=ln.rstrip('\n')
+    if not ln.strip(): continue
+    f,o,en=ln.split('\t',2); en=rewrap(en.replace('\\n','\n'))
+    if int(f)==41: city[int(o)]=en
+    else: trans[int(f)][int(o)]=en
+# rotulos curtos na cidade (limite de 64 KB)
+LBL={'Wanzer Dealer:':'Dealer:','Weapon Dealer:':'Dealer:','Shopkeeper:':'Owner:','Koichi Sakata:':'Sakata:'}
+for k,v in list(city.items()):
+    h,_,r=v.partition('\n')
+    if h in LBL and r: city[k]=LBL[h]+'\n'+r
 NAMES=['None','Royd','Ryuji','Natalie','Keith','J.J.','Frederick','Meihua','Paul','Hans','Gregorio','Molly','Ralph','Yeehin','Alder','Bobby','Porunga','Gentz','Peewie']
 import build_ui22 as U22
 D22=open('/root/fm1/pak/22.raw','rb').read(); R22=json.load(open('/root/fm1/ui22b.json'))
@@ -23,7 +43,7 @@ pc(NAMES,cnt,10**6)          # nomes primeiro: codigos de 1 byte
 pc(list(G22.values()),cnt,10**5)
 pc(T22,cnt)
 for f,tt in trans.items(): pc(tt.values(),cnt)
-pc(city.values(),cnt)
+pc(city.values(),cnt,4)   # cidade tem limite de 64 KB: prioriza seus pares nos codigos de 1 byte
 pmap=FP.assign(cnt)
 print('pares',len(pmap),'livres',len(FP.FREE))
 cb=FP.code_bytes
