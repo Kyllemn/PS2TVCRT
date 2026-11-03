@@ -98,6 +98,10 @@ for r in R:
     if r[3] in moved and valido(r):
         cur[r[0]]=RF.patch(get(r[0]),r[1],r[2],moved[r[3]],r[4]); npat+=1
 print('referencias corrigidas',npat,'em',sorted(cur))
+# nome do protagonista nas tabelas ASCII (romanizacao japonesa 'Roid' -> 'Royd' do DS, mesmo tamanho)
+for nm in ('00','36','47','49'):
+    x=get(nm)
+    if b'Roid@' in x: cur[nm]=x.replace(b'Roid@',b'Royd@')
 for nm,x in cur.items():
     if nm=='EXE':
         ex=open('/root/fm1/ps1/SLPM_873.17','rb').read(); out['EXE']=ex[:2048]+x
