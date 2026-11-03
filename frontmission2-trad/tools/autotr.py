@@ -18,4 +18,6 @@ def run(c,i,F,P,extra_bad=()):
         out.append('%x\t%s'%(r['off'],pt))
     if out: open(p,'a',encoding='utf-8').write('\n'.join(out)+'\n')
     print(len(out),'gravadas;',len(left),'sobras')
-    for o,e,t in left: print('%x\t%s\t=>\t%s'%(o,e,t))
+    import os as _o
+    if _o.environ.get('V'):
+        for o,e,t in left: print('%x\t%s\t=>\t%s'%(o,e,t))
