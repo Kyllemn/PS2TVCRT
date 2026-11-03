@@ -1,9 +1,10 @@
 """valida as traducoes (pt/*.tsv) e gera fm2_pt.bin"""
 import sys,os,glob,struct;sys.path.insert(0,'/root/fm2')
 import fm2text, dump, inplace, zbuild, disc2
-def width_ok(en,pt):
+def width_ok(en,pt,jp=b''):
     le=fm2text.layout(en); lp=fm2text.layout(pt)
     mw=max(max(p) for p in le); ml=max(len(p) for p in le)
+    if jp: ml=max(ml,max(len(p) for p in fm2text.layout(jp)))
     return max(max(p) for p in lp)<=max(mw,24) and max(len(p) for p in lp)<=ml, (mw,ml)
 def collect(strict=True):
     tr={'I':{},'Z':{}}; erros=[]
@@ -20,8 +21,9 @@ def collect(strict=True):
             try: b=t.encode('cp932')
             except UnicodeEncodeError as e: erros.append(where+' caractere invalido: %s'%e); continue
             if b.count(b'{')!=b.count(b'}') and en.count(b'{')==en.count(b'}'): erros.append(where+' chaves desbalanceadas')
-            if fm2text.specials(b)!=fm2text.specials(en): erros.append(where+' codigos diferentes do ingles: %s vs %s'%(fm2text.specials(b),fm2text.specials(en)))
-            ok,lim=width_ok(en,b)
+            jp=r.get('jp','').encode('cp932') if r.get('jp') else b''
+            if fm2text.specials(b)!=fm2text.specials(en) and not (jp and fm2text.specials(b)==fm2text.specials(jp)): erros.append(where+' codigos diferentes do ingles: %s vs %s'%(fm2text.specials(b),fm2text.specials(en)))
+            ok,lim=width_ok(en,b,jp)
             if not ok: erros.append(where+' linha/pagina excede (max largura %d, linhas %d): %s'%(lim[0],lim[1],t))
             if len(b)>r['room'] and not (c=='Z' and r['ptrs']): erros.append(where+' nao cabe: %d > %d'%(len(b),r['room']))
             tr[c][(i,o)]=b

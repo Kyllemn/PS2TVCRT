@@ -9,8 +9,23 @@ def strings(c,i):
     if struct.unpack('<I',b[4:8])[0]==len(b) and len(b)>8:
         b=fm2lz.decompress(b)[0]
         if struct.unpack('<I',a[4:8])[0]==len(a): a=fm2lz.decompress(a)[0]
-    return zstrings.analyze(a,b)
+    rs=zstrings.analyze(a,b)
+    for r in rs:
+        o=r['off']; r['jp']=''
+        if r['ptrs']:
+            jo=struct.unpack('<I',a[r['ptrs'][0]:r['ptrs'][0]+4])[0]
+            if jo<len(a):
+                e=a.find(b'\0',jo)
+                try: r['jp']=a[jo:e].decode('cp932')
+                except UnicodeDecodeError: pass
+            continue
+        if o<len(a) and (o==0 or a[o-1]==0) and a[o]:
+            e=a.find(b'\0',o)
+            try: r['jp']=a[o:e].decode('cp932')
+            except UnicodeDecodeError: pass
+    return rs
 if __name__=='__main__':
     c=sys.argv[1]; i=int(sys.argv[2])
     for r in strings(c,i):
         print('%x\t%d\t%s\t%s'%(r['off'],r['room'],'P' if r['ptrs'] else '-',r['en'].decode('cp932')))
+        if r['jp'] and r['jp'].encode('cp932')!=r['en']: print('\t\tJP\t'+r['jp'])
