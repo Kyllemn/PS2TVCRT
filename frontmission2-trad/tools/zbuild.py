@@ -2,20 +2,39 @@
 trans: {(sub, off): bytes_novos}. Cada subarquivo fica no MESMO setor da versao inglesa (nada muda de lugar)."""
 import sys,struct;sys.path.insert(0,'/root/fm2')
 from zdata import *; import fm2lz
+def dead_slots(A,B):
+    """trechos de texto JP que ficaram sem uso: o ponteiro foi redirecionado pro anexo,
+    o texto continua intacto e nenhuma palavra u32 do arquivo aponta pra ele"""
+    LA=len(A); refs=set(struct.unpack('<I',B[k:k+4])[0] for k in range(0,len(B)-3,4))
+    out=[]
+    for k in range(0,LA-3,4):
+        x=struct.unpack('<I',A[k:k+4])[0]; y=struct.unpack('<I',B[k:k+4])[0]
+        if x!=y and LA<=y<len(B) and x<LA and x not in refs:
+            e=A.find(b'\0',x)
+            if e>x and B[x:e]==A[x:e]: out.append((x,e-x+1))
+    return sorted(set(out))
 def patch_sub(A,B,items):
     """items: lista de (off, novo, room, ptrs). devolve bytes descomprimidos novos"""
-    B=bytearray(B); extra=bytearray(); base=len(B); base=(base+3)&~3
+    B=bytearray(B); extra=bytearray(); base=(len(B)+3)&~3
     pad=base-len(B)
+    slots=dead_slots(A,bytes(B)) if any(len(n)>r for o,n,r,p in items) else []
     for off,new,room,ptrs in items:
         old_end=B.index(b'\0',off)
         if len(new)<=room:
             B[off:old_end]=b'\0'*(old_end-off)   # apaga o antigo (mesmo tamanho)
             B[off:off+len(new)]=new
-        else:
-            if not ptrs: raise ValueError('nao cabe e sem ponteiro conhecido: off %x'%off)
+            continue
+        if not ptrs: raise ValueError('nao cabe e sem ponteiro conhecido: off %x'%off)
+        need=len(new)+1; pos=None
+        for j,(x,sz) in enumerate(slots):
+            ax=(x+3)&~3
+            if ax+need<=x+sz:
+                pos=ax; B[ax:ax+need]=new+b'\0'
+                slots[j]=(ax+need,x+sz-ax-need); break
+        if pos is None:
             pos=base+len(extra); extra+=new+b'\0'
             while len(extra)%4: extra+=b'\0'
-            for p in ptrs: struct.pack_into('<I',B,p,pos)
+        for p in ptrs: struct.pack_into('<I',B,p,pos)
     if extra: B+=b'\0'*pad+extra
     return bytes(B)
 def build(J,E,trans,recompress_all=False):
