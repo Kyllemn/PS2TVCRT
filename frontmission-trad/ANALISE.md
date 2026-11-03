@@ -20,8 +20,14 @@ Os arquivos do jogo (imagem PS1 e ROM DS do usuário) ficam fora do repositório
 - O motor quebra a linha sozinho a cada 15 glifos.
 - Missões: entradas 23-33 do PAK, carregadas em 0x80198918; o script aponta para as falas com `c0 19 LL HH`
   (endereço 0x8019HHLL). As falas ficam num bloco contínuo no meio do arquivo. Limite: o arquivo não pode passar de 0x801A0000.
-- Cidades: entrada 41 (dat_city, 0x801B0000): código + texto; tabela de ponteiros de estruturas em 0x2C10.
-  As cenas de diálogo são lidas em sequência; a forma de achar o início de cada cena ainda está em estudo.
+- Cidades: entrada 41 (dat_city, 0x801B0000) = código + texto. As falas são referenciadas pelos scripts de cidade
+  42 (OCU) e 43 (UCS) com `c0 1b LL HH` (0x801BHHLL), o mesmo esquema das missões. Limite: 64 KB (0x801C0000).
+  No DS, as referências equivalentes estão nos overlays 15 (OCU) e 22 (UCS), apontando para as strings do overlay 37.
+- Interface: entrada 22 (0x80191000, até 0x7918) = 1128 strings (menus, ajuda, nomes, fichas de peças/armas, grade de
+  kana da tela de nome). Referências: ponteiros u32 (game.bin e outros), `c0 19` nos scripts e pares lui/addiu no
+  código (incluindo o exe). Estratégia: traduzir dentro do espaço original quando couber; só mover o que não couber.
+- Fichas de equipamento = "NOME：" + ícones/números (FD xx); só o nome muda. Nomes oficiais do DS em tabelas
+  ASCII terminadas em '@' (arm9/overlays).
 - Nomes: entrada 22 (0x80191000) tem opções de menu, nomes padrão e a grade de kana da tela de nome;
   o game.bin (entrada 0) tem 19 ponteiros para os nomes em 0x75AF0.
 
@@ -44,6 +50,10 @@ Os arquivos do jogo (imagem PS1 e ROM DS do usuário) ficam fora do repositório
 - Quebra de linha refeita em 30 colunas (`en_enc.rewrap`).
 - Teste no emulador (PCSX-ReARMed libretro + frontend ctypes, BIOS do próprio usuário): briefing e diálogos
   da missão 1 aparecem corretos em inglês.
+
+## Estado (teste no emulador)
+- Missão 1 e loja da primeira cidade em inglês funcionando com o disco reconstruído (falas idênticas compartilham
+  posição para caber no limite de memória).
 
 ## Pendências
 - Tela de nome (grade de kana) e nome padrão.

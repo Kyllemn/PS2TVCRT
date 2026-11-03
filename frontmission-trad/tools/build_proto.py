@@ -3,6 +3,8 @@ import fontpairs as FP, wp16
 from en_enc import ds_to_units, rewrap
 from build_mission import rebuild, encode
 M=json.load(open('/root/fm1/match_missions.json'))
+C=json.load(open('/root/fm1/match_city.json'))
+city={o['off']:rewrap(o['en']) for o in C if o['en']}
 trans=collections.defaultdict(dict)
 for o in M:
     if o['en']: trans[o['file']][o['off']]=rewrap(o['en'])
@@ -16,12 +18,20 @@ def pc(texts,cnt,w=1):
 cnt=collections.Counter()
 pc(NAMES,cnt,10**6)          # nomes primeiro: codigos de 1 byte
 for f,tt in trans.items(): pc(tt.values(),cnt)
+pc(city.values(),cnt)
 pmap=FP.assign(cnt)
 print('pares',len(pmap),'livres',len(FP.FREE))
 cb=FP.code_bytes
 out={}
 for f in sorted(trans):
     nd,info=rebuild(f,trans[f],pmap,cb); out[f]=nd; print(f,info)
+# cidades: texto no 41 (Wp16), referencias nos scripts 42 e 43
+from build_text import rebuild_text
+d41,_=wp16.decompress(open('/root/fm1/ps1/PACKAGE.PAK','rb').read()[struct.unpack('<I',open('/root/fm1/ps1/PACKAGE.PAK','rb').read()[4*(4+2*41):4*(4+2*41)+4])[0]:])
+rf={42:open('/root/fm1/pak/42.raw','rb').read(),43:open('/root/fm1/pak/43.raw','rb').read()}
+nd,nr,info=rebuild_text(d41,0x801B0000,rf,0x1b,city,pmap,cb,0x10000,0x7000)
+print('cidade',info)
+out[41]=wp16.compress(nd); out.update(nr)
 # nomes (arquivo 22 + tabela de ponteiros no game.bin)
 d22=bytearray(open('/root/fm1/pak/22.raw','rb').read()); B=0x80191000
 g=bytearray(open('/root/fm1/pak/00.bin','rb').read())

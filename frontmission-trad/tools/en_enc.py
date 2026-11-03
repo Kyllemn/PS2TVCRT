@@ -39,7 +39,7 @@ def rewrap(s, width=W):
     """refaz as quebras do texto (formato ds_str) para no maximo `width` colunas, nos espacos"""
     lines=s.split('\n'); out=[]
     head=[]
-    if lines and re.match(r'^[^ ]{0,24}:$',lines[0]) or (lines and re.match(r'^\[FC[0-9A-F]{2}\]:$',lines[0])):
+    if lines and len(lines)>1 and (re.match(r'^[^\n]{1,26}:$',lines[0]) or re.match(r'^\[FC[0-9A-F]{2}\]:$',lines[0])):
         head=[lines[0]]; lines=lines[1:]
     paras=[]; cur=''
     for l in lines:

@@ -31,13 +31,16 @@ def rebuild(k, trans, pmap, cb):
     inblk=[s for s in msgs if lo<=s<hi]
     used_end=len(bytes(d).rstrip(b'\0'))
     newpos={}; blk=bytearray(); over=bytearray(); over_base=(used_end+3)&~3
+    seen={}
     for s in inblk:
         e=msg_end(d,s)
         data=encode(trans[s],pmap,cb) if s in trans else bytes(d[s:e])
+        if data in seen: newpos[s]=seen[data]; continue
         if lo+len(blk)+len(data)<=hi:
             newpos[s]=lo+len(blk); blk+=data
         else:
             newpos[s]=over_base+len(over); over+=data
+        seen[data]=newpos[s]
     d[lo:hi]=bytes(blk)+b'\xff'*(hi-lo-len(blk))
     if over:
         if len(d)<over_base+len(over): d+=b'\0'*(over_base+len(over)-len(d))
