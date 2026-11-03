@@ -1,0 +1,19 @@
+1cb4	{Como acessar.}
+1cc8	{Sobre enderecos.}
+1cdc	{Sobre senhas.}
+1cf0	{Sobre digitacao.}
+1d08	{Sair da explicacao.}
+1d1c	{Na rede, voce ve}|{informacoes de varios}|{lugares, chamados}|{foruns, por um}|{link de satelite.}?!{Pra conectar, precisa do}|{endereco e da senha}|{do destino.}
+1dd8	{Pra conectar a}|{rede, }$07{escolha primeiro}|{Access na janela}|{NETWORK e aperte}|{bolinha.}?!{Ai }$05{abre a janela}|{ADDRESS, pra digitar}|{o endereco.}?!{Escolha um endereco}|{da lista e aperte}|{bolinha,}?!{ou escolha -INPUT- e}|{digite o endereco}|{direto.}?!{Com o endereco}|{certo, abre em}|{seguida a janela}|{PASSWORD.}?!{Como no endereco,}|{escolha uma senha, }$05{ou}|{escolha -INPUT- e digite}|{a senha.}?!{Com endereco e senha}|{certos, abre o}|{forum, }$05{e voce}|{ve as informacoes.}
+2048	{Enderecos sao obtidos}|{nas cidades e nos}|{mapas de batalha.}?!{A maioria vai pra}|{lista da janela}|{ADDRESS e fica}|{salva no save.}
+20ec	{Como os enderecos,}|{senhas tambem sao}|{obtidas nas cidades e}|{nos mapas de batalha.}?!{A maioria das senhas}|{vai pra lista da}|{janela PASSWORD,}|{como os enderecos,}?!{mas atencao: algumas}|{senhas nao entram}|{na lista.}
+21e0	{Enderecos e senhas}|{que nao estao nas}|{listas ADDRESS}|{ou PASSWORD}?!{sao digitados com}|{-INPUT-.}?!{Escolha -INPUT- e aperte}|{bolinha pra abrir}|{INPUT ADDRESS ou}|{INPUT PASSWORD,}?!{com letras, numeros}|{e simbolos.}?!{Digite com o direcional}|{e a bolinha.}|{}?!{Use o X pra}|{apagar}|{letras.}?!{Escolha End e aperte}|{bolinha pra terminar}|{de digitar.}?!{Se o endereco ou a}|{senha estiver certo,}|{abre o forum.}?!{Se estiver errado, da}|{pra digitar de novo.}
+24c8	{Mata Batari}
+24d8	{Locutor:}
+24ec	{Ver mapa}
+2510	{Explicacao da rede.}
+2530	{Detalhes da rede.}
+2544	{Como acessar.}
+2558	{Sobre enderecos.}
+256c	{Sobre senhas.}
+2580	{Sobre digitacao.}

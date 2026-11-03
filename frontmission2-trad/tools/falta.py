@@ -8,4 +8,6 @@ have={int(l.split('\t')[0],16) for l in open(p,encoding='utf-8') if l.strip()} i
 seen=set()
 for r in dump.strings(c,i):
     if r['off'] in have or NOMES.match(r['en']) or r['en'] in seen: continue
+    t=r['en'].decode('cp932','replace'); import re as _r
+    if len(''.join(_r.findall(r'\{([^{}]*)\}',t)))<=len(_r.sub(r'\{[^{}]*\}','',t)): continue
     seen.add(r['en']); print('%x\t%d\t%s'%(r['off'],r['room'],r['en'].decode('cp932')))
