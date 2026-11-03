@@ -22,3 +22,12 @@ Fim alinhado a 4. fm2lz.compress faz ida e volta exata nos 471 subarquivos compr
 
 ## Teste
 Abertura (IDATA sub 116) em portugues verificada no emulador: texto aparece e a cena segue normal.
+
+## Andamento da traducao (fluxo)
+- pt/I_<bloco>.tsv e pt/Z_<bloco>.tsv: `offset<TAB>texto PT` (sem acentos). build_pt.py valida e gera fm2_pt.bin.
+- Validador: codigos ($xx, @nome, bytes de controle) iguais ao EN ou ao JP; largura <= max(EN,24); linhas/pagina <= max(EN,JP); tamanho <= espaco (IDATA) ou realocacao por ponteiro conhecido (ZDATA).
+- ZDATA: realocacao usa primeiro o espaco JP morto (texto JP intacto e sem nenhuma referencia u32), depois o fim do bloco.
+- Ferramentas: falta.py (pendentes de um bloco), autotr.py (aplica dicionario EN->PT), propagate.py/alts.py (repetidas), cobertura.py.
+- Dicionarios EN->PT (tr*.py, zlocs.py, ztown.py) ficam fora do git por conterem texto do jogo.
+- IDATA: completo (missoes, cenas, tutoriais). ZDATA: feitos 9-69 (locais, briefings), 202-206 e ajuda da rede; faltam 207-251 e 309-359.
+- Nomes corrigidos pelo JP: bloco 147 e Crow (nao Royd); capangas do Crow.

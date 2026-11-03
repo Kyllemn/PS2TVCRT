@@ -14,3 +14,15 @@ a0fc	{Como acessar.}
 a110	{Sobre enderecos.}
 a124	{Sobre senhas.}
 7dbc	{E.}
+9618	{Ir a Arena.}
+99f8	{Bem-vindo.}
+b0e0	{Gerente:}
+b0f4	{Campeao:}
+b140	{Explicar a arena.}
+b158	{Explicar lutas solo.}
+b170	{Explicar lutas em time.}
+b188	{Fim da explicacao.}
+b19c	{Na arena, seus wanzers}|{enfrentam os de}|{outros}|{competidores.}?!{Ha dois tipos de}|{luta: 1x1, "Lutas Solo",}|{e ate 5x5, "Lutas}|{em Time".}?!{Vencendo, voce ganha}|{dinheiro e premios.}|{Por outro}|{lado,}?!{se perder a luta,}|{ficamos com o valor}|{que pagou pra entrar.}
+b2f8	{Lutas solo sao 1x1.}|{Antes da batalha,}|{voce escolhe 5 vezes}|{a arma que vai}|{usar em cada rodada.}|{Elas sao usadas em}|{sequencia por 5 rodadas}|{ate haver um}|{vencedor. Atencao:}|{se uma arma}|{escolhida ficar}|{inutil (se o braco}|{onde ela esta for}|{destruido), voce}|{nao age na rodada}|{em que ia}|{usa-la. Por exemplo,}|{se escolher a arma}|{do braco esquerdo}|{5 vezes seguidas,}|{assim que esse braco}|{for destruido, nao}|{podera mais}|{atacar.}|{Para vencer,}|{destrua o corpo}|{do wanzer rival}|{ou inutilize suas}|{armas.}
+b5c4	{Essas lutas tem ate}|{5x5}|{combatentes. O time}|{inimigo sempre tem 5}|{maquinas, mas voce}|{pode mandar de 1 a}|{5 wanzers.}|{As regras sao iguais}|{as de uma batalha}|{normal. Porem, nao da}|{pra roubar pecas}|{do inimigo. Alem disso,}|{nao ha opcao de}|{render-se ou desistir.}|{Para vencer,}|{derrote o lider}|{inimigo.}
+b758	{Ah, toma uma}|{senha da rede.}|{Com ela voce ve dados}|{dos outros lutadores}|{da arena. Informacao}|{pode fazer a diferenca}|{entre vitoria e}|{derrota.}

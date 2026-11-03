@@ -17,3 +17,23 @@
 54bc	{Deposito Subterraneo}
 5548	{Ir a recepcao.}
 59e0	{Almoxarife}
+53c0	{Ir a Arena.}
+56b4	{Bem-vindo.}
+5a6c	{Fale c/ Martin.}
+5a88	{Fale c/ Nick Saudoso.}
+5ac0	{Fale c/ Rozanna}|{Festeira.}
+5bac	{Fale c/ Teddy Ansioso.}
+5bc4	{Fale c/ Carl Serio.}
+5c18	{Fale c/ Ann Fa.}
+62ec	{Explicar a arena.}
+6304	{Explicar lutas solo.}
+631c	{Explicar lutas em time.}
+6334	{Fim da explicacao.}
+6348	{Na arena, seus wanzers}|{enfrentam os de}|{outros}|{competidores.}?!{Ha dois tipos de}|{luta: 1x1, "Lutas Solo",}|{e ate 5x5, "Lutas}|{em Time".}?!{Vencendo, voce ganha}|{dinheiro e premios.}|{Por outro}|{lado,}?!{se perder a luta,}|{ficamos com o valor}|{que pagou pra entrar.}
+64a4	{Lutas solo sao 1x1.}|{Antes da batalha,}|{voce escolhe 5 vezes}|{a arma que vai}|{usar em cada rodada.}|{Elas sao usadas em}|{sequencia por 5 rodadas}|{ate haver um}|{vencedor. Atencao:}|{se uma arma}|{escolhida ficar}|{inutil (se o braco}|{onde ela esta for}|{destruido), voce}|{nao age na rodada}|{em que ia}|{usa-la. Por exemplo,}|{se escolher a arma}|{do braco esquerdo}|{5 vezes seguidas,}|{assim que esse braco}|{for destruido, nao}|{podera mais}|{atacar.}|{Para vencer,}|{destrua o corpo}|{do wanzer rival}|{ou inutilize suas}|{armas.}
+6770	{Essas lutas tem ate}|{5x5}|{combatentes. O time}|{inimigo sempre tem 5}|{maquinas, mas voce}|{pode mandar de 1 a}|{5 wanzers.}|{As regras sao iguais}|{as de uma batalha}|{normal. Porem, nao da}|{pra roubar pecas}|{do inimigo. Alem disso,}|{nao ha opcao de}|{render-se ou desistir.}|{Para vencer,}|{derrote o lider}|{inimigo.}
+6904	{Ah, toma uma}|{senha da rede.}|{Com ela voce ve dados}|{dos outros lutadores}|{da arena. Informacao}|{pode fazer a diferenca}|{entre vitoria e}|{derrota.}
+69bc	{Tipico de }@cody|{, que vitoria}|{esplendida. Mereceu}|{o posto de campeao}|{da arena. So de}|{voce lutar, o publico}|{vibra mais que o}|{normal}…@cody…$05{volta}|{pra ca? Com ou}|{sem voce}…
+6ab8	{Desculpe, gerente}…$05{eu}…
+6ad8	{Tudo bem. Se tem algo}|{que precisa fazer,}|{faca isso primeiro.}|{Nao sei se isto}|{ajuda no que voce}|{vai fazer agora, mas}|{leve este COM. E um}|{computador, o Onrush.}|@cody…$05{Sempre}|{tera um lugar}|{aqui pra voce}|{voltar.}
+6c04	{Obrigado, gerente.}

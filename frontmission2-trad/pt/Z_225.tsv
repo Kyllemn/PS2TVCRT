@@ -34,3 +34,14 @@
 7a94	{Ir a recepcao.}
 7ab1	{Ir aos hospedes.}
 7d68	{Almoxarife}
+7874	{Ir a Arena.}
+7a5c	{Ir ao QG do Saribash.}
+7c04	{Bem-vindo.}
+a6c8	{Explicar a arena.}
+a6e0	{Explicar lutas solo.}
+a6f8	{Explicar lutas em time.}
+a710	{Fim da explicacao.}
+a724	{Na arena, seus wanzers}|{enfrentam os de}|{outros}|{competidores.}?!{Ha dois tipos de}|{luta: 1x1, "Lutas Solo",}|{e ate 5x5, "Lutas}|{em Time".}?!{Vencendo, voce ganha}|{dinheiro e premios.}|{Por outro}|{lado,}?!{se perder a luta,}|{ficamos com o valor}|{que pagou pra entrar.}
+a880	{Lutas solo sao 1x1.}|{Antes da batalha,}|{voce escolhe 5 vezes}|{a arma que vai}|{usar em cada rodada.}|{Elas sao usadas em}|{sequencia por 5 rodadas}|{ate haver um}|{vencedor. Atencao:}|{se uma arma}|{escolhida ficar}|{inutil (se o braco}|{onde ela esta for}|{destruido), voce}|{nao age na rodada}|{em que ia}|{usa-la. Por exemplo,}|{se escolher a arma}|{do braco esquerdo}|{5 vezes seguidas,}|{assim que esse braco}|{for destruido, nao}|{podera mais}|{atacar.}|{Para vencer,}|{destrua o corpo}|{do wanzer rival}|{ou inutilize suas}|{armas.}
+ab4c	{Essas lutas tem ate}|{5x5}|{combatentes. O time}|{inimigo sempre tem 5}|{maquinas, mas voce}|{pode mandar de 1 a}|{5 wanzers.}|{As regras sao iguais}|{as de uma batalha}|{normal. Porem, nao da}|{pra roubar pecas}|{do inimigo. Alem disso,}|{nao ha opcao de}|{render-se ou desistir.}|{Para vencer,}|{derrote o lider}|{inimigo.}
+ace0	{Ah, toma uma}|{senha da rede.}|{Com ela voce ve dados}|{dos outros lutadores}|{da arena. Informacao}|{pode fazer a diferenca}|{entre vitoria e}|{derrota.}
