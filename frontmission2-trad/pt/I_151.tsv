@@ -1,0 +1,163 @@
+228c	{Tutorial:}|{"Ataque e contra"}
+22b2	{Tutorial:}|{"Sistema AP: ataques"}
+22e6	{Tutorial:}|{"Sistema AP: defesa"}
+2314	{Tutorial:}|{"Operacoes no mapa"}
+2340	{Tutorial:}|{"Armas e blindagens"}
+236c	{Tutorial:}|{"Unidades aereas"}
+2398	{Tutorial:}|{"Efeito Geo"}
+23c2	{Tutorial:}|{"Habilidades de Honra"}
+23ee	{Tutorial:}|{"Outros itens"}
+241e	{Tutorial:}|{"Mobilidade"}
+2453	%{O que vai fazer}？|*　{Repetir a aula}|　{Continuar}|　{Encerrar tutorial}
+24ba	{As unidades tem 2 acoes:}|{Mover e Atacar.}?!{Da pra atacar depois}|{de mover, e tambem}|{antes de mover.}?!{No segundo caso, nao}|{da pra mover no turno.}?!{Inimigos e aliados se}|{distinguem pela cor}|{da barra de}|{HP.}?!{A barra e azul pro}|{jogador e vermelha}|{pro inimigo.}?!{Primeiro, ataque com}|{a Metralhadora.}?!{A Metralhadora so}|{acerta inimigos}|{adjacentes.}?!{Experimente.}
+2681	%{O que vai fazer}？|*　{Repetir a aula}|　{Continuar}|　{Encerrar tutorial}
+26e8	{Vamos falar dos tipos}|{de arma.}?!{Wanzers usam armas de}|{curto alcance, como}|{Metralhadora e Escopeta,}?!{armas corpo a corpo, como}|{Soco, Soqueira e Bastao,}?!{e armas de longo alcance,}|{como Lanca-Misseis e}|{Lanca-Foguetes.}?!{Cada tipo tem suas}|{caracteristicas.}?!{T}{ente o corpo a corpo.}?!{Corpo a corpo so}|{acerta inimigos}|{adjacentes.}
+2857	%{O que vai fazer}？|*　{Repetir a aula}|　{Continuar}|　{Encerrar tutorial}
+28be	{Armas de longo alcance,}|{como Lanca-Misseis e}|{Lanca-Foguetes, atacam}|{o inimigo a}|{distancia.}?!{Vamos atacar com missil.}?!{Sem mover, aperte}|{o botao }×{ pra abrir}|{a janela de comandos.}?!{Escolha "Attack".}|{Escolha a arma}|{e a unidade a}|{atacar.}
+29e0	{O piloto tem Pontos de}|{Acao (AP), que definem}|{quantas acoes a unidade}|{pode fazer.}?!{Toda acao gasta}|{uma quantidade de AP.}?!{Primeiro, mover 1}|{casa gasta 1}|{ponto.}?!{Tente mover a}|{unidade. O custo de AP}|{aparece perto do}|{cursor.}?!{Pra encerrar a acao,}|{escolha "End".}
+2b44	%{O que vai fazer}？|*　{Repetir a aula}|　{Continuar}|　{Encerrar tutorial}
+2b96	{-Fim do tutorial-}
+2be0	{Combate gasta AP. Vamos}|{mover e atacar com}|{a Metralhadora.}
+2c31	%{O que vai fazer}？|*　{Repetir a aula}|　{Continuar}|　{Encerrar tutorial}
+2c83	{- Fim do tutorial -}
+2ccd	{Ataque de longo alcance}|{gasta muito AP.}?!{Como mover gasta AP,}|{pode acontecer de}|{nao sobrar AP}|{pro ataque de longo}|{alcance.}?!{Longo alcance custa}|{6 AP. Os pilotos comecam}|{com no maximo 7 AP.}?!{Se a unidade andar 2}|{casas ou mais, nao}|{podera atacar.}?!{Experimente.}
+2e1e	%{O que vai fazer}？|*　{Repetir a aula}|　{Continuar}|　{Encerrar tutorial}
+2e70	{- Fim do tutorial -}
+2eba	{Corpo a corpo nao}|{gasta AP.}?!{Assim, num ataque}|{corpo a corpo, so}|{se gasta AP com}|{movimento.
+2f3d	{No Turno Inimigo,}|{o AP serve pra desviar}|{e contra-atacar.}?!{Vamos experimentar.}?!{Aperte o botao }×{ pra}|{abrir os comandos.}|{Escolha "End".}
+2feb	{Ha outras }{opcoes}|{alem de Mover e Atacar.}?!{A primeira e girar o mapa.}
+303e	{L1: gira p/ esq.}
+3066	{Da pra girar o mapa}|{a qualquer hora e turno.}|{Experimente.}?!{Pra encerrar o turno,}|{escolha "End".}?!{Tambem da pra encerrar}|{o turno abrindo a}|{janela System com}|{Start e escolhendo}|{"End Turn".}
+315c	{No Turno do Jogador,}|{voce controla a}|{ordem de acao das}|{unidades.}?!{Com L2 ou R2, voce}|{muda a ordem das}|{unidades que ainda}|{nao agiram.}
+3213	{R2: proxima.}
+323d	{Alem disso, apertando}|{L2 e R2 juntos,}|{aparece a janela}|{de Lista de}|{Unidades.}?!{Experimente. Quando}|{terminar, escolha}|{"End" pra encerrar}|{o turno.}
+3301	{No Turno do Jogador,}|{da pra ver alcance e}|{status dos inimigos.
+334e	{Primeiro, aperte }□|{com o alcance de}|{movimento na tela. Ativa}|{o Cursor Livre.}
+33b5	{Com o cursor num}|{inimigo, aperte o}|○{.}
+33f2	{Mover}
+3406	…{aparecem aqui.}
+3421	{Apertando }□{ de novo,}|{o cursor volta}|{pras unidades}|{do jogador.}
+3478	{Experimente.}
+348d	{Pra encerrar a acao,}|{escolha "End".}
+34c6	{Pra encerrar a acao,}|{escolha "End".}
+394c	%{O que vai fazer}？|*　{Continuar}|　{Encerrar tutorial}
+3987	{- Fim do tutorial -}
+3cea	{Experimente.}
+3d9d	{Experimente.}
+4d7f	{- Fim do tutorial -}
+5918	{- Fim do tutorial -}
+5daf	{- Fim do tutorial -}
+6196	{- Fim do tutorial -}
+61ea	{- Fim do tutorial -}
+62ca	{- Fim do tutorial -}
+62eb	{- Fim do tutorial -}
+630e	%{O que fazer}？|*　{Continuar}|　{Encerrar tutorial}
+638f	{- Fim do tutorial -}
+63b0	{Armas de longo alcance,}|{como Lanca-Misseis e}|{Lanca-Foguetes, atacam}|{inimigos a}|{distancia.}?!{Vamos atacar com}|{missil.}?!{Sem mover, aperte}|{o botao }×{ pra abrir}|{a janela de comandos.}?!{Escolha "Attack".}|{Agora escolha a}|{arma e a unidade}|{a atacar.}
+64d4	{O piloto tem Pontos de}|{Acao (AP), que definem}|{quantas acoes a unidade}|{pode fazer.}?!{Toda acao gasta}|{uma quantidade de AP.}?!{Primeiro, mover 1}|{casa gasta 1}|{ponto.}?!{Tente mover a}|{unidade. O custo de AP}|{aparece perto do}|{cursor.}?!{Pra encerrar a acao,}|{escolha "End".}
+663a	{Combate gasta AP. Vamos}|{mover e atacar com}|{a Metralhadora.}
+668d	{No Turno Inimigo,}|{o AP serve pra desviar}|{e contra-atacar.}?!{Vamos experimentar.}?!{Aperte o botao }×{ pra}|{abrir os comandos.}|{Escolha "End".}
+673b	{No Turno Inimigo,}|{o AP serve pra desviar}|{e contra-atacar.}?!{Vamos experimentar.}?!{Aperte o botao }×{ pra}|{abrir os comandos.}|{Escolha "End".}
+67e9	{Da pra girar o mapa}{}|{a qualquer hora e}|{turno. Experimente.}?!{Pra encerrar o turno,}|{escolha "End".}?!{Tambem da pra encerrar}|{o turno abrindo a}|{janela System com}|{Start e escolhendo}|{"End Turn".}
+68df	{Alem disso, apertando}|{L2 e R2 juntos,}|{aparece a janela}|{de Lista de}|{Unidades.}?!{Experimente. Quando}|{terminar, escolha}|{"End" pra encerrar}|{o turno.}
+69a3	{Pra encerrar a acao,}|{escolha "End".}
+74f2	{- Fim do tutorial -}
+34fd	{Cada arma causa um}|{tipo de dano.}?!{Metralhadoras e Rifles}|{causam dano "Perfurante"}|{(P).}?!{Soco, Soqueira e Bastao}|{causam "Impacto" (S).}?!{Lanca-chamas causam}|{dano de "Fogo" (F).}?!{Algumas armas causam}|{mais de um tipo}|{de dano.}?!{Lanca-Misseis e Lanca-}|{Foguetes causam "Fogo"}|{e "Impacto".}?!{O tipo de dano das}|{armas equipadas aparece}|{no Status de Arma.}
+36a3	{"P" e Perfurante,}|{"S" e Impacto,}|{e "F" e Fogo.}?!{Armas com mais de um}|{tipo de dano aparecem}|{com 2 letras, como}|{"FS".}
+374a	{A blindagem das pecas}|{tem 4 tipos:}|{"Normal",}|{"Anti-Perfurante",}|{"Anti-Impacto",}|{e "Anti-Fogo".}?!{Pecas "Anti-Perfurante"}|{reduzem o dano de}|{armas "Perfurantes".}?!{Veja a blindagem do}|{inimigo pra saber}|{qual arma causa mais}|{dano nele.
+3874	{Vamos praticar contra}|{alguns inimigos.}?!{Os wanzers inimigos tem}|{um de 3 tipos:}|{Anti-Perfurante, Anti-}|{Impacto e Anti-Fogo.}?!{Veja a blindagem do}|{inimigo e use a}|{arma adequada.}
+39a4	{Alem de wanzers, ha}|{inimigos como tanques}|{e outras maquinas.}?!{Contra eles pode ser}|{preciso certas armas.}
+3a28	{Por exemplo, contra}|{unidades aereas como}|{helicopteros e cacas}|{VTOL, poucas armas}|{conseguem acertar.}
+3aab	{Com este wanzer, nenhuma}|{arma serve pra atacar}|{uma unidade aerea.}?!{Primeiro, armas corpo}|{a corpo como o Soco}|{nao acertam aereos.}?!{Lanca-Misseis e Lanca-}|{Foguetes de solo, e}|{Lanca-chamas, tambem}|{nao servem.}
+3ba5	{Confira que nao}|{da pra atacar.}?!{Depois disso,}|{escolha "End"}|{pra encerrar o turno.}
+3c18	{Misseis e Foguetes}|{Antiaereos sao feitos}|{pra unidades aereas.}
+3c5f	{Aereos tem blindagem}|{fina e sofrem dano}|{facil. Mas essas}|{armas nao servem pra}|{atacar outros tipos}|{de unidade.}
+3cff	{Metralhadoras, boas}|{contra alvos de solo,}|{tambem acertam aereos.}
+3d50	{De todas as armas, a}|{Metralhadora e a mais}|{versatil.}
+3db2	{O Efeito Geo afeta a}|{esquiva ao ser atacado.}?!{O combate ocorre no}|{terreno onde a unidade}|{foi atacada.}?!{Entao, quando o inimigo}|{ataca, e bom estar}|{numa casa com Efeito}|{Geo alto.}?!{Mas ataques corpo a}|{corpo nao seguem}|{essa regra.}?!{O Efeito Geo nao depende}|{do terreno, como rua,}|{grama ou lago, mas de}|{haver obstaculos aos}|{projeteis perto}|{da casa.}|{}?!{Vejamos exemplos.}
+3f81	{No mato, arvores e}|{pedras sao obstaculos.}
+3fb0	{Um grupo de arvores}|{da boa cobertura.}
+3fe0	{Beira de penhasco}|{tambem }{serve.}
+4007	{Areas com penhascos e}|{arvores perto tambem.}
+403c	{O Efeito Geo da unidade}|{selecionada aparece no}|{canto superior esquerdo,}|{abaixo da janela,}|{como "GEO 15}％{".}?!{Do outro lado fica o}|{Efeito Geo da posicao}|{do cursor. Tente}|{mover o cursor.}?!{Quando terminar,}|{escolha "End".}
+4154	{Na cidade, predios e}|{carros sao obstaculos.}?!{Ha pouca cobertura}|{no meio da rua.}|{Fique perto dos}|{predios.
+41e2	{Um carro parado no}|{meio da rua da}|{alguma cobertura.}
+422a	{Ruas de 1 casa entre}|{predios dao a melhor}|{cobertura na}|{cidade.
+427d	{Tente mover o}|{cursor.}?!{Pra encerrar a acao,}|{escolha "End".}
+42de	{Todo piloto tem Pontos}|{de Honra.}?!{Honra e o numero de}|{pecas que o piloto}|{ja destruiu.}?!{Ou seja, quanto mais}|{Honra, mais famoso}|{o nome dele fica,}|{entre aliados e inimigos.}|{Voce vai perceber.
+43b9	{A Honra aparece na}|{janela Pilot Status.}?!{Com 3 estrelas ou}|{mais, aprende-se}|{Habilidades de Honra}|{a cada aumento.
+4448	{Diferente das Battle}|{Skills, as de Honra}|{agem nas 8 casas}|{em volta da unidade.}?!{Mas nao afetam a}|{propria unidade.}
+44e3	{Conforme a habilidade,}|{inimigos ou aliados}|{sao afetados.}?!{No mapa, aliados}|{afetados por Honra}|{piscam em}|{azul.}?!{Vamos praticar.}|{Pra encerrar a acao,}|{escolha "End".
+45d5	{Inimigos afetados}|{por Honra}|{piscam em vermelho.}?!{Vamos praticar.}|{Pra encerrar,}|{escolha "End".}
+6205	{Se suas unidades piscam}|{em vermelho, estao sob}|{efeito de Honra}|{inimiga.}?!{Nesse caso, veja o}|{Pilot Status dos}|{inimigos proximos pra}|{ver as habilidades.}
+69dc	{Vamos praticar contra}|{alguns inimigos.}?!{Os wanzers inimigos tem}|{um de 3 tipos:}|{Anti-Perfurante, Anti-}|{Impacto e Anti-Fogo.}?!{Veja a blindagem do}|{inimigo e use a}|{arma adequada.}
+6ab4	{O Efeito Geo da unidade}|{selecionada aparece no}|{canto superior esquerdo,}|{abaixo da janela,}|{como "GEO 15}％{".}?!{Do outro lado fica o}|{Efeito Geo da posicao}|{do cursor. Tente}|{mover o cursor.}?!{Quando terminar,}|{escolha "End".}
+6bce	{Tente mover o}|{cursor.}?!{Pra encerrar a acao,}|{escolha "End".}
+6c31	{Todo piloto tem Pontos}|{de Honra.}?!{Honra e o numero de}|{pecas que o piloto}|{ja destruiu.}?!{Ou seja, quanto mais}|{Honra, mais famoso}|{o nome dele fica,}|{entre aliados e inimigos.}|{Voce vai perceber.
+6d0c	{Inimigos ou aliados}|{sao afetados conforme}|{a habilidade de Honra.}?!{No mapa, aliados}|{afetados por Honra}|{piscam em azul.}?!{Vamos praticar.}|{Pra encerrar a acao,}|{escolha "End".}
+6e00	{Inimigos afetados}|{por Honra}|{piscam em vermelho.}?!{Vamos praticar.}|{Pra encerrar a acao,}|{escolha "End".
+33fb	{Status}
+466b	{Aqui explicamos os itens}|{"Mine", "Chaff" e}|{"Smoke".}?!{Primeiro, uma "Mine"}|{plantada numa casa}|{destroi as Pernas}|{de quem pisar nela.}?!{Pode ser posta a ate}|{4 casas da posicao}|{da unidade.}?!{Pra plantar uma Mina,}|{gasta 4 AP, como os}|{outros itens.}?!{Vamos plantar uma.}
+47d0	{Agora mova a unidade}|{ate a Mina. Deve}|{explodir na}|{hora.}?!{Ao pisar numa Mina,}|{as Pernas da unidade}|{sao destruidas.}?!{Se ainda nao plantou,}|{plante uma Mina.}
+48a7	{Agora o "Chaff".}|{}?!{Usando "Chaff" numa}|{area}|（？{casas}）{, cai}|{a precisao de misseis}|{e antiaereos.}?!{Mochilas aumentam}|{o alcance.}?!{Funciona num raio}|{de 9 casas. Usar}|{custa 4 AP.}?!{Vamos experimentar.}
+49d5	{Por fim, o}|{"Smoke".}?!{Usando "Smoke" numa}|{area}|（？{casas}）{, cai}|{a precisao das armas}|{que nao sao misseis.}?!{Afeta armas Fight,}|{Short e Long.}?!{Funciona como o Chaff.}|{Vamos}|{experimentar.
+4add	{Wanzers tem um valor de}|{mobilidade.}?!{Ele depende da}|{potencia e, em }％{,}|{indica o peso}|{sobrando.}?!{A relacao entre}|{peso e potencia}|{aparece no Setup.}
+4bb0	{A mobilidade aparece}|{como "Mobile" na janela}|{Unit Status.}?!{Esse valor afeta o}|{custo de movimento no}|{mapa.}?!{Com Mobile 23,}|{somam-se 2 pontos}|{ao Move.}?!{A mobilidade tambem}|{afeta a precisao, exceto}|{longo alcance, e da}|{bonus de esquiva.}?!{Ou seja, com uma}|{maquina agil, fica}|{facil atacar e}|{desviar dos inimigos.}?!{Usar equipamento}|{pesado nem sempre}|{e o ideal.}
+4da5	{Contra inimigo adjacente,}|{atacante e defensor}|{atacam 1 vez cada.}?!{Na cena de batalha, o}|{HP do jogador fica}|{embaixo a esquerda, e o}|{do inimigo em cima a dir.}?!{As barras de HP tem}|{a mesma cor do}|{mapa.
+4e9f	{Vamos atacar com}|{metralhadora.
+4ec2	{Corpo a corpo e curto}|{alcance diferem na}|{ordem do ataque.}?!{Em geral, o ataque vem}|{antes do contra. Com}|{corpo a corpo, o contra}|{do inimigo vem antes.}?!{Corpo a corpo e forte,}|{mas tem}|{muitos riscos.
+4fb5	{Ataques de longo}|{alcance nao sofrem}|{contra-ataque.}
+4ff2	{O custo de AP }{muda entre}|{corpo a corpo, curto e}|{longo alcance. Curto}|{alcance custa 2 AP.}?!{O AP aparece embaixo}|{a direita das barras}|{de HP. Mostra quanto}|{o ataque}|{gasta.
+50cd	{Vamos atacar com}|{metralhadora.
+50f0	{No combate, veja que}|{longo alcance gasta}|{6 pontos de}|{AP.
+5143	{No combate, veja que}|{corpo a corpo gasta}|{0 pontos de AP.}
+5191	{Voce nao fez nada}…
+51b0	{Ao desviar de ataques,}|{gasta-se 2 pontos de AP.}
+51e9	{Ao desviar de ataques,}|{gasta-se 2 pontos de AP.}?!{E curto alcance gasta}|{mais 2 pontos}|{de AP.
+525f	{Ao desviar de ataques,}|{gasta-se 2 pontos de AP.}?!{Contra-atacar corpo}|{a corpo nao}|{gasta AP.}?!{Agora contra-ataque}|{com a Metralhadora.}
+530b	{Ao desviar de ataques,}|{gasta-se 2 pontos de AP.}
+5344	{Ao desviar de ataques,}|{gasta-se 2 pontos de AP.}?!{E curto alcance gasta}|{mais 2 pontos}|{de AP.
+53b9	{Curto alcance gasta}|{2 pontos de AP.}?!{Com 1 ponto de AP,}|{nao ha esquiva. A}|{precisao do inimigo}|{aumenta.}
+544d	{Contra-atacar corpo}|{a corpo nao}|{gasta AP.}
+5494	{Com 1 ponto de AP nao}|{da pra desviar. A}|{precisao do inimigo}|{aumenta.
+54eb	{Ao desviar de ataques,}|{gasta-se 2 pontos de AP.}
+5524	{Curto alcance gasta}|{2 pontos de AP.}?!{Com 1 ponto de AP,}|{nao ha esquiva. A}|{precisao do inimigo}|{aumenta.}
+55b8	{Ao desviar de ataques,}|{gasta-se 2 pontos de AP.}?!{Corpo a corpo gasta 0}|{AP, entao da pra}|{contra-atacar mesmo sem}|{esquiva.
+5647	{Contra Anti-Perfurante,}|{"Impacto" e "Fogo"}|{funcionam.}
+568b	{Este wanzer tem "P" de}|{Anti-Perfurante, entao}|{precisa de uma arma}|{melhor que a}|{Metralhadora.}?!{A blindagem aparece (P)}|{no canto superior dir.}|{da janela da unidade.
+5748	{Contra Anti-Fogo,}|{"Perfurante" e "Impacto"}|{funcionam.}
+578c	{Este wanzer tem "F"}|{de Anti-Fogo, entao}|{precisa de uma arma}|{melhor.}?!{A blindagem aparece (F)}|{n}{o canto superior dir.}|{da janela da unidade.}
+5831	{Contra Anti-Impacto,}|{"Perfurante" e "Fogo"}|{funcionam.}
+5875	{Este wanzer tem "S"}|{de Anti-Impacto, entao}|{precisa de uma arma}|{melhor.}?!{A blindagem aparece (S)}|{no canto superior dir.}|{da janela da unidade.}
+5935	{Sem arma antiaerea}|{nao da pra}|{contra-atacar.}
+5972	{Missil Antiaereo e}|{de longo alcance. Nao}|{da pra revidar.}
+59b3	{A Metralhadora revida}|{a unidade aerea de}|{perto.}
+5a01	{Na batalha, se o HP do}|{"Corpo" (Body) zerar, a}|{unidade e destruida.}?!{Se o HP de um "Braco"}|{zerar, as armas de mao}|{e ombro dele}|{ficam inuteis.}?!{Se o HP das "Pernas"}|{zerar, a unidade so}|{anda 1 casa.}
+5afe	{Contra corpo a corpo,}|{curto alcance tem a}|{iniciativa.}?!{Se o inimigo tambem}|{usar corpo a corpo,}|{o atacante comeca.
+5b87	{Longo alcance nao}|{sofre contra-ataque,}|{mas pode limitar}|{o movimento da}|{unidade.}?!{Veja o tutorial}|{"Sistema AP: ataques"}|{pra mais detalhes.
+5c51	{Se o AP depois de mover}|{nao bastar, a unidade}|{nao ataca.}
+5c93	{O AP aumenta conforme}|{o piloto sobe de nivel.}?!{Assim cresce a liberdade}|{de movimento, como}|{antes de um ataque}|{de longo alcance.
+5d24	{Depois de "Attack", o AP}|{que sobra vira}|{bonus de precisao.}?!{Ou seja, e melhor nao}|{andar muito antes}|{de atacar.
+5df9	{Agora restam 3 AP}|{pro combate.}
+5e23	{Agora restam 5 AP}|{pro combate.}
+5e4d	{Agora resta 1 AP}|{pro combate.}
+5e77	{Agora resta 1 AP}|{pro combate.}
+5ea1	{Agora restam 3 AP}|{pro combate.}
+5ecb	{Contra-atacar de curto}|{alcance custa 4 AP:}|{2 do ataque e 2 da}|{esquiva.}|{}?!{Pilotos comecam com no}|{maximo 7 AP, cuidado}|{com suas acoes.}?!{O inimigo causa muito}|{dano se voce nao}|{puder desviar.}?!{Use isso contra o}|{inimigo, m}{esmo contra}|{inimigos de nivel}|{alto.}?!{Seus ataques causam}|{dano enorme se voce}|{cortar a esquiva}|{dele.
+607c	{Corpo a corpo nao gasta}|{AP, nem no}|{contra-ataque.}?!{Assim, com corpo a corpo,}|{sempre ha chance de}|{contra-atacar, seja}|{qual for o AP.}?!{Uma tatica e equipar}|{uma arma corpo a corpo}|{no wanzer pra}|{contra-atacar.}
+6349	{Pise numa Mina.}|{Se ainda nao plantou,}|{plante uma.}
+6e98	{Ataque com a}|{metralhadora.}
+6ebd	{Ataque com a}|{metralhadora.}
+6ee2	{No combate, veja que}|{longo alcance gasta}|{6 pontos de}|{AP.}
+6f37	{Ao desviar de ataques,}|{gasta-se 2 pontos de AP.}
+6f72	{Ao desviar de ataques,}|{gasta-se 2 pontos de AP.}?!{E curto alcance gasta}|{mais 2 pontos}|{de AP.}
+6fea	{Ao desviar de ataq}{ues,}|{gasta-se 2 pontos de AP.}?!{Contra-atacar corpo}|{a corpo nao}|{gasta AP.}?!{Agora contra-ataque}|{com a Metralhadora.}
+709a	{Ao desviar de ataques,}|{gasta-se 2 pontos de AP.}
+70d5	{Ao desviar de ataques,}|{gasta-se 2 pontos de AP.}?!{E curto alcance gasta}|{mais 2 pontos}|{de AP.
+714c	{Ao desviar de ataques,}|{gasta-se 2 pontos de AP.}
+7187	{Ao desviar de ataques,}|{gasta-se 2 pontos de AP.}?!{Corpo a corpo gasta 0}|{AP, entao da pra}|{contra-atacar mesmo sem}|{esquiva.}
+7218	{Este wanzer tem "P" de}|{Anti-Perfurante, entao}|{Metralhadora, Rifle e}|{Escopeta nao servem.}?!{A blindagem aparece}|{como (P) no canto}|{superior direito da}|{janela.}
+72d5	{Este wanzer tem "F"}|{de Anti-Fogo, entao}|{Lanca-chamas nao}|{serve.}?!{A blindagem aparece}|{como (F) no canto}|{superior direito da}|{janela.}
+737a	{Este wanzer tem "S" de}|{Anti-Impacto, entao}|{corpo a corpo nao serve.}?!{A blindagem aparece}|{como (S) no canto}|{superior direito da}|{janela.}
+741d	{Contra corpo a corpo,}|{curto alcance tem a}|{iniciativa.}?!{Se o inimigo tambem}|{usar corpo a corpo,}|{o atacante comeca.
+74aa	{Plante uma Mina.}|{Se ainda nao plantou,}|{plante uma.
