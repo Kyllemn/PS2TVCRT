@@ -20,7 +20,7 @@ for i in blocks:
     have=set()
     if os.path.exists(p):
         have={int(l.split('\t')[0],16) for l in open(p,encoding='utf-8') if l.strip()}
-    new=[(r['off'],tm[r['en']]) for r in rs if r['en'] in tm and r['off'] not in have]
+    new=[(r["off"],tm[r["en"]]) for r in rs if r["en"] in tm and r["off"] not in have and len(tm[r["en"]].encode("cp932"))<=r["room"]]
     if new:
         with open(p,'a',encoding='utf-8') as f:
             for o,t in new: f.write('%x\t%s\n'%(o,t))
