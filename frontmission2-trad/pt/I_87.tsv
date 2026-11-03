@@ -222,3 +222,94 @@
 846f	{Ace:}
 8791	{Inimigos eliminados}！$10|{Continuem a escolta.}
 8850	{Certo.}$10|{Ja estamos indo.}
+6aef	{O caminhao escapou.}|{Conseguimos}！
+6c28	{O caminhao escapou.}|{Conseguimos}！
+7886	{Droga,}$08|{destruiram o}|{caminhao}！！
+78b5	{Deus, deixa a gente}|{escapar inteiro.}$10|{Amem.}
+78ea	{Destruiram o}|{caminhao}…
+790a	{Vamos dar o fora}|{daqui}…
+7948	{Nao da}！|{Vamos sair daqui}！
+7973	{Acertaram o caminhao}！|{Vamos sair daqui}！
+79a9	{Caminhao destruido}！！|{Droga}！|{Vamos sair daqui}！！
+79e5	{Droga,}$08|{destruiram o}|{caminhao}！！$10|{Deus, deixa a gente}|{escapar inteiro.}|{Amem.}
+7a52	{Destruiram o}|{caminhao}…|{Vamos dar o fora}|{daqui}…
+7a97	{Acertaram o caminhao}！|{Droga}！|{Vamos sair daqui}！！
+7adc	{Acertaram o caminhao}！|{Ugh}！|{Vamos sair daqui}！！
+7b1b	{Droga}！$07|{E agora}！？
+7b39	{Droga}！|{Acabou tudo}！
+7b55	{Entao e isso}…
+7b68	{Droga}！|{Entao e isso}！
+7b84	{E}……$07|{e isso.}
+7ba6	{Sei la, mas anda logo.}|{Pergunta depois}！
+7bdd	{Quanto tempo vai levar}？
+7bfa	{Quanto tempo leva}|{pra carregar}？
+7c26	{Quanto tempo leva}|{pra carregar}？
+7c4e	{Quanto tempo}|{vai levar}？
+7c71	{E quanto tempo leva}|{pra carregar}？
+7ca1	{Quanto tempo vai levar}？
+7cc7	{Dona }@eimy！|{Vou matar voces}|{todos}！！
+7cf6	{Dona }@eimy！|{Vou matar voces}|{todos}！！
+7d25	{Dona }@eimy！|{Vou matar voces}|{todos}！！
+7d5b	{Peguei,}|{dona }@eimy！
+7d77	{Peguei,}|{dona }@eimy！
+7d93	{Peguei,}|{dona }@eimy！
+7db6	{Dona }@eimy！|{Vou matar voces todos}！！
+7de4	{Dona }@eimy！|{Vou matar voces todos}！！
+7e12	{Dona }@eimy！|{Vou matar voces todos}！！
+7e47	{Chefe, vou te vingar}！
+7e62	{Chefe, vou te vingar}！
+7e7d	{Chefe, vou te vingar}！
+7ea1	{Dona }@eimy{,}|{me de as ordens.}
+7eea	{O que quer que eu}|{faca}？
+7f0b	%{Hum, bom}…?!*  {Escolte o caminhao}|  {Me escolte}|  {Sirva de isca
+7f58	%{Hum, bom}…|*  {Escolte o caminhao}
+7f7e	%{Hum, bom}…?!*  {Escolte o caminhao}|  {Me escolte}
+7fbf	{Quando ataco}|{esses caras}？
+7fe5	*  {5-7 casas}|  {3-4 cas{as}|  {1-2 casas}
+8022	{Ataco esses por}…
+803b	*  {HP}|  {AP}
+8053	{Quem eu ataco}？
+806c	*  {HP alto}|  {HP baixo
+8096	{Quem eu ataco}？
+80af	*  {AP alto}|  {AP baixo
+80d9	{E se revidarem}？
+80f0	*  {Revidar}|  {Desviar
+810b	{Pronto}？
+8125	{To pronto,}|{dona }@eimy！
+814a	{Ei, pessoal}！?!{Esqueci, quem eu}|{curo mesmo}？
+8193	*  {Ninguem}|  {O caminhao}|  {Todos}
+81c4	*  {Ninguem}|  {O caminhao}
+81ee	*  {Nenhum}
+8203	{Quando eu fujo}？
+822d	*  {HP em 50}％|  {HP em 20}％|  {Nao fugir}
+826a	*  {HP em 50}％|  {HP em 20}％
+8296	{Dona }@eimy！|{Esqueci}！?!{Quem eu curo mesmo}？
+82d1	*  {Ninguem}|  {O caminhao}|  {Todos}
+82f9	*  {Ninguem}|  {O caminhao}
+831a	*  {Nenhum}
+832f	{Quando eu fujo}？
+8352	*  {HP em 50}％|  {HP em 20}％|  {Nao fugir}
+8386	*  {HP em 50}％|  {HP em 20}％
+83b2	{Opa}…|{bombardeiros}！?!{O que eu faco}！？
+83e4	*  {Mantenha a rota}|  {Fuja}
+8410	{Opa}…|{bombardeiros}！?!{Dona }@eimy！|{O que eu faco}！？
+8450	*  {Mantenha a rota}|  {Fuja}
+8476	{Opa}！|{Bombardeiro}！|{Corre}！！
+84a3	{Opa}！|{Bombardeiro}！|{Corre}！！
+84d0	{Opa}！|{Bombardeiro}！|{Corre}！！
+84fd	{Opa}！！|{Pegaram o chefe}！！|{Corre}！！
+8538	{Opa}！！|{Pegaram o chefe}！！|{Corre}！！
+85fd	{Ainda nao}…|{Vou ter que fugir.
+8628	{Droga}！$07|{Acabou}！
+8649	{Sistema caiu}！|{Tenho que ejetar}！
+8676	{Ah, qual e}！|{Funciona}！
+86a9	{Que saco.}$10|{Lata velha}！
+86cd	{Inimigos eliminados}！$10|{Continuem a escolta.}
+8702	{Inimigos eliminados}！$10|{Continuem a escolta.}
+8737	{Inimigos eliminados}！$10|{Continuem a escolta.}
+876c	{Limpo.}|{Escoltem o caminhao}！
+87ce	{Inimigos eliminados}！$10|{Continuem a escolta}！
+8803	{Olha isso, chefe.}|{O golpe destruiu}|{a cidade.}
+8874	{Droga,}$08|{destruiram o}|{caminhao}！！$10|{Deus, deixa a gente}|{escapar inteiro.}$10|{Meu Deus}…
+88e9	{Dona }@eimy{,}|{eu sigo voce.}
+8912	{Quando eu fujo}？
