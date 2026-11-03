@@ -1,3 +1,157 @@
 418b	{Certo.}
 41a1	{Certo.}
 41ac	{Certo.}
+2484	{Motorista:}
+2497	{Transporte 1, carga}|{completa. Retirando.}
+24c7	{Motorista 2:}
+24da	{Transporte 2, carga}|{completa. Retirando.}
+250a	{Motorista 3:}
+251d	{Transporte 3, carga}|{completa. Retirando.}
+26e9	{Certeza que vao}|{passar aqui}？
+270c	{Sim. E o principal}|{ponto de entrega.
+2736	{Estamos aqui faz horas.}$10|{Que tal tentar}…
+2771	{Psiu}！$10{ Chegaram.
+278b	{Sem duvida.}$10|{Esses caminhoes trazem}|{os suprimentos.
+27d8	{Transporte}！？$08{ Droga}！$10|{Nunca usaram}{}|{isso antes}！
+281f	{Entao nao da pra cortar}|{as linhas de suprimento.
+2853	{Vamos. Atacar as}|{rotas de suprimento}|{ja serve.}
+2892	{Cap. Sherdor:}
+28a3	{Droga}！$10|{Protejam}$10|{a carga}！
+28d0	{Reforcos}！
+28e3	{La vem}！
+28f0	{Reforcos inimigos}！
+2934	{Temos companhia}！
+2964	{Temos companhia.}
+2979	{Tem mais}！
+29a1	{O que tinha la}？
+29c2	{Haha, foi mal. Pode}|{me salvar logo}？
+29f2	{Os conteineres}…？
+2a07	{Nao, olha.}$10|{Sao as armas mais}|{novas da O.C.U.}?!{E}……$05{olha aqui,}$03|{nunca vi esses}|{tipos de arma}|{antes.
+2a95	{Se fossem armas da}|{Intergehen, teria modelos}|{da U.S.N. e da E.C.}?!{Alem disso, a Intergehen}|{nunca fez esses}|{tipos novos de arma.}
+2b2b	{Certo. Continuamos}|{essa conversa em Dhaka.}
+2bab	{O que tem neles}？
+2c5e	{Continuamos depois.}|{Temos que sair ja.}?!{O suprimento ja deve}|{ter avisado o QG}|{do ataque.}
+2ce2	{E o que tem nos}|{conteineres}？
+2d05	{Parece que carregaram}|{com muita pressa.}?!{Deixaram umas coisas.}|{Pecas de wanzer,}|{armas e municao.}
+2d7d	{Nada de muito}|{raro.}
+2d9c	{Nao, }$03{olha.}$10|{Sao as armas mais}|{novas da O.C.U.}?!{E}……$10{olha aqui,}$05|{nunca vi esses}|{tipos de arma}|{antes.}
+2e33	{Nao sao da}|{Intergehen}？
+2e52	{Se fossem armas da}|{Intergehen, teria modelos}|{da U.S.N. e da E.C. Alem}|{disso, a Intergehen}|{nunca fez esses}|{tipos novos de arma.}
+2eec	{Pera, a Intergehen que}|{ajuda o golpe nao e a}|{mesma Intergehen que}|{faliu}…？
+2f51	{Falamos depois.}|{Temos que sair ja.}?!{O suprimento ja deve}|{ter avisado o QG}|{do ataque.
+2fbf	{Certo. Vamos.}
+2fd3	{Haha, foi mal.}|{Pode me salvar logo}？
+3144	{Continuamos essa}|{conversa na capital.}?!{Como o suprimento}|{pediu ajuda, temos}|{que sair daqui.
+31ba	{Bom, parece que}|{carregaram com pressa.}?!{Deixaram umas coisas.}|{Pecas de wanzer,}|{armas e municao}…{mas}|{nada de muito raro.}
+3255	{Parece que carregaram}|{com muita pressa.}?!{Deixaram umas coisas.}|{Pecas de wanzer,}|{armas e municao}…?!{Mas nada de muito}|{raro.}
+32ee	{Bom, parece que}|{carregaram com pressa.}?!{Deixaram umas coisas.}|{Pecas de wanzer,}|{armas e municao.}|{Nada de muito raro.
+3380	{Parece que carregaram}|{com muita pressa.}?!{Deixaram pecas de}|{wanzer, armas}|{e municao}…$10|{Nada de muito raro,}|{porem.}
+3417	{Bom, parece que}|{carregaram com muita}|{pressa.}?!{Deixaram umas coisas.}|{Pecas de wanzer,}|{armas e municao. Mais}|{nada. Nada de}|{muito raro.}
+34cc	{Bom, parece que}|{carregaram com muita}|{pressa.}?!{Deixaram umas coisas.}|{Pecas de wanzer,}|{armas e municao.}|{Nada de muito}|{raro.}
+356b	{Bom, parece que}|{carregaram com muita}|{pressa.}?!{Deixaram pecas de}|{wanzer, armas}|{e municao}…$10|{Nada de muito}|{raro, porem.}
+3609	{Estavam com pressa.}?!{Deixaram pecas de}|{wanzer, armas}|{e municao. Nada}|{raro, porem.}
+3687	{Estavam com}|{pressa}…?!{Deixaram umas coisas.}|{Pecas de wanzer,}|{armas e municao}…?!{Mais nada. Nada}|{de muito raro}…
+3727	{Enfim, vamos sair}|{daqui ja. O suprimento}|{ja deve ter avisado}|{o QG do ataque.
+378e	{Enfim, vamos sair}|{daqui ja. O suprimento}|{ja deve ter avisado}|{o QG do ataque.}
+37f8	{Enfim}{, vamos sair}|{daqui ja.}?!{O suprimento ja deve}|{ter avisado o QG}|{do ataque.}
+3869	{Enfim, vamos sair}|{daqui ja. O suprimento}|{ja deve ter avisado}|{o QG do}|{ataque.}
+3941	{Enfim, temos que}|{sair ja.}?!{O suprimento ja deve}|{ter pedido ajuda}|{ao QG.}
+39a5	{De todo modo, temos}|{que sair daqui ja.}?!{O suprimento ja deve}|{ter avisado o QG}|{do ataque.}
+3a20	{Enfim, temos que}|{sair ja.}?!{O suprimento ja deve}|{ter avisado o QG}|{do ataque.}
+3a88	{Enfim, temos que sair}|{daqui ja.}?!{O suprimento ja deve}|{ter avisado o QG}|{do ataque}…
+3af5	@mike{,}|{se recompoe.}
+3b13	{Se recompoe,}|@mike{.}
+3b32	{Se recompoe,}|{senhor UCI.
+3b56	{Ta bem,}|@mike？
+3b6f	@mike{, vamos.}
+3b95	{Se recompoe,}|{senhor UCI.}
+3bd2	{Se recompoe}…
+3be9	{Voce nao tem jeito}！
+3c21	{Cara, voce nao tem}|{jeito.
+3c5b	{Ah, qual e}！
+3c97	{Caso perdido}！
+3cb4	{Ah, qual e}…
+3cc5	{Devem ser armas da}|{Intergehen, ne}？
+3cee	{Devem ser da Intergehen.}
+3d0b	{Sao armas da}|{Intergehen.
+3d2a	{Devem ser armas da}|{Intergehen.}
+3d4f	{Sem duvida sao armas}|{da Intergehen.
+3d7f	{Nao sao armas da}|{Intergehen}？
+3da5	{Entao nao sao armas}|{da Intergehen}？
+3dcf	{Sao armas da}|{Intergehen}？
+3df3	{Devem ser armas da}|{Intergehen}…
+3e1d	{Ta dizendo que a}|{Intergehen que ajuda o}|{golpe nao e a que}|{faliu}？
+3e7b	{Ta dizendo que a}|{Intergehen que ajuda o}|{golpe nao e a mesma que}|{faliu}？
+3ee5	{Ta dizendo que a}|{Intergehen que abastece}|{o golpe nao e a}|{mesma que}|{faliu}？
+3f54	{A Intergehen que ajuda}|{o golpe nao e a mesma}|{que faliu}…？
+3faa	{A Intergehen que}|{abastece o golpe nao}|{e a mesma que}|{faliu}…？
+4006	{A Intergehen que ajuda}|{o golpe nao e a}|{mesma Intergehen que}|{faliu}？
+4063	{Entao a Intergehen que}|{abastece o golpe nao}|{e a mesma que}|{faliu}？
+40cc	{Como}？|{A Intergehen que ajuda}|{o golpe e a}|{Intergehen que faliu}|{nao sao a mesma}？
+4135	{A Intergehen que ajuda}|{o golpe nao e a}|{mesma que}|{faliu}？
+4194	{Eu sei.}
+41b7	{Tem razao}…
+41c8	{E, tem razao.}
+41ef	{E, }$10{tem razao.
+468c	{A Intergehen que ajuda}|{o golpe nao e a}|{mesma que}|{faliu}？
+46e2	{Pegamos todos.}|{Tem pecas de wanzer,}|{armas e municao}…|{Mais nada. Nada}|{de muito raro.}
+475c	{Pegamos todos.}|{Tem pecas de wanzer,}|{armas e municao}…$07|{Mais nada.}?!{Nada de muito}|{raro.}
+47dc	{Pegamos todos os}|{conteineres. }{Tem pecas,}|{armas e municao.}|{Nada de muito}|{raro, porem.}
+4855	{Pegamos todos os}|{conteineres. Tem pecas,}|{armas e municao}…|{Mais nada. Nada de}|{muito raro, porem.}
+48db	{Pegamos todos os}|{conteineres. Tem}|{pecas de wanzer, armas}|{e municao. Mais}|{nada. Nada de}|{muito raro}|{aqui, porem.
+4979	{Pegamos todos.}|{Tem pecas de wanzer,}|{armas e municao aqui}…|{Mais nada.}|{Nada de muito}|{raro.}
+49fd	{Pegamos todos.}|{So tem municao}…$10|{Nada de muito}|{raro.}
+4a57	{Pegamos todos.}|{Tem pecas de wanzer,}|{armas e municao.}|{Nada de muito}|{raro.}
+4ac2	{Pegamos todos os}|{conteineres}…|{Tem pecas de wanzer e}|{armas aqui}…$07|{Mais nada}…?!{Nada de muito}|{raro}…
+4b68	{Transporte 1 em}|{posicao. Iniciando}|{coleta da carga.}
+4bbf	{Transporte 2 em}|{posicao. Iniciando}|{coleta da carga.}
+4c16	{Transporte 3 em}|{posicao. Iniciando}|{coleta da carga.}
+4c5a	{Droga}！|{Dano demais}！
+4c8e	{Ugh, nao devia ter}|{baixado a guarda}…
+4cc0	{Nao posso morrer}…
+4cd7	{Ainda posso lutar}…
+4cf4	{Droga, o plano}|{falhou}…
+4d17	{Como perco pra}|{gente assim}…
+4d43	{Tenho que voltar}|{vivo a Fukuoka}！
+4d69	{Eles sao fortes}…$10|{Acho que preciso}|{treinar mais}…
+4db3	{N-nao pode}…$10|{Nao pode ser}…
+4de2	{Certo. Seguimos}|{essa conversa em Dhaka.
+4e0f	{O que tinha neles}？
+4e45	{Continuamos essa}|{conversa na capital.}?!{Como o suprimento}|{pediu ajuda, temos}|{que sair ja.}
+4eb9	{Enfim, temos que sair}|{ja. O suprimento ja}|{deve ter avisado o}|{QG do ataque.
+2909	{La vem}！
+2918	{Reforcos inimigos}！
+294c	{Temos companhia}！
+298a	{Temos companhia}！
+2b7b	{Haha, foi mal. Pode}|{me salvar logo}？
+2bc8	{Se fossem armas da}|{Intergehen, teria modelos}|{da U.S.N. e da E.C.}?!{Alem disso, a Intergehen}|{nunca fez esses}|{tipos novos de arma.}
+3003	{O que tem neles}？
+3020	{Nao, olha.}$10|{Sao as armas mais}|{novas da O.C.U.}?!{E}……$05{olha aqui,}$03|{nunca vi esses}|{tipos de arma}|{antes.
+30ae	{Se fossem armas da}|{Intergehen, teria modelos}|{da U.S.N. e da E.C.}?!{Alem disso, a Intergehen}|{nunca fez esses}|{tipos novos de arma.}
+38d9	{Enfim, vamos sair}|{daqui ja. O suprimento}|{ja deve ter avisado}|{o QG do ataque.}
+3b82	@mike{, vamos.}
+3bb5	{Se recompoe,}|@mike{.}
+3c6c	{Ah, qual e}！
+41de	{Tem razao}…
+4209	{Tem razao}…
+421c	{Devem ser armas da}|{Intergehen, ne}？
+4245	{Devem ser da Intergehen.}
+4281	{Devem ser armas da}|{Intergehen.}
+42a6	{Sem duvida sao armas}|{da Intergehen.
+42d6	{Nao sao armas da}|{Intergehen}？
+42fc	{Entao nao sao armas}|{da Intergehen}？
+4326	{Sao armas da}|{Intergehen}？
+434a	{Devem ser armas da}|{Intergehen}…
+4374	{Ta dizendo que a}|{Intergehen que ajuda o}|{golpe nao e a que}|{faliu}？
+43d2	{Ta dizendo que a}|{Intergehen que ajuda o}|{golpe nao e a mesma que}|{faliu}？
+443c	{Ta dizendo que a}|{Intergehen que abastece}|{o golpe nao e a}|{mesma que}|{faliu}？
+44ab	{A Intergehen que ajuda}|{o golpe nao e a mesma}|{que faliu}…？
+4501	{A Intergehen que}|{abastece o golpe nao}|{e a mesma que}|{faliu}…？
+455d	{A Intergehen que ajuda}|{o golpe nao e a}|{mesma Intergehen que}|{faliu}？
+45ba	{Entao a Intergehen que}|{abastece o golpe nao}|{e a mesma que}|{faliu}？
+4623	{Como}？|{A Intergehen que ajuda}|{o golpe e a}|{Intergehen que faliu}|{nao sao a mesma}？
+4b55	{Motorista:}
+4bac	{Motorista:}
+4c03	{Motorista:}
+4e2a	{O que tinha neles}？
+4f1f	{Se recompoe,}|@mike{.}
