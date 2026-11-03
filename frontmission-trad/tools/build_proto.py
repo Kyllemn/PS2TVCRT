@@ -9,6 +9,9 @@ trans=collections.defaultdict(dict)
 for o in M:
     if o['en']: trans[o['file']][o['off']]=rewrap(o['en'])
 NAMES=['None','Royd','Ryuji','Natalie','Keith','J.J.','Frederick','Meihua','Paul','Hans','Gregorio','Molly','Ralph','Yeehin','Alder','Bobby','Porunga','Gentz','Peewie']
+import build_ui22 as U22
+D22=open('/root/fm1/pak/22.raw','rb').read(); R22=json.load(open('/root/fm1/ui22b.json'))
+P22,G22,T22=U22.ui_texts(D22,R22)
 def pc(texts,cnt,w=1):
     for en in texts:
         for u in ds_to_units(en):
@@ -17,6 +20,8 @@ def pc(texts,cnt,w=1):
                 for k in range(0,len(t),2): cnt[t[k:k+2]]+=w
 cnt=collections.Counter()
 pc(NAMES,cnt,10**6)          # nomes primeiro: codigos de 1 byte
+pc(list(G22.values()),cnt,10**5)
+pc(T22,cnt)
 for f,tt in trans.items(): pc(tt.values(),cnt)
 pc(city.values(),cnt)
 pmap=FP.assign(cnt)
@@ -32,22 +37,53 @@ rf={42:open('/root/fm1/pak/42.raw','rb').read(),43:open('/root/fm1/pak/43.raw','
 nd,nr,info=rebuild_text(d41,0x801B0000,rf,0x1b,city,pmap,cb,0x10000,0x7000)
 print('cidade',info)
 out[41]=wp16.compress(nd); out.update(nr)
-# nomes (arquivo 22 + tabela de ponteiros no game.bin)
-d22=bytearray(open('/root/fm1/pak/22.raw','rb').read()); B=0x80191000
-g=bytearray(open('/root/fm1/pak/00.bin','rb').read())
-ptrs=[0x75af0+4*i for i in range(19)]
-old=[struct.unpack('<I',g[p:p+4])[0]-B for p in ptrs]
-lo=min(old); hi=max(old); 
-while d22[hi]!=0xff: hi+=1
-hi+=1
-blk=bytearray()
-for p,nm in zip(ptrs,NAMES):
-    e=encode(nm,pmap,cb); assert len(e)-1<=6,(nm,len(e))
-    struct.pack_into('<I',g,p,B+lo+len(blk)); blk+=e
-assert len(blk)<=hi-lo,(len(blk),hi-lo)
-d22[lo:hi]=bytes(blk)+b'\xff'*(hi-lo-len(blk))
-out[22]=bytes(d22)
-out[0]=wp16.compress(bytes(g))
+# arquivo 22 (interface) no lugar
+import refs22 as RF, re as _re
+R=pickle.load(open('/root/fm1/refs22.pkl','rb'))
+nd22,moved,over22=U22.apply_reloc(D22,R22,pmap,cb,encode,set(r[3] for r in R))
+print('ui22: excedentes',len(over22),'realocados',len(moved))
+out[22]=nd22
+# faixas de texto onde 'c0 19' e letra japonesa, nao referencia
+def blocos_texto(k):
+    d=open('/root/fm1/pak/%02d.raw'%k,'rb').read()
+    refs=[(m.start(),struct.unpack('<H',d[m.start()+2:m.start()+4])[0]-0x8918) for m in _re.finditer(rb'\xc0\x19',d)]
+    st=set(i+1 for i in range(len(d)-1) if d[i]==0xff)
+    ms=[t for p,t in refs if t in st]
+    from build_mission import msg_end
+    return (min(ms),max(msg_end(d,x) for x in ms))
+BLK={k:blocos_texto(k) for k in range(23,34)}
+def valido(r):
+    nm,kind,pos=r[0],r[1],r[2]
+    if kind=='c019':
+        k=int(nm) if nm.isdigit() else -1
+        if k in BLK and BLK[k][0]<=pos<BLK[k][1]: return False
+        if k==41 and pos>=0x7000: return False
+    return True
+PAKB=open('/root/fm1/ps1/PACKAGE.PAK','rb').read()
+def entry(k):
+    o,sz=struct.unpack('<2I',PAKB[4*(4+2*k):4*(4+2*k)+8]); return PAKB[o:o+sz]
+cur={}
+def get(nm):
+    if nm in cur: return cur[nm]
+    if nm=='EXE': cur[nm]=open('/root/fm1/ps1/SLPM_873.17','rb').read()[2048:]
+    else:
+        k=int(nm)
+        if k in out:
+            x=out[k]; cur[nm]=wp16.decompress(x)[0] if x[:4]==b'Wp16' else x
+        else:
+            e=entry(k); cur[nm]=wp16.decompress(e)[0] if e[:4]==b'Wp16' else open('/root/fm1/pak/%02d.raw'%k,'rb').read()
+    return cur[nm]
+npat=0
+for r in R:
+    if r[3] in moved and valido(r):
+        cur[r[0]]=RF.patch(get(r[0]),r[1],r[2],moved[r[3]],r[4]); npat+=1
+print('referencias corrigidas',npat,'em',sorted(cur))
+for nm,x in cur.items():
+    if nm=='EXE':
+        ex=open('/root/fm1/ps1/SLPM_873.17','rb').read(); out['EXE']=ex[:2048]+x
+    else:
+        k=int(nm); comp=entry(k)[:4]==b'Wp16'
+        out[k]=wp16.compress(x) if comp else x
 F=bytearray(open('/root/fm1/pak/51.raw','rb').read())
 for p,gi in pmap.items(): F[gi*64:gi*64+64]=FP.tiles_for(p)
 out[51]=bytes(F)

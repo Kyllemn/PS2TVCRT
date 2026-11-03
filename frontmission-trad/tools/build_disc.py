@@ -9,7 +9,7 @@ def rebuild_pak(newfiles):
     out=bytearray(2048)
     neww=w[:]
     for k,(o,s) in enumerate(ents):
-        data=newfiles.get(k, a[o:o+s])
+        data=newfiles.get(k, a[o:o+s]) if isinstance(k,int) else None
         off=len(out)
         out+=data; out+=b'\0'*((-len(out))%2048)
         neww[4+2*k]=off; neww[5+2*k]=len(data) if k in newfiles else s
@@ -20,6 +20,9 @@ def build(newfiles,out_bin):
     pak=rebuild_pak(newfiles)
     b=Bin('/root/fm1/fm1st.bin')
     L=26588; n=(len(pak)+2047)//2048
+    if 'EXE' in newfiles:
+        ex=newfiles['EXE']; assert len(ex)==397312
+        b.write(18255,ex)
     b.write(L,pak)
     b.set_rec('PACKAGE.PAK',L,len(pak))
     dummy_end=26588+27648000//2048
