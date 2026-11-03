@@ -13,6 +13,7 @@ def tokens(b):
         if c==0x3f and i+1<n and b[i+1]==0x21: out.append(('pg','?!')); i+=2; continue
         if c==0x40 and i+4<n: out.append(('nm',b[i:i+5].decode('latin1'))); i+=5; continue
         if c==0x24 and i+2<n: out.append(('cd',b[i:i+3].decode('latin1'))); i+=3; continue
+        if 0xa1<=c<=0xdf: out.append(('k',chr(c))); i+=1; continue   # katakana meia largura (1 byte)
         if c>=0x80 and i+1<n: out.append(('j',b[i:i+2].decode('cp932','replace'))); i+=2; continue
         out.append(('x',chr(c))); i+=1
     return out
