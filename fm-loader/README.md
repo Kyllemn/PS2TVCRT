@@ -18,8 +18,9 @@ Imagens (capas, discos, fundo) e arquivos dos jogos não vão para o git.
 - `tools/menu_dat.py config.json MENU.DAT`: gera o MENU.DAT 'MNU2' com a lista de jogos (executavel,
   TCB/EVENT/STACK), tela base e so os retangulos que mudam por jogo (cabe na RAM com 3-4 jogos).
 - `tools/cdsector.py`: setores MODE2 (EDC/ECC), leitura de .bin e listagem ISO9660.
-- `tools/build_ffcol.py`: CD Final Fantasy (Origins + FF III NES + FF IV). O FF IV fica nas posicoes
-  originais (le por LBA); o resto vai depois; o diretorio raiz e as path tables ficam nos setores
-  18-20 e os subdiretorios no fim. `--ff2-lba` corrige no FF2 a posicao do DATA.BIN e as 1548
-  posicoes absolutas do indice dentro dele.
+- `tools/build_ffcol.py`: CD Final Fantasy (Origins + FF III NES + FF IV). Raiz e path tables nos
+  setores 18-20; FF III (imbNES) logo depois, como na ISO dele; menu; FF IV (26 posicoes MSF
+  corrigidas no SLUS_013.60); Origins (`--ff2-lba`: posicao do DATA.BIN e as 1548 posicoes do
+  indice dele). Licenca japonesa (da ISO do FF III): com a americana o leitor de CD proprio do
+  imbNES trava.
 - Desenho do disco pela tabela de ordenacao (DrawOTag): o DrawPrim direto travava no Beetle.

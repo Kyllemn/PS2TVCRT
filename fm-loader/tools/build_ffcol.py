@@ -1,9 +1,10 @@
 """Monta o CD da coletanea Final Fantasy: menu + Origins (FF1+FF2) + FF III (NES no PS1) + FF IV.
 
-O FF IV le o disco por LBA fixo: os setores dele sao copiados brutos nas MESMAS posicoes da
-imagem original. Os outros jogos vem depois, copiados em bloco (so o endereco no cabecalho do
-setor muda). O sistema de arquivos ISO9660 (path tables e diretorios) e escrito no fim do disco
-e o PVD (setor 16) aponta para ele, entao os setores 18-22 que eram do FF IV ficam livres.
+Ordem no disco: licenca (0-15), PVD (16), path tables (18-19), raiz (20), FF III (o leitor de CD
+do emulador de NES dele so funciona com os arquivos perto do inicio), menu, FF IV (a tabela de
+posicoes MSF no SLUS_013.60 e corrigida), Origins (com --ff2-lba: posicao do DATA.BIN e indice
+dele corrigidos), subdiretorios. Os jogos sao copiados em bloco, setor bruto (so o endereco no
+cabecalho muda; Mode 2 nao inclui o endereco no ECC).
 
 uso: build_ffcol.py ffiv.bin origins.bin ff3.bin MENU.EXE MENU.DAT saida.bin [--ff2-lba]
   --ff2-lba : corrige no FF2/START.UP a constante com o LBA do FF2/DATA.BIN
@@ -30,30 +31,70 @@ def put_file_data(lba, data, rec=None, path=None):
     return lba + n
 
 
-# ---- 1) FF IV no lugar original (0-15 licenca, 23.. dados) ----
-iv_end = 0
-for p, l, s, r in ivf:
-    if p.endswith('/'): entries.append((p, None, 0, r)); continue
-    n = (s + 2047) // 2048
-    for i in range(n): sectors[l + i] = (IV, l + i)
-    if p != 'SYSTEM.CNF;1': entries.append((p, l, s, r))
-    iv_end = max(iv_end, l + n)
-for i in range(16): sectors[i] = (IV, i)
+# ---- 1) FF III (emulador de NES) logo depois do diretorio, como na ISO original ----
+# o leitor de CD proprio dele trava se precisar de um salto longo do fim para o inicio do disco
+# licenca (setores 0-15) da ISO do FF III: japonesa, a mesma que ja funciona no console. Com a
+# licenca americana do FF IV o drive responde diferente e o leitor de CD do imbNES trava.
+for i in range(16): sectors[i] = (FF3, i)
 sectors[17] = (IV, 17)
-print('FF IV: setores 23..%d (posicoes originais)' % (iv_end - 1))
+nxt = 21
+f_files = [(p, l, s, r) for p, l, s, r in f3f if not p.endswith('/') and p != 'SYSTEM.CNF;1']
+f_start = min(l for p, l, s, r in f_files); f_last = max(l + (s + 2047) // 2048 for p, l, s, r in f_files)
+d3 = nxt - f_start
+for l in range(f_start, f_last): sectors[l + d3] = (FF3, l)
+for p, l, s, r in f_files: entries.append((p, l + d3, s, r))
+nxt = f_last + d3
+print('FF III: setores %d..%d' % (f_start + d3, nxt - 1))
 
-# ---- 2) Origins: bloco continuo a partir de iv_end ----
+# ---- 2) menu ----
+cnf = b'BOOT = cdrom:\\MENU.EXE;1\r\nTCB = 4\r\nEVENT = 16\r\nSTACK = 801FFF00\r\n'
+nxt = put_file_data(nxt, cnf, None, 'SYSTEM.CNF;1')
+nxt = put_file_data(nxt, open(menu_exe, 'rb').read(), None, 'MENU.EXE;1')
+nxt = put_file_data(nxt, open(menu_dat, 'rb').read(), None, 'MENU.DAT;1')
+
+# ---- 3) FF IV em bloco; a tabela de posicoes (MSF) no SLUS_013.60 e corrigida ----
+iv_files = [(p, l, s, r) for p, l, s, r in ivf if not p.endswith('/')]
+iv_start = min(l for p, l, s, r in iv_files)
+iv_last = max(l + (s + 2047) // 2048 for p, l, s, r in iv_files)
+div = nxt - iv_start
+for l in range(iv_start, iv_last): sectors[l + div] = (IV, l)
+for p, l, s, r in ivf:
+    if p.endswith('/'): entries.append((p, None, 0, r))
+    elif p != 'SYSTEM.CNF;1': entries.append((p, l + div, s, r))
+nxt = iv_last + div
+print('FF IV: setores %d..%d (deslocamento %+d)' % (iv_start + div, nxt - 1, div))
+
+
+def unbcd(b): return (b >> 4) * 10 + (b & 15)
+
+
+slus = [(l, s) for p, l, s, r in ivf if p == 'SLUS_013.60;1'][0]
+TAB = 0xa8e38                      # 26 entradas MSF de 4 bytes (uma por arquivo do disco)
+lba_tab = slus[0] + TAB // 2048
+assert (TAB % 2048) + 26 * 4 <= 2048
+d = bytearray(IV.data(lba_tab)); o0 = TAB % 2048
+orig_lbas = sorted(l for p, l, s, r in iv_files)
+for k in range(26):
+    m = d[o0 + 4 * k:o0 + 4 * k + 3]
+    l = (unbcd(m[0]) * 60 + unbcd(m[1])) * 75 + unbcd(m[2]) - 150
+    assert l in orig_lbas, (k, l)
+    d[o0 + 4 * k:o0 + 4 * k + 3] = cd.msf(l + div)
+L = lba_tab + div
+sectors[L] = cd.form1(L, bytes(d), IV.raw(lba_tab)[18])
+print('FF IV: 26 posicoes corrigidas no SLUS_013.60')
+
+# ---- 4) Origins: bloco continuo ----
 skip_org = {'SYSTEM.CNF;1', 'DATA3.BIN;1'}
 o_files = [(p, l, s, r) for p, l, s, r in orf if not p.endswith('/') and p not in skip_org]
 o_start = min(l for p, l, s, r in o_files)
 o_last = max(l + (s + 2047) // 2048 for p, l, s, r in o_files)
-delta = iv_end - o_start
+delta = nxt - o_start
 for l in range(o_start, o_last): sectors[l + delta] = (ORG, l)
 for p, l, s, r in orf:
     if p.endswith('/'): entries.append((p, None, 0, r))
     elif p not in skip_org: entries.append((p, l + delta, s, r))
+print('Origins: setores %d..%d (deslocamento %+d)' % (o_start + delta, o_last + delta - 1, delta))
 nxt = o_last + delta
-print('Origins: setores %d..%d (deslocamento %+d)' % (iv_end, nxt - 1, delta))
 ff2_data = [l for p, l, s, r in orf if p == 'FF2/DATA.BIN;1'][0]
 if PATCH_FF2:
     st = [(l, s) for p, l, s, r in orf if p == 'FF2/START.UP;1'][0]
@@ -74,21 +115,6 @@ if PATCH_FF2:
         L = ff2_data + i + delta
         sectors[L] = cd.form1(L, bytes(idx[i * 2048:(i + 1) * 2048]), ORG.raw(ff2_data + i)[18])
     print('FF2: DATA.BIN %d -> %d, %d entradas do indice corrigidas' % (a, a + delta, n))
-
-# ---- 3) FF III (emulador de NES): bloco continuo ----
-f_files = [(p, l, s, r) for p, l, s, r in f3f if not p.endswith('/') and p != 'SYSTEM.CNF;1']
-f_start = min(l for p, l, s, r in f_files); f_last = max(l + (s + 2047) // 2048 for p, l, s, r in f_files)
-d3 = nxt - f_start
-for l in range(f_start, f_last): sectors[l + d3] = (FF3, l)
-for p, l, s, r in f_files: entries.append((p, l + d3, s, r))
-nxt = f_last + d3
-print('FF III: setores %d..%d' % (f_start + d3, nxt - 1))
-
-# ---- 4) arquivos novos: menu ----
-cnf = b'BOOT = cdrom:\\MENU.EXE;1\r\nTCB = 4\r\nEVENT = 16\r\nSTACK = 801FFFF0\r\n'
-nxt = put_file_data(nxt, cnf, None, 'SYSTEM.CNF;1')
-nxt = put_file_data(nxt, open(menu_exe, 'rb').read(), None, 'MENU.EXE;1')
-nxt = put_file_data(nxt, open(menu_dat, 'rb').read(), None, 'MENU.DAT;1')
 
 # ---- 5) ISO9660 no fim ----
 def both32(v): return struct.pack('<I', v) + struct.pack('>I', v)
@@ -193,7 +219,6 @@ pvd[148:152] = struct.pack('>I', pt_m); pvd[152:156] = b'\0' * 4
 root = record(b'\0', dlba[''], dir_size('') * 2048, 2, b'')
 pvd[156:190] = root[:34]
 sectors[16] = cd.form1(16, bytes(pvd), 0x89)
-for l in range(21, 23): sectors[l] = cd.form1(l, b'', 0x08)
 
 with open(out, 'wb') as f:
     empty = None
