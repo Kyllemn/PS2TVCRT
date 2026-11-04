@@ -1,2 +1,4 @@
 build/
 cbuild/
+*.png
+__pycache__/
