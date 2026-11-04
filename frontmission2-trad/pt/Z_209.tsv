@@ -62,3 +62,108 @@
 7f08	{Obrigado, como sempre.}|{Aqui o endereco da}|{Diable Avionics. Use}|{se quiser.}
 7f60	{Aqui a senha do site}|{da Vynce. Peguei com}|{um contrabandista. So}|{falta o endereco}|{pra entrar.}
 8c24	{Peguei o endereco da}|{Jade Metal Lyman. }$05{Toma, }$05|{use.}
+5924	{Parece que ninguem}|{se feriu grave.}
+5950	{E, }$05{mas nao da pra}|{levar eles junto}|{pra todo lado.}
+59a0	{Levamos eles ao}|{QG de Resgate de}|{Presos. Mas antes,}|{interrogatorio.}
+59f8	{Vamos pra arena.}|{La ninguem}|{incomoda.}
+5a34	%{Ir ao QG}？|*　ＮＯ|　ＹＥＳ
+5a60	+009E{Voltamos ao}|{QG}？
+5a90	{Sim, }$05{vamos levar os}|{resgatados ao QG.}?!{Pode haver info}|{nova pra nos la}|{tambem.}
+5b08	{Nao entre na sala}|{reserva.}
+5b28	@cody！$05{ Por onde}|{andou}？?!{Foi um alvoroco}|{quando o campeao}|{sumiu.}
+5b90	{Desculpe, }$04{gerente. Vou}|{sair logo por}|{outro assunto.}
+5bd8	{Que assunto}$05！？
+5bf8	{O }$05{assunto pelo qual}|{vou pegar a sala}|{reserva.}
+5c40	{Vou interrogar voce}|{agora como}|{oficial da}|{Inteligencia Militar.}$05|{Tudo bem}？
+5cb4	{Conto o que eu}|{puder.}
+5cd8	{De que base voces}|{quatro eram}？
+5d04	{Base Aerea Deean.}
+5d18	{Serio}？
+5d24	{E se eu mentir}？
+5d3c	{Ele nao mente, }$04{nao}|{estava em Rimian.}
+5d6c	{Nao havia presos}|{de Rimian no}|{presidio}？
+5db9	{Nao sei. Nao tinha}|{como falar com ninguem}|{das outras celas.}
+5dff	{Foi interrogado}|{la}？
+5e22	{Sim,}?!{o chefe das tropas}|{do golpe}…$06{esqueci}|{o nome.}?!{Esse cara, nao sei}|{por que, me perguntou}|{da Base Rimian.}?!{"Tinha algum}|{amigo em Rimian}？{"}$04|{"Ouviu algum}|{boato sobre Rimian}？{"}$05|{Perguntou esse tipo}|{de coisa.}
+5f43	{O que contou a ele}？
+5f60	{Nao conhecia ninguem}|{em Rimian, entao nao}|{tinha o que contar.}
+5faf	{Entendo}$04{. }$05{Espere aqui}|{ate te levarmos}|{ao QG.}
+5ff8	{Terminou, }$05@rora？
+6014	{Sim}$05{, nao era de Rimian.}|{Nao tem nada a}|{dizer.}
+6055	{Ei, }$05{esse aparelho}|{que voce procura}|{e tao importante}？?!{E so uma maquina pra}|{controlar reconhecimento}|{nao tripulado, ne}？
+60e5	{Um homem como voce}|{nunca entenderia}…
+6124	{Voce fica fria}|{sempre que se fala}|{desse aparelho}$04{.}
+6174	{Ah, e}…
+6180	{Guardei o que voce}|{ganhou na ultima luta.}|{E um Repair ALL. Toma.}
+61d0	{Parece que acabou de}|{voltar de um combate}|{real}…{Entao, usou o}|{prototipo da empresa}|{na batalha}？
+6243	{Todas as pecas}|{destruidas}！？{ Que}|{pena}…
+627b	{Tres pecas}|{destruidas}…{Seu premio}|{do teste de resistencia}|{e 250.}
+62cf	{Duas pecas destruidas}…_{Seu premio do}|{teste de resistencia e}|{250x2}＝{500.}
+6329	{Uma peca destruida}…_{Seu premio do}|{teste de resistencia e}|{250x3}＝{750.}
+6381	{Ho ho}…{nenhuma destruida.}|{Nada mal.}_{Entao, seu}|{pagamento pelo teste}|{de resistencia e}|{250x4=1000.}
+63fd	{Bom, }$05{isso e}|{algo. }$05{Quantos}|{inimigos conseguiu}|{destruir}？
+6459	{Segundo este relatorio}…$05|{O que}！？{ Zero}！！{ Nem}|{vale discutir.}|{Sem premio no teste}|{de ataque. Nao}|{precisamos mais}|{do prototipo. }$05{Adeus.}
+651f	{Segundo este relatorio}…$05|{Hum, poucos, mas}|{ainda servem como}|{dado de referencia.}|{O premio do teste}|{de poder de ataque e}|{100. Se precisar de}|{algo mais, venho}|{pedir de novo.}
+65fa	{Segundo este relatorio}…$05|{Hum, poucos, mas}|{ainda servem como}|{dado de referencia.}|{O premio do teste}|{de poder de ataque e}|{200. Se precisar de}|{algo mais, venho}|{pedir de novo.}
+66d5	{Segundo este relatorio}…$05|{Hum, poucos, mas}|{ainda servem como}|{dado de referencia.}|{O premio do teste}|{de poder de ataque e}|{300. Se precisar de}|{algo mais, venho}|{pedir de novo.}
+67b0	{Segundo este relatorio}…$05|{Hum, poucos, mas}|{ainda servem como}|{dado de referencia.}|{O premio do teste}|{de poder de ataque e}|{400. Se precisar de}|{algo mais, venho}|{pedir de novo.}
+688b	{Segundo este relatorio}…$05|{Ho, nada mal. O}|{premio do teste de}|{ataque e 500. Se}|{precisar de algo,}$05|{venho pedir de novo. }$05|{Ate mais.}
+6940	{Segundo este relatorio}…$05|{Ho, nada mal. O}|{premio do teste de}|{ataque e 600. Se}|{precisar de algo,}$05|{venho pedir de novo. }$05|{Ate mais.}
+69f5	{Segundo este relatorio}…$05|{Ho, nada mal. O}|{premio do teste de}|{ataque e 700. Se}|{precisar de algo,}$05|{venho pedir de novo. }$05|{Ate mais.}
+6aaa	{Segundo este relatorio}…$05|{Ho, nada mal. O}|{premio do teste de}|{ataque e 800. Se}|{precisar de algo,}$05|{venho pedir de novo. }$05|{Ate mais.}
+6b5f	{Segundo este relatorio}…$05|{Ho, nada mal. O}|{premio do teste de}|{ataque e 900. Se}|{precisar de algo,}$05|{venho pedir de novo. }$05|{Ate mais.}
+6c14	{Segundo este relatorio}…$05|{Uau}！{ Destruiu tantas}|{pecas inimigas}！{ Sao}|{dados excelentes.}|{O premio do teste}|{de poder de ataque e}|{1000. Se precisar}|{de algo,}$05{ venho}|{pedir de novo. Adeus.}
+6d0b	{Segundo este relatorio}…$05|{Uau}！{ Destruiu tantas}|{pecas inimigas}！{ Sao}|{dados excelentes.}|{O premio do teste}|{de poder de ataque e}|{1500. Se precisar}|{de algo,}$05{ venho}|{pedir de novo. Adeus.}
+6e02	{Segundo este relatorio}…$05|{Uau}！{ Destruiu tantas}|{pecas inimigas}！{ Sao}|{dados excelentes.}|{O premio do teste}|{de poder de ataque e}|{2000. Se precisar}|{de algo,}$05{ venho}|{pedir de novo. Adeus.}
+6ef9	{Segundo este relatorio}…$05|{Uau}！{ Destruiu tantas}|{pecas inimigas}！{ Sao}|{dados excelentes.}|{O premio do teste}|{de poder de ataque e}|{2500. Se precisar}|{de algo,}$05{ venho}|{pedir de novo. Adeus.}
+6ff0	{Segundo este relatorio}…$05|{Uau}！{ Destruiu tantas}|{pecas inimigas}！{ Sao}|{dados excelentes.}|{O premio do teste}|{de poder de ataque e}|{3000. Se precisar}|{de algo,}$05{ venho}|{pedir de novo. Adeus.}
+70e7	{Segundo este relatorio}…$05|{Uau}！{ Destruiu tantas}|{pecas inimigas}！{ Sao}|{dados excelentes.}|{O premio do teste}|{de poder de ataque e}|{3500. Se precisar}|{de algo,}$05{ venho}|{pedir de novo. Adeus.}
+71de	{Segundo este relatorio}…$05|{Uau}！{ Destruiu tantas}|{pecas inimigas}！{ Sao}|{dados excelentes.}|{O premio do teste}|{de poder de ataque e}|{4000. Se precisar}|{de algo,}$05{ venho}|{pedir de novo. Adeus.}
+7fe3	{Da pra encher o wanzer}|{de armas e itens}|{e deixar ele}|{poderoso, mas quanto}|{mais leve, mais}|{rapido.}
+8070	{Se for socar o}|{inimigo, va o mais leve}|{possivel. Senao}|{ele desvia.}
+80d4	{Destruindo inimigos}|{o bastante e ficando}|{famoso, talvez os}|{inimigos se rendam}|{so de voce chegar}|{perto. Queria ser}|{incrivel assim}|{um dia.}
+819c	{Almoxarife}：
+81b0	{Soldado OCU}：
+81c4	{Guarda}：
+81fc	{Fale c/ dono.}
+8247	{Fale c/ Bob Saudoso.}
+8284	{Fale c/ Eleane}|{Obstinada.}
+82a8	{Dono}：
+82b4	{Martin Solitario}：
+82c8	{Nick Saudoso}：
+82dc	{Bob Saudoso}：
+82f0	{Rozanna Festeira}：
+8309	{Eleane Obstinada}：
+8382	{Fale c/ Harry Cansado.}
+839e	{Fale c/ Butch Duro.}
+83d4	{Fale c/ Dorcy, fa}|{de lutadores.}
+8400	{Teddy Ansioso}：
+8410	{Carl Serio}：
+8423	{Harry Cansado}：
+8438	{Butch Duro}：
+844f	{Ann Fa}：
+8460	{Dorcy, fa de luta}：
+847c	{Isso fica entre nos.}?!{O sr. Labra, da Burg}|{Shomity, e querido}|{pelos alordeses.}?!{Por outro lado,}|{vive em atrito}|{com o governo}|{da O.C.U.}
+8534	{To ficando com sono}$07…$07…
+8554	{Esqueca a ideia de}|{cruzar a fronteira}|{pra fugir do pais.}?!{Muitos tentaram}|{e acabaram}|{mortos.}
+85dc	{Dizem que o campeao}|{da arena, }@cody{,}|{sumiu.}?!{Quem sera que vai}|{herdar o titulo}|{de campeao.}
+864d	{A revolucao nao tem}|{nada a ver comigo.}?!{Com uma boa bebida,}|{nao tenho do que}|{reclamar.}
+86b8	{Lutadores fortes sao}|{herois nesta}|{cidade.}?!{Talvez eu devesse}|{virar lutador.}
+8720	{Ai}…?!{Quando luto, parece}|{que lembro de}|{algo esquecido}|…?!{Ai}…
+877f	{Hum, }$06{por acaso voce}|{e }$07@cody{, }$07{o}|{campeao}？
+87c5	{Isso mesmo.}
+87d7	{Kyaa}…！$06|{Vi seu rosto}！
+881a	{Homem so vive de}|{verdade na luta. }$07{Homem}|{que esquece de lutar}|{e o pior.}
+8880	{Chefe Lupo}：
+889c	{Fale com o chefe}|{Lupo.}
+88c0	{Vejamos, o dano}|{das pecas}…$05？{ Entao}…
+88f8	{Braco esq.}…
+8908	{Braco dir.}…
+8924	{Corpo}…
+89c3	{Explicacao da arena}
+89e0	{Sala Reserva}
+89f6	{Sala Reserva}
+8a04	{A troca de armas e no}|{deposito subterraneo.}?!{E nao entrem na}|{recepcao sem}|{permissao. Nao quero}|{levar bronca.}
+8a9c	{Ue}？{ Pelo}|{relatorio, voce nao}|{equipou todas as pecas}|{do prototipo}？{ Nem}|{vale discutir}…|{Ai, parece que ela}|{nao era confiavel}|{mesmo}…{Quem leva}|{bronca dos chefes}|{sou eu}…
+8b98	{Da pra encher o wanzer}|{de armas e itens}|{e deixar ele}|{poderoso, mas quanto}|{mais leve, mais}|{rapido.}
+8c68	{Eu disse que esta}|{area e proibida. }+044C|{Fora}！

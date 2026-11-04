@@ -25,7 +25,7 @@ def layout(b):
     pages=[[0]]
     for t,v in tokens(b):
         if t=='nl': pages[-1].append(0)
-        elif t=='pg': pages.append([0])
+        elif t=='pg' or (t=='x' and v=='_'): pages.append([0])
         elif t=='t': pages[-1][-1]+=1
         elif t=='j': pages[-1][-1]+=2
         elif t=='nm': pages[-1][-1]+=8

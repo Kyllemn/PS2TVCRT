@@ -1,0 +1,381 @@
+8b4	^065{Comprar}？
+8d0	{Equipar este item}|{nos seus wanzers}？
+8fc	{Remover item.}
+910	^065{Vender}？
+924	　{Deseja fazer clock up}？
+ba0	{Pecas: comp/ven}
+bb4	{Computador: comp/ven}
+bd0	{Armas: comp/ven}
+be4	{Itens: comp/ven}
+bfc	#01{ fala.}
+c08	{Sair da loja}
+c98	{Pecas.}
+ca8	{Computadores.}
+cbc	{Armas.}
+cc8	{Itens.}
+12ec	{Braco E.}
+12f8	{Braco D.}
+1304	{Pernas.}
+1364	{Maos.}
+1374	{Ombros.}
+1384	{Mochilas.}
+146c	{Computadores.}
+1480	{Clock Up.}
+14d4	{Armas.}
+1510	{Itens.}
+42f4	{Dados da peca escolhida.}
+4314	{Dados da arma escolhida.}
+4334	{Dados do escudo.}
+4358	{Dados da mochila.}
+4380	{O HP (pontos de vida)}|{da peca.}_{Em combate, se o HP de}|{uma peca chega a 0, ela}|{e destruida e inutil.}
+43f8	{A potencia gerada}|{pelo corpo.}_{Pecas, armas e itens nao}|{podem ser usados se o}|{peso passar a potencia.}
+446c	{A blindagem da peca.}_{Valor alto significa}|{menos dano recebido}|{dos ataques.
+44d0	{O revestimento da peca.}_{Tipos de revestimento:}|{AntiFire: contra fogo,}|{AntiPierce: perfurante,}|{AntiShock: impacto,}|{e Normal: sem elemento.}|{Sao esses quatro tipos.}
+4598	{Movimento extra}|{das pernas.}_{Este valor e somado ao}|{movimento do wanzer}|{que usar estas pernas.}
+4614	{O peso da peca.}
+4634	{Custo de operacao}|{da peca.}_{Quando um wanzer sai}|{em missao, o custo do}|{corpo, bracos e pernas}|{e descontado do}|{seu dinheiro.}
+46e0	{Pecas com armas}|{embutidas.}_{Armas:}|{Metralhadoras,}|{Rifles,}|{Canhoes,}|{Bazucas,}|{Escopetas,}|{Lanca-chamas,}|{Lanca-foguetes,}|{Lanca-misseis,}|{e Soco.}|{Sao esses tipos.}
+47c0	{Tipo de arma.}_{Metralhadoras,}|{Rifles,}|{Escopetas,}|{Canhoes,}|{Bazucas,}|{Lanca-chamas,}|{Lanca-foguetes,}|{Lanca-misseis,}|{Lanca-granadas,}|{Soco,}|{Socos-ingleses,}|{e Bastoes.}|{Sao esses 12 tipos.
+48a0	{O dano da arma.}?!{Valor alto significa}|{mais dano causado}|{aos inimigos.}_{Socos-ingleses e Bastoes}|{somam seu valor ao Soco}|{do braco que estiver}|{com essas armas.}
+4970	{Numero de golpes que a}|{arma da em um ataque.}_{Mesmo se for mais de}|{um, so 1 bala}|{e gasta.
+49f0	{A precisao da arma.}_{Indica a chance de}|{o ataque acertar.
+4a44	{O alcance da arma.}_{Armas corpo a corpo e de}|{curta distancia atingem}|{so 1 quadrado.}_{Armas de longa distancia}|{tem alcance minimo e}|{maximo.}_{Por exemplo, se aparece}|{Alcance 4-5, a unidade}|{com esta arma so mira}|{inimigos que estejam a}|{4 ou 5 quadrados}|{de distancia.}
+4b80	{A municao da arma.}_{Gasta 1 bala cada}|{vez que e usada.}|{A arma nao pode ser usada}|{se a municao for 0.}_{Armas corpo a corpo como}|{Soco nao tem municao.}
+4c40	{Escudos reduzem o dano}|{causado pelos inimigos}|{durante o combate.}_{Ter um Escudo equipado}|{nao garante que ele}|{sera usado no combate.}_{Mas se o Escudo for}|{escolhido no combate,}|{o uso e garantido.}
+4d38	{A defesa do Escudo.}_{Indica quanto dano}|{ele pode absorver}|{em um golpe.}
+4da4	{O tamanho do Escudo.}_{Valor alto significa}|{mais defesas bem}|{sucedidas.
+4e0c	{A taxa de uso do escudo.}_{Valor alto significa}|{mais defesas automaticas.
+4e68	{Ha dois tipos de mochila.}|{Item: carrega}|{itens ou armas.}_{Turbo: aumenta a}|{potencia da maquina.}
+4ef0	{Mochilas que aumentam}|{a potencia.}_{Some este valor a}|{potencia do corpo.}
+4f50	{Numero de itens que}|{a mochila carrega.}
+4f90	{Ajuste do computador}|{corpo a corpo.}_{Quanto maior o valor,}|{melhor a precisao.}
+4fe8	{Ajuste do computador}|{a curta distancia.}_{Quanto maior o valor,}|{melhor a precisao.}
+5044	{Ajuste do computador}|{a longa distancia.}_{Quanto maior o valor,}|{melhor a precisao.}
+50a0	{O valor de skill.}_{Se este valor subir}|{na configuracao,}|{uma Skill de Computador}|{pode aparecer no slot.}
+5120	{Pontos totais do}|{computador.}_{So aumenta com}|{Clock Up, ate o}|{computador ficar}|{completo.
+5254	{Acerto contra wanzers.}
+5278	{Acerto contra}|{armas moveis.}
+529c	{Acerto contra blindados}|{como tanques.}
+52d0	{Acerto contra veiculos}|{leves: caminhao, jipe.}
+5304	{Acerto contra torres.}
+5320	{Acerto contra}|{pods de apoio.}
+5344	{Acerto contra {helicopteros.}
+5368	{Acerto contra}|{cacas a jato.}
+5390	{Lista de pecas da}|{loja.}_{Use }↑{ e }↓{ para}|{comprar pecas.}
+53f0	{Preco para comprar}|{1 peca.}
+5428	{Use }←{ e }→{ para}|{pedir pecas e depois}|{aperte }○{.}
+547c	{Lista de pecas que}|{podem ser vendidas.}_{Pecas equipadas nos}|{wanzers nao aparecem.}
+54dc	{Posicao das pecas.}
+54f8	{Valor recebido pela}|{venda de 1 peca.}
+5530	{Pecas no Estoque.}
+5554	{Use }←{ e }→{ para}|{vender pecas e depois}|{aperte }○{.}
+55a8	{Lista de armas da}|{loja.}_{Use }↑{ e }↓{ para}|{comprar armas.}
+5600	{Preco para comprar}|{1 arma.}
+5638	{Lista de armas que}|{podem ser vendidas.}_{Armas equipadas nos}|{wanzers nao}|{aparecem.
+5694	{Arma equipada.}
+56b0	{Valor recebido pela}|{venda de 1 arma.}
+56e4	{Armas no Estoque.}
+5704	{Lista de computadores}|{a venda aqui.}_{Use }↑{ e }↓{ para}|{comprar computadores.}
+5770	{Preco para comprar}|{1 computador.}
+57b0	{Computadores que podem}|{ser vendidos.}_{O computador equipado}|{nao aparece.       }
+581c	{Valor recebido pela}|{venda de 1 computador.}
+5858	{Numero de computadores}|{no Estoque.}
+5880	{Lista de itens que}|{podem ser comprados.}_{Use }←{ e }→{ para}|{comprar itens.}
+58e0	{Preco para comprar}|{1 item.}
+591c	{Itens que podem}|{ser vendidos.}?!{Itens equipados no wanzer}|{nao aparecem aqui.}
+5980	{Valor recebido pela}|{venda de 1 item.}
+59b8	{Itens no Estoque.}
+5a30	{A Skill de Computador}|{equipada no computador.}|
+5a6c	{Total a pagar}|{pelas pecas.}
+5a98	{Total a pagar}|{pelas armas.}
+5ac4	{Total a pagar}|{pelos computadores.}
+5af8	{Total a pagar}|{pelos itens.}
+5b28	{Total recebido}|{pela venda de pecas.}
+5b64	{Total recebido}|{pela venda de armas.}
+5b9c	{Total recebido pela}|{venda de computadores.}
+5bdc	{Total recebido}|{pela venda de itens.}
+5c80	{Dinheiro atual.}_{Nao da para comprar}|{com valor 0.}
+5cc8	{Dinheiro atual.}_{Nao da para comprar}|{com valor 0.}
+5d18	{Dinheiro atual.}_{Nao da para comprar}|{com valor 0.}
+5df4	{Preco para subir o}|{computador em}|{1 nivel.}
+5e48	{Computadores que possui.}
+5e70	{Use }←{ e }→{ para}|{pedir clock ups e}|{aperte }○{.}
+5ecc	{Total a pagar}|{pelo Clock Up.
+5ef4	{Dinheiro atual.}_{Nao da para fazer Clock}|{Up com valor 0.}
+5f70	{Vit:}
+5f80	{Emp:}
+5f90	{Der:}
+5f9c	{Pct:}
+603c	{ERRO}！{ SENHA ERRADA}！_{Digitar de novo}？
+6078	{Digite uma senha.}
+60a0	{Use }←{ e }→{ para}|{dar clock up.}
+60d8	{Fim do Clock Up.}
+60ec	{Digite o codinome da}|{pessoa para ver dados.}
+6120	{ERRO}！{ CODINOME ERRADO}！　_{Digitar de novo}？
+6160	{Checando acesso.}|{Digite o codigo.}
+61f4	{Escolha uma secao}|{de noticias.}
+6238	{Digite um endereco.}
+6258	{L1}／{R1: trocar forum.}|{Checar senha.
+6284	{L1}／{R1: trocar data.
+629c	{Codigo incorreto.}|{Desconectando}…
+6348	{Rede.}
+6384	{Forcas da OCU.}
+639c	{Forcas de Alordesh.}
+63c0	{Transportes Burg.}
+63e0	{GPS "Early Bird".}
+6410	{Dados da Arena.}
+6804	{Dados fisicos.}
+6820	{Historia}
+682c	{Voltar ao codinome.}
+6868	{Mundo.}
+6880	{Noticias do golpe}|{em Alordesh.}
+68b8	{Economia.}
+68d4	{Industria.}
+68ec	{Outras.}
+6934	{Ler noticia}
+694c	{Voltar ao relato.}
+6978	{Dados maquina}
+698c	{Dados de armas wanzer.}
+69ec	{Ver dados do GPS.}
+6b88	{Mythos B e Schakal B.}|{Mandar ao Estoque}？
+6d9c	{Conectar na rede.}
+6dbc	{Ver guia da rede.}
+6dd8	{Sair.}
+6e2c	{Armas.}
+6e40	{Dados.}
+6e60	{Sobre a Intergehen.}
+6e80	{Sobre a Ilha Huffman.}
+6ea0	{Sobre a Sakata Ind.}
+6ed0	{Sobre Dark Geese.}
+6f40	{Sobre o exercito.}
+6f60	{Mapas.}
+6f9c	{Dados da Burg.}
+6fbc	{Loja Online.}
+73b8	{Dados de wanzers.}
+73dc	{Dados de lutadores.}
+73fc	{Dados secretos.}
+7440	{DNC News.}
+7458	{Hist. Alordesh.}
+7474	{Arquivos}
+74a8	{Produtos.}
+74bc	{Informacao secreta.}
+74e4	{Dados secretos.}
+7530	{Pesquisa.}
+76d0	{Bens secretos}
+77b0	{Clientes}
+c61c	%{Para carregar outro}|{arquivo, coloque um}|{memory card no slot }#02{.}_{Deseja continuar}？|*　{SIM}|　{NAO}
+c6e0	{Dados time:}
+c6f0	#02Ｐ{Dado solo:}
+c704	#02Ｐ{Dados time:}
+c718	{Slot }#02: #02Ｐ{ Save}
+c7a0	{Jogador 1: quantos}？
+c7c0	{Jogador 2: quantos}？
+c7e0	{Escolha um mapa.}
+c818	{Time:}
+c824	{Processando dados}|{da unidade. Aguarde}…
+c85c	{Premio:}
+c86c	{Abat:}
+c878	{Perd:}
+c88c	{Slot 1: escolha o save}|{a sobrescrever.}
+c8bc	{Slot 2: escolha o save}|{a sobrescrever.}
+c8ec	{Fim inscr.}
+c8fc	{O jogador venceu.}
+c914	{O jogador perdeu.}
+c92c	{A luta deu empate.}
+c96c	{Result.:}
+c980	{Item ganho}
+c9ec	{Jogador 2 venceu.}
+ca28	{Premio}
+ca34	{Bonus abate}
+ca44	{Bonus excelente}
+ca68	{Bonus handicap.}
+cab0	{Escolha um piloto.}
+cad0	{Escolha um rival.}
+caf0	{Quantos inscritos}？
+cb10	{Escolha pilotos p/ luta.}
+cb38	{Escolha o lider.}
+cb54	{Escolha a equipe rival.}
+cb78	{Jogador 1: pilotos.}
+cba0	{Jogador 2: pilotos.}
+cbc8	{Hein, alguem vai}|{desistir}…
+cbec	{Que coisa ridicula}
+cc04	{Foi razoavel.}
+cc2c	{Como pensei,}|{sao tolos.
+cc4c	{Que lugar bom.}
+cc64	{Que frieza.}
+cc74	{Vamos guardar o jogo.}
+cca4	{Foi ok.}
+ccb8	{E bonito continuar}|{tentando}…
+cce8	{M-m-mas que diabos}…
+cd00	{Que presenca}|{boa}…
+cd20	{Ugh}…|{Podia ter sido}|{melhor}…
+cd4c	{Oohh, oooohhhh}…|{(desmaiando)}
+d5d4	{1 inscr.}
+d5e8	{2 inscr.}
+d5fc	{3 inscr.}
+d610	{4 inscr.}
+d624	{5 inscr.}
+d638	{6 inscr.}
+d64c	{7 inscr.}
+d660	{8 inscr.}
+d674	{9 inscr.}
+d68c	{10 inscr.}
+d6a8	{11 inscr.}
+d6c4	{12 inscr.}
+d73c	{Tipo A}
+d750	{Tipo B}
+d764	{Tipo C}
+d82c	{Estrada Dhaka}
+d8b8	{Metro}
+d8cc	{Fabrica}
+d900	{Fabrica Intergehen}
+dbac	{Fase Original A}
+dbd0	{Fase Original B}
+dbf4	{Fase Original C}
+dc18	{Fase Original D}
+de24	{Estes membros, ok}？
+de44	{Salvar resultados}|{no slot }#02？
+de70	{Lista de membros cheia.}|{Sobrescrever}？
+dea0	{Deseja sobrescrever}？
+dfc0	{Ir a luta.}
+dfd0	{Falar}
+dfd8	{Ajustes.}
+e070	{Ver dados.}
+e088	{Trocar jogador}
+e294	{Escolha o tipo de luta.}
+e2bc	{Ranking.}
+e2d8	{Jogador1}
+e2f0	{Jogador2}
+e308	{Esc. piloto.}
+e3e4	{Jogador 1: ajustes.}
+e400	{Jogador 2: ajustes.}
+e448	{Dados jog. 1}
+e45c	{Dados jog. 2}
+e4a4	{Jogador 2: trocar nome.}
+e4c8	{Jogador 1: salvar no}|{slot 1.}
+e4f4	{Jogador 2: salvar no}|{slot 2.}
+e588	{Recordes solo.}
+e59c	{Recordes equipe.}
+e5e0	{Jogador 1: piloto.}
+e600	{Jogador 2: piloto.}
+e650	{Trocar jog. 1.}
+e664	{Trocar jog. 2.}
+153b4	{Faca uma oferta.}
+153d4	↑↓←→{: Mudar}
+153e8	{Oferta}＝
+15424	%{Equipes, ok}？|*　ＳＩＭ|　ＮＡＯ
+15450	{Levar iscas.}
+15464	{Atacar os portoes.}
+15484	{Pegar FENRIR e Gwianda.}
+154a8	{Jogador }#02{ nao}|{registrou um nome.}
+154e0	{Jogador }#02{ nao}|{registrou um nome.}
+1551c	{Dinheiro insuficiente}
+15538	{Use }←{ e }→{ para}|{comprar itens.}
+1556c	{Nada mais a comprar.}
+1558c	{Use }←{ e }→{ para}|{vender itens.}
+155c0	{Nao pode vender mais.}
+155dc	{Nada para vender.}
+155f8	{Sem mochila equipada.}|{Nao pode equipar itens.}
+15638	{Esta mochila nao}|{leva itens.}
+1566c	{Nao ha computadores}|{para clock up.}
+156a0	{Use }←{ e }→{ se}|{quiser dar clock up.}
+156dc	{Nao pode escolher mais}
+156f8	{Nao da mais clock up.}
+1571c	{ERRO}！{ SENHA ERRADA}！
+1573c	{ERRO}！{ CODINOME ERRADO}！
+1575c	{Estes dados nao existem}！
+15780	{Nao pode trocar o lider}
+157a4	{Nao pode registrar sem}|{nome. Digite um nome.}
+157e4	{Ir a loja.}
+157f4	{Ir ao bar}
+15800	{Ajustar seus wanzers.}
+15820	{Carregar/salvar}
+15838	{Sair.}
+15844	{Falar.}
+15850	{Participar.}
+15860	{Usar a rede.}
+158c0	{Carregar dados.}
+158dc	{Salvar dados.}
+23108	{Digite um nome.}|{START: confirma.}
+23134	{Digite um codinome.}|{START: confirma.}
+24c8c	{Fim.}
+25288	{Itens: agora}／{Max}＝
+252cc	{Escolha uma unidade.}
+252f0	{Escolha uma arma.}
+28fa4	↑↓←→{: girar camera           }|{R1}／{L1: zoom          }_○{: resetar camera  }{    }|×{: sair do modo visao}
+29024	{Nao pode equipar armas}|{em bracos-arma.}
+29058	{Pesada demais}！|{Nao cabe mais pecas.}
+29088	{Nada equipado.}
+290a8	{Unidade pesada demais}！|{Nao pode trocar pecas.}
+290e4	{Nao pode registrar sem}|{nome. Digite um nome.}
+29120	{Sem mochila equipada.}|{Nao pode equipar itens.}
+29160	{Esta mochila nao}|{leva itens.}
+29194	{Nao pode comprar.}
+291b0	{Dinheiro insuficiente}
+291cc	{Nao da mais clock up.}
+29298	{Nao pode trocar membros}
+292c0	{Remover item equipado.}
+292e0	{Camufl.:}
+292ec	{Escolha a unidade.}
+29308	{Digite um novo nome.}
+29354	{Jogar fora o item.}|{Certeza}？
+2d620	{Nada para vender.}
+2d65c	{Comprar}？
+2d674	{Ver dados.}
+2d68c	{Wanzer.}
+2d6d0	^065{Comprar}？
+2d6f4	{Nao cabe mais itens.}|{Mandar um ao Estoque}？
+2d740	　{Deseja fazer clock up}？
+2f024	{Tirar skill.}
+2f038	○{: escolher skill}
+2ffe0	{Ajustar wanzer.}
+30004	{Ajustar piloto.}
+30020	{Sair ajustes.}
+30080	{Dar item a outro.}
+300a0	{Descartar}
+300f4	{Ajustar unid.}
+30118	{Voltar.}
+30134	{Ver dados unid.}
+3014c	{Compra}
+3018c	{Ver dados da arma.}
+301a4	{Ver dados do computador.}
+301cc	{Modo visao}
+301dc	{Sair menu.}
+30220	{Historico.}
+30234	{Modo visao.}
+30248	{Sair menu.}
+30908	{Armas.}
+30914	{Pecas.}
+30924	{Itens.}
+30934	{Computador.}
+30954	{Pintar}／{Nome}
+309d8	{Armas.}
+309e4	{Pecas.}
+309f4	{Itens.}
+30a04	{Computadores.}
+30a20	{Kits completos}
+30f6c	{Mao E.}
+30f78	{Mao D.}
+30f84	{Ombro E.}
+30f90	{Ombro D.}
+30f9c	{Mochila.}
+31010	{Corpo.}
+31024	{Braco E.}
+31030	{Braco D.}
+3103c	{Pernas.}
+310a4	{Por computador}
+310c0	{Programar comp.}
+3110c	{Camufl.}
+31118	{Novo nome}
+31680	{Arma mao E.}
+31694	{Arma mao D.}
+316a8	{Arma ombro E.}
+316bc	{Arma ombro D.}
+316d0	{Mochila.}
+31744	{Corpo.}
+31758	{Braco E.}
+31764	{Braco D.}
+31770	{Pernas.}
+317d0	{Mudar comput.}
+3537c	{Sair do forum.}
+35390	{L1}／{R1: trocar piloto}

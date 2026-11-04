@@ -1,12 +1,15 @@
 """uso: dump.py I|Z sub  -> off<TAB>room<TAB>ptr?<TAB>EN"""
 import sys,struct;sys.path.insert(0,'/root/fm2')
 from zdata import *; import zstrings, fm2lz
+FLAT={'P':'Z_ZPROG.BIN','X':'SLPM_873.31','V':'I_IOVERLAY.BIN','O':'OPROG.BIN'}
 def load(c):
-    n={'I':'I_IDATA.BIN','Z':'Z_ZDATA.BIN'}[c]
+    n={'I':'I_IDATA.BIN','Z':'Z_ZDATA.BIN','K':'K_KDATA.BIN'}.get(c) or FLAT[c]
     return open('/root/fm2/jp/'+n,'rb').read(), open('/root/fm2/en/'+n,'rb').read()
 def strings(c,i):
-    J,E=load(c); a=sub(J,i); b=sub(E,i)
-    if struct.unpack('<I',b[4:8])[0]==len(b) and len(b)>8:
+    J,E=load(c)
+    if c in FLAT: a,b=J,E
+    else: a=sub(J,i); b=sub(E,i)
+    if c not in FLAT and struct.unpack('<I',b[4:8])[0]==len(b) and len(b)>8:
         b=fm2lz.decompress(b)[0]
         if struct.unpack('<I',a[4:8])[0]==len(a): a=fm2lz.decompress(a)[0]
     rs=zstrings.analyze(a,b)

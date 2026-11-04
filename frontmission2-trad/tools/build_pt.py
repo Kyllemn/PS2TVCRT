@@ -7,7 +7,7 @@ def width_ok(en,pt,jp=b''):
     if jp: ml=max(ml,max(len(p) for p in fm2text.layout(jp)))
     return max(max(p) for p in lp)<=max(mw,24) and max(len(p) for p in lp)<=ml, (mw,ml)
 def collect(strict=True):
-    tr={'I':{},'Z':{}}; erros=[]
+    tr={'I':{},'Z':{},'K':{},'P':{},'X':{},'V':{},'O':{}}; erros=[]
     for f in sorted(glob.glob('/root/fm2/pt/*.tsv')):
         c,i=os.path.basename(f)[:-4].split('_'); i=int(i)
         info={r['off']:r for r in dump.strings(c,i)}
@@ -36,6 +36,14 @@ if __name__=='__main__':
     if tr['I']:
         J=open('/root/fm2/jp/I_IDATA.BIN','rb').read(); E=open('/root/fm2/en/I_IDATA.BIN','rb').read()
         files['I/IDATA.BIN']=inplace.apply(J,E,tr['I'])
+    if tr['K']:
+        J=open('/root/fm2/jp/K_KDATA.BIN','rb').read(); E=open('/root/fm2/en/K_KDATA.BIN','rb').read()
+        files['K/KDATA.BIN']=inplace.apply(J,E,tr['K'])
+    DISC={'P':'Z/ZPROG.BIN','X':'SLPM_873.31','V':'I/IOVERLAY.BIN','O':'OPROG.BIN'}
+    for c,n in dump.FLAT.items():
+        if tr[c]:
+            J=open('/root/fm2/jp/'+n,'rb').read(); E=open('/root/fm2/en/'+n,'rb').read()
+            files[DISC[c]]=inplace.apply_flat(J,E,tr[c])
     if tr['Z']:
         J=open('/root/fm2/jp/Z_ZDATA.BIN','rb').read(); E=open('/root/fm2/en/Z_ZDATA.BIN','rb').read()
         files['Z/ZDATA.BIN']=zbuild.build(J,E,tr['Z'])

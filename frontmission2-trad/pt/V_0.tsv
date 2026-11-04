@@ -1,0 +1,81 @@
+bf40	{Nomes das pecas}|{equipadas na unidade.}
+bf74	{Tipo de blindagem}|{de cada peca.}
+bfa0	{Defesa das}|{pecas equipadas.}
+bfcc	{HP atual de cada peca}|／{HP maximo.          }{ }
+c008	{Avaliacao geral de}|{combate da unidade.}
+c03c	{Movimento da unidade.}
+c068	{Mobilidade da unidade.}
+c094	{Poder corpo a corpo.}
+c0b4	{Poder a curta dist.}
+c0dc	{Poder a longa dist.}
+c278	{Codinome do piloto}|{que usa a maquina.}
+c2c0	{Nome da maquina.}
+c2e0	{Total de }★{ do piloto.}|{Cada um da uma nova}|{Habilidade de Honra.}
+c340	{Pontos de Honra}|{atuais do piloto.}
+c384	{Pontos de Acao atuais}|／{maximo de Pontos}|{de Acao do piloto.}
+c3e0	{Nivel total do piloto}|{em tudo.}
+c40c	{Nivel atual do piloto}|{em Fight.}
+c434	{Nivel atual do piloto}|{em Short.}
+c460	{Nivel atual do piloto}|{em Long.}
+c498	{Mostra EXP atual}／{falta}|{p/ subir nivel em Fight.}
+c4e4	{Mostra EXP atual}／{falta}|{p/ subir nivel em Short.}
+c52c	{Mostra EXP atual}／{falta}|{p/ subir nivel em Long.}
+c574	{Talentos do piloto.}|{Estes valores nao mudam}|{durante o jogo.}
+c5d4	{Talento de pilotagem.}?!{Ajuda no corpo a corpo}|{e na curta distancia.}
+c628	{Talento de mira.}|{Ajuda na curta e na}|{longa distancia.}
+c680	{Talento mecanico.}|{Ajuda principalmente}|{na longa distancia.}
+c6d4	{Forca de vontade.}|{Ajuda mais no}|{corpo a corpo.}
+c710	{Habilidades equipadas.}|{Aqui se equipam as}|{Habilidades de Batalha}|{e de Honra.}
+c774	{Nomes das armas}|{equipadas.}
+c7a4	{Tipo de ataque}|{da arma.}
+c7d4	{Tipo de arma usada.}?!
+c7f4	{Dano da arma}|×{numero de tiros}|{por ataque.}
+c830	{Precisao da arma.}?!
+c858	{Alcance da arma.}　
+c880	{Municao da arma:}|{atual}／{maxima.}
+c8b4	{Mochila equipada}|{na unidade.}
+c8ec	{Itens equipados na}|{unidade: atual}／{max.}
+c928	{Nomes dos itens}|{equipados na unidade.}
+c968	{Peso do item.}
+c990	{Dados unid}
+c9a0	{Dados piloto}
+c9b0	{Armas.}
+c9bc	{Itens.}
+cab0	{Ver area de movim.}
+cac8	{Mover.}
+cae0	{Nao move.}
+caf8	{Atacar.}
+cb14	{Nao ataca.}
+cb24	{Usar itens.}
+cb44	{Nao usa itens.}
+cb64	{Ver estado unidade.}
+cb80	{Voltar.}
+cb90	{Fim de turno.}
+ccec	{Controle manual.}
+cd08	{Controle semiauto.}
+cd24	{Ajuda ligada.}
+cd38	{Ajuda desligada.}
+cd4c	{Batalha: sim}
+cd60	{Batalha: nao}
+ce1c	{Controles.}
+ce2c	{Ajuda na tela}
+ce40	{Luta rapida.}
+ce8c	{Opcoes.}
+ce98	{Salvar.}
+cec8	{Desistir}
+cedc	{Ir p/ titulo}
+cef8	{Fim fase.}
+1f778	{Evita}
+23d0c	{Usar itens.}
+23d1c	{Largar itens.}
+23d30	{Dar itens.}
+23d40	{Equipar itens.}
+29264	{Ha uma unidade aqui.}
+2927c	{Nao pode.}
+2928c	{Fora area.}
+2929c	{Sem efeito.}
+292b0	{Muni errada}
+292c0	{Sem lugar p/ item.}
+292d8	{Longe.}
+3c2b0	{Digite um nome.}|{START: confirma.}
+3c2dc	{Digite um codinome.}|{START: confirma.}
