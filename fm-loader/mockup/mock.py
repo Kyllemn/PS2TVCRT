@@ -41,7 +41,7 @@ CAPAS={}
 def tela(sel):
     c=bg().convert('RGBA'); d=ImageDraw.Draw(c)
     nomes=['FRONT MISSION 1ST','FRONT MISSION 2']
-    capas=['47.png','46.png']; discos=['45.jpg','42.jpg']
+    capas=['43.jpg','44.jpg']; discos=['45.jpg','42.jpg']
     # titulo
     t=nomes[sel]; tw=d.textlength(t,font=F)
     d.text(((W-tw)/2+2,52),t,font=F,fill=(0,0,0,200)); d.text(((W-tw)/2,50),t,font=F,fill=(235,240,245,255))
