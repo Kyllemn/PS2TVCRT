@@ -33,3 +33,11 @@
 1b60	{Lila}：
 12f8	{Voltar a cidade.}
 131c	{Estacao do metro}
+115c	{Daqui nao passo.}?!{O resto e com voces.}
+119c	{Certo, entao.}
+11ac	{Todos, }$06{voltem bem.}
+11d0	%{Certo, }$06{hora de}|{sair do abrigo.}|*　ＮＯ|　ＹＥＳ
+1210	{Melhor sair na frente}|{antes que o Exercito}|{Revolucion. note.}
+1258	{Cuidado la fora}…
+1280	{Ei, qual e, }$06{nao}|{precisa se}|{preocupar. Volto}|{num instante.}
+12e0	{Eu agradeco.}
