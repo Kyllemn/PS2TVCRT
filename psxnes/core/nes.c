@@ -1,7 +1,12 @@
 #include <string.h>
 #include "nes.h"
+#include "apu.h"
+static uint8_t irq_map;
+static inline void irq_update(void) { cpu.irq = irq_map | apu_irq; }
 
 Ppu ppu;
+uint32_t ppu_rstate;   /* muda quando ctrl/mask/rolagem/bancos/espelhamento mudam */
+uint8_t ppu_vram_dirty; /* nametable, paleta ou CHR escritas */
 Cart cart;
 uint8_t nes_ram[0x800];
 uint8_t nes_screen[240][256];
@@ -19,9 +24,11 @@ static void map_prg8(int slot, int bank) {               /* slot 0..3 = $8000,$A
 }
 static void map_chr1(int slot, int bank) {
 	int n = cart.chr_size / 0x400;
+	ppu_rstate++;
 	ppu.chrmap[slot] = cart.chr + (bank % n) * 0x400;
 }
 static void set_mirror(int vertical) {
+	ppu_rstate++;
 	if (cart.four_screen) { for (int i = 0; i < 4; i++) ppu.ntmap[i] = ppu.nt + i * 0x400; return; }
 	if (vertical) { ppu.ntmap[0] = ppu.ntmap[2] = ppu.nt; ppu.ntmap[1] = ppu.ntmap[3] = ppu.nt + 0x400; }
 	else { ppu.ntmap[0] = ppu.ntmap[1] = ppu.nt; ppu.ntmap[2] = ppu.ntmap[3] = ppu.nt + 0x400; }
@@ -43,14 +50,14 @@ static void mmc3_write(uint16_t a, uint8_t v) {
 	case 0xa001: break;
 	case 0xc000: cart.irq_latch = v; break;
 	case 0xc001: cart.irq_counter = 0; cart.irq_reload = 1; break;
-	case 0xe000: cart.irq_enable = 0; cpu.irq = 0; break;
+	case 0xe000: cart.irq_enable = 0; irq_map = 0; irq_update(); break;
 	case 0xe001: cart.irq_enable = 1; break;
 	}
 }
 static void mmc3_scanline(void) {
 	if (cart.irq_counter == 0 || cart.irq_reload) { cart.irq_counter = cart.irq_latch; cart.irq_reload = 0; }
 	else cart.irq_counter--;
-	if (cart.irq_counter == 0 && cart.irq_enable) cpu.irq = 1;
+	if (cart.irq_counter == 0 && cart.irq_enable) { irq_map = 1; irq_update(); }
 }
 
 /* ---------------- PPU: memoria ---------------- */
@@ -63,10 +70,10 @@ static inline uint8_t ppu_peek(uint16_t a) {
 }
 static inline void ppu_poke(uint16_t a, uint8_t v) {
 	a &= 0x3fff;
-	if (a < 0x2000) { if (cart.chr_ram) { uint8_t *p = ppu.chrmap[a >> 10]; p[a & 0x3ff] = v; chr_dirty |= 1 << ((p - cart.chr) >> 10); } return; }
-	if (a < 0x3f00) { ppu.ntmap[(a >> 10) & 3][a & 0x3ff] = v; return; }
+	if (a < 0x2000) { if (cart.chr_ram) { uint8_t *p = ppu.chrmap[a >> 10]; p[a & 0x3ff] = v; chr_dirty |= 1 << ((p - cart.chr) >> 10); ppu_vram_dirty = 1; } return; }
+	if (a < 0x3f00) { uint8_t *q = &ppu.ntmap[(a >> 10) & 3][a & 0x3ff]; if (*q != v) { *q = v; ppu_vram_dirty = 1; } return; }
 	a &= 0x1f; if ((a & 0x13) == 0x10) a &= 0x0f;
-	ppu.pal[a] = v & 0x3f;
+	if (ppu.pal[a] != (v & 0x3f)) { ppu.pal[a] = v & 0x3f; ppu_vram_dirty = 1; }
 }
 
 /* ---------------- barramento da CPU ---------------- */
@@ -85,12 +92,13 @@ uint8_t bus_read(uint16_t a) {
 	}
 	if (a == 0x4016) { uint8_t r = pad_strobe ? (pad_state & 1) : (pad_shift & 1); if (!pad_strobe) pad_shift = (pad_shift >> 1) | 0x80; return 0x40 | r; }
 	if (a == 0x4017) return 0x40;
-	if (a == 0x4015) return 0;
+	if (a == 0x4015) { uint8_t r = apu_read_status(); irq_update(); return r; }
 	return a >> 8;
 }
 void bus_write(uint16_t a, uint8_t v) {
 	if (a < 0x4000) {
 		ppu.openbus = v;
+		if ((a & 7) <= 1 || (a & 7) == 5 || (a & 7) == 6) ppu_rstate++;
 		switch (a & 7) {
 		case 0:
 			if ((v & 0x80) && !(ppu.ctrl & 0x80) && (ppu.status & 0x80)) cpu.nmi = 1;
@@ -115,7 +123,8 @@ void bus_write(uint16_t a, uint8_t v) {
 		cpu.cycles += 513 + (cpu.cycles & 1); return;
 	}
 	if (a == 0x4016) { pad_strobe = v & 1; if (pad_strobe) pad_shift = pad_state; else pad_shift = pad_state; return; }
-	if (a < 0x4020) return;                              /* APU: depois */
+	if (a < 0x4018) { apu_write(a, v); irq_update(); return; }
+	if (a < 0x4020) return;
 	if (a < 0x8000) return;
 	if (cart.mapper == 4) mmc3_write(a, v);
 }
@@ -215,7 +224,14 @@ static void inc_y(void) {
 
 /* ---------------- frame ---------------- */
 static int32_t dot_acc;   /* ciclos de PPU acumulados (3 por ciclo de CPU) */
-static void run_dots(int dots) { dot_acc += dots; cpu_run(dot_acc / 3); }
+#ifdef NES_PROF
+#include <hwregs_c.h>
+volatile uint32_t prof_cpu, prof_apu, prof_line;
+#define PT() TIMER_VALUE(2)
+static void run_dots(int dots) { uint16_t a = PT(); dot_acc += dots; cpu_run(dot_acc / 3); uint16_t b = PT(); apu_run(cpu.cycles); irq_update(); prof_cpu += (uint16_t)(b - a); prof_apu += (uint16_t)(PT() - b); }
+#else
+static void run_dots(int dots) { dot_acc += dots; cpu_run(dot_acc / 3); apu_run(cpu.cycles); irq_update(); }
+#endif
 
 void nes_frame(void) {
 	for (int y = 0; y < 262; y++) {
@@ -224,7 +240,11 @@ void nes_frame(void) {
 			if (rendering()) { ppu.v = (ppu.v & ~0x41f) | (ppu.t & 0x41f); }
 #ifdef NES_GPU
 			if (y == 0) sprite0_approx();
+#ifdef NES_PROF
+			{ uint16_t a = PT(); gpu_line(y); prof_line += (uint16_t)(PT() - a); }
+#else
 			gpu_line(y);
+#endif
 #else
 			if (rendering()) render_line(y); else memset(nes_screen[y], ppu.pal[0], 256);
 #endif
@@ -278,4 +298,4 @@ int nes_load(uint8_t *rom, uint32_t size) {
 	ppu.sprite0_line = 255;
 	return 0;
 }
-void nes_reset(void) { dot_acc = 0; cpu.cycles = 0; cpu_reset(); dot_acc = cpu.cycles * 3; }
+void nes_reset(void) { apu_reset(); irq_map = 0; dot_acc = 0; cpu.cycles = 0; cpu_reset(); dot_acc = cpu.cycles * 3; }

@@ -34,7 +34,9 @@ extern Cart cart;
 extern uint8_t nes_ram[0x800];
 extern uint8_t nes_screen[240][256];   /* indices de cor 0..63 */
 extern uint8_t pad_state;               /* botoes: A B Sel Start Cima Baixo Esq Dir (bit0 = A) */
-extern int chr_dirty;                   /* o jogo escreveu na CHR-RAM */
+extern int chr_dirty;
+extern uint32_t ppu_rstate;
+extern uint8_t ppu_vram_dirty;                   /* o jogo escreveu na CHR-RAM */
 
 int nes_load(uint8_t *rom, uint32_t size);
 void nes_reset(void);

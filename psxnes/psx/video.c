@@ -8,6 +8,8 @@
 #include <string.h>
 #include <psxgpu.h>
 #include "../core/nes.h"
+#include <hwregs_c.h>
+volatile uint32_t prof_gpu;
 
 #define CHR_X 320
 #define CLUT_Y 480
@@ -20,9 +22,13 @@ typedef struct {
 	uint8_t nt[4];                /* qual KB de nametable em cada quadrante */
 } Seg;
 
-static Seg segs[240];
-static int nseg;
+static Seg segs[240], last_segs[240];
+static int nseg, last_nseg = -1;
 static uint16_t pred_v;
+static uint32_t seg_rstate;
+static uint8_t last_oam[256];
+static int frame_same;
+static uint8_t last_mask = 0xff, last_ctrl = 0xff;
 
 /* buffers de primitivas (duplo) */
 #define PRIMBUF 65536
@@ -70,6 +76,9 @@ static inline uint8_t nt_of(int q) { return (uint8_t)((ppu.ntmap[q] - ppu.nt) >>
 void gpu_line(int y) {
 	int on = ppu.mask & 0x18;
 	Seg *s = nseg ? &segs[nseg - 1] : 0;
+	/* caminho rapido: nada mudou desde a linha anterior e a rolagem seguiu o curso normal */
+	if (s && on && ppu_rstate == seg_rstate && ppu.v == pred_v) { s->y1 = y + 1; goto predict; }
+	seg_rstate = ppu_rstate;
 	if (s && on && s->ctrl == ppu.ctrl && s->mask == ppu.mask && s->x == ppu.x && ppu.v == pred_v) {
 		int same = 1;
 		for (int i = 0; i < 8 && same; i++) same = s->bank[i] == bank_of(i);
@@ -218,9 +227,22 @@ static void draw_segment(const Seg *s) {
 
 void video_set_skip(int skip) { skip_draw = skip; }
 
+static void gpu_frame_build(void);
 void gpu_frame_end(void) {
+	uint16_t t0 = TIMER_VALUE(2);
+	/* tela identica a anterior? (mesmos segmentos, sprites, nametables, paleta e CHR) */
+	frame_same = !ppu_vram_dirty && !chr_dirty && nseg == last_nseg &&
+	             !memcmp(segs, last_segs, nseg * sizeof(Seg)) && !memcmp(ppu.oam, last_oam, 256) &&
+	             ppu.mask == last_mask && ppu.ctrl == last_ctrl;
+	if (frame_same) { nseg = 0; prof_gpu += (uint16_t)(TIMER_VALUE(2) - t0); return; }
+	memcpy(last_segs, segs, nseg * sizeof(Seg)); last_nseg = nseg; memcpy(last_oam, ppu.oam, 256);
+	last_mask = ppu.mask; last_ctrl = ppu.ctrl; ppu_vram_dirty = 0;
+	gpu_frame_build();
+	prof_gpu += (uint16_t)(TIMER_VALUE(2) - t0);
+}
+static void gpu_frame_build(void) {
 	Seg *segs_end = segs + nseg;
-	if (skip_draw) { nseg = 0; return; }
+	if (skip_draw) { nseg = 0; last_nseg = -1; return; }
 	upload_chr();
 	upload_pal();
 	nextp = primbuf[db]; np = 0;
@@ -243,7 +265,7 @@ void gpu_frame_end(void) {
 
 void video_present(void) {
 	DrawSync(0);
-	if (!skip_draw) {
+	if (!skip_draw && !frame_same) {
 		PutDispEnv(&disp[db ? 0 : 1]);
 		DrawOTag(ot[db]);
 		db ^= 1;

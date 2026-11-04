@@ -18,6 +18,8 @@ int main(int argc, char **argv) {
 	FILE *log = fopen(argv[2], "r"); char line[256];
 	memset(&cpu, 0, sizeof cpu);
 	cpu.pc = 0xc000; cpu.s = 0xfd; cpu_setp(0x24); cpu.cycles = 7;
+	for (int i = 0; i < 4; i++) cpu.rmap[i] = cpu.wmap[i] = ram - i * 0x800;
+	for (int i = 16; i < 32; i++) cpu.rmap[i] = prg - 0x8000;
 	int n = 0;
 	while (fgets(line, sizeof line, log)) {
 		unsigned pc, a, x, y, p, sp; long cyc;

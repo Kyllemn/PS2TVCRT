@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
 project(psxnes LANGUAGES C ASM)
-psn00bsdk_add_executable(psxnes GPREL psx/main.c psx/video.c core/nes.c core/cpu.c)
+psn00bsdk_add_executable(psxnes GPREL psx/main.c psx/video.c psx/sound.c psx/save.c core/nes.c core/cpu.c core/apu.c)
 target_compile_definitions(psxnes PRIVATE NES_GPU)
 target_compile_options(psxnes PRIVATE -O2)

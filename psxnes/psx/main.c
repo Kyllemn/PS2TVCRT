@@ -7,10 +7,19 @@
 #include <psxpad.h>
 #include <psxcd.h>
 #include "../core/nes.h"
+#include <hwregs_c.h>
+/* perfil (leitura pelo depurador): tempos medios por frame em unidades de 8 ciclos */
+volatile uint32_t prof_emu, prof_snd, prof_wait, prof_frames, prof_late;
+static inline uint16_t tnow(void) { return TIMER_VALUE(2); }
 
 void video_init(void);
 void video_present(void);
 void video_set_skip(int skip);
+void sound_init(void);
+void sound_update(void);
+void save_init(uint32_t crc);
+void save_frame(int force);
+static uint16_t raw_btn;
 
 static uint8_t rom[0x80000 + 0x4000 + 0x800];   /* ate 512 KB PRG + cabecalho */
 static uint8_t pad_buf[2][34];
@@ -31,7 +40,7 @@ static uint32_t load_rom(void) {
 static uint8_t read_pad(void) {
 	PADTYPE *p = (PADTYPE *)pad_buf[0];
 	if (p->stat != 0) return 0;
-	uint16_t b = ~p->btn;
+	uint16_t b = ~p->btn; raw_btn = b;
 	uint8_t n = 0;
 	if (b & (PAD_CROSS | PAD_CIRCLE)) n |= 0x01;     /* A */
 	if (b & (PAD_SQUARE | PAD_TRIANGLE)) n |= 0x02;  /* B */
@@ -48,23 +57,40 @@ int main(void) {
 	ResetGraph(0);
 	video_init();
 	InitPAD(pad_buf[0], 34, pad_buf[1], 34);
+	InitCARD(1);
 	StartPAD();
+	StartCARD();
+	_bu_init();
 	ChangeClearPAD(0);
+	sound_init();
 	CdInit();
 	uint32_t size = load_rom();
 	if (nes_load(rom, size)) die();
+	uint32_t crc = 0xffffffff;
+	for (uint32_t i = 16; i < size; i++) { crc ^= rom[i]; for (int k = 0; k < 8; k++) crc = (crc >> 1) ^ (0xedb88320 & -(crc & 1)); }
+	save_init(~crc);
 	nes_reset();
 
+	TIMER_CTRL(2) = 0x0200;   /* contador 2: clock do sistema / 8 */
 	int last = VSync(-1);
+	int prev_btn_combo = 0;
 	for (;;) {
 		pad_state = read_pad();
+		uint16_t t0 = tnow();
 		nes_frame();
+		uint16_t t1 = tnow();
+		sound_update();
+		save_frame((raw_btn & (PAD_L1 | PAD_R1 | PAD_SELECT)) == (PAD_L1 | PAD_R1 | PAD_SELECT) && !(prev_btn_combo));
+		prev_btn_combo = (raw_btn & (PAD_L1 | PAD_R1 | PAD_SELECT)) == (PAD_L1 | PAD_R1 | PAD_SELECT);
 		/* se a emulacao passou de 1 VSync, nao desenha a proxima frame (mantem a velocidade do jogo) */
 		int now = VSync(-1);
 		int late = (now - last) > 1;
-		VSync(0);
+		uint16_t t2 = tnow();
+		/* ritmo exato de 60 frames/s: espera o vblank seguinte ao da frame anterior */
+		while (VSync(-1) <= last) ;
+		prof_emu += (uint16_t)(t1 - t0); prof_snd += (uint16_t)(t2 - t1); prof_wait += (uint16_t)(tnow() - t2); prof_frames++; prof_late += late;
 		video_present();
 		video_set_skip(late);
-		last = VSync(-1);
+		last = late ? VSync(-1) : last + 1;
 	}
 }
