@@ -1,0 +1,125 @@
+191c	{Poder de ataque +25}％{.}
+1938	{Poder de ataque +50}％{.}
+1954	{Poder de ataque +100}％{.}
+1970	{O poder pode subir ou}|{cair no acerto.}
+199c	{Soma HP}＋{potencia}|{ao poder de ataque.}
+19c4	{Soma HP}＋{pot.}＋{escudo}|{ao poder de ataque.}
+19f8	{Precisao +10}％{. Poder}|{de ataque +10}％{.}
+1a28	{Precisao +20}％{. Poder}|{de ataque +15}％{.}
+1a58	{Precisao +30}％{. Poder}|{de ataque +20}％{.}
+1a88	{Precisao +50}％{. Poder}|{de ataque +25}％{.}
+1ab8	{Esquiva inimiga -10}％{.}|{Poder de ataque +10}％{.}
+1af0	{Esquiva inimiga -20}％{.}|{Poder de ataque +15}％{.}
+1b28	{Esquiva inimiga -30}％{.}|{Poder de ataque +20}％{.}
+1b60	{Esquiva inimiga -50}％{.}|{Poder de ataque +25}％{.}
+1b98	{Soma 50}％{ do HP braco.}|{O braco quebra.}
+1bc4	{Soma 75}％{ do HP braco.}|{O braco quebra.}
+1bf0	{Soma HP do braco. Ele}|{quebra.}
+1c14	{Soma 2x HP do braco.}|{O braco quebra.}
+1c41	{DF inimiga cai a 1}／{2.}
+1c60	{DF inimiga cai a 1}／{2.}|{Vale curta dist.}
+1c90	{DF inimiga cai a 3}／{4.}|{Vale curta dist.}
+1cc0	{Anula a DF inimiga.}|{Curta}＋{corpo a corpo.}
+1ceb	{Causa dano LV x 10.}
+1d04	{Bonus de AP em dobro.}|{Precisao sobe.}
+1d2c	{Bonus de AP triplo.}|{Precisao sobe.}
+1d54	{Bonus de AP quadruplo.}|{Precisao sobe.}
+1d7f	{So soco}＋{knuckle.}|{+1 ataque.}
+1dab	{So soco}＋{knuckle.}|{+2 ataques.}
+1dd8	{So soco}＋{knuckle.}|{+3 ataques.}
+1e05	{Chance de encadear}|{+50}％{.}
+1e2a	{Chance de encadear}|{+100}％{.}
+1e52	{Chance de encadear}|{+150}％{.}
+1e7a	{Chance de encadear}|{+200}％{.}
+1ea2	{So armas curtas.}|{+1 ataque.}
+1ec9	{So armas curtas.}|{+2 ataques.}
+1ef1	{So armas curtas.}|{+3 ataques.}
+1f19	{+1 bala disparada.}|{Nao se ataque for 1.}
+1f4d	{+2 balas disparadas.}|{Nao se ataque for 1.}
+1f81	{+3 balas disparadas.}|{Nao se ataque for 1.}
+1fb5	{A luta acaba apos}|{seu ataque.}
+1fd9	{Contra-ataca o inimigo.}|{So se atacado antes.}
+200c	{Destroi a peca. So}|{armas de 1 tiro.}
+2039	{Dispara tudo. Poder}|{por tiro cai.}
+2066	{Dispara tudo.}
+207c	{Dispara tudo.}|{Poder de ataque +20}％{.}
+20ad	{Dispara tudo.}|{Poder de ataque +50}％{.}
+20de	{30}％{ de chance de}|{atordoar.}
+2106	{50}％{ de chance de}|{atordoar.}
+212e	{80}％{ de chance de}|{atordoar.}
+2156	{Ataque vira}|{Fogo}＋{Impacto.}
+217a	{Ataque vira Perfurante.}
+2196	{30}％{ de chance de}|{aterrorizar.}
+21c1	{50}％{ de chance de}|{aterrorizar.}
+21ec	{80}％{ de chance de}|{aterrorizar.}
+2217	{Todo ataque acerta a}|{mesma peca.}
+223d	{1o tiro sempre acerta}|{o corpo.}
+225f	{1o tiro sempre acerta}|{o braco.}
+2280	{1o tiro acerta a perna.}|{30}％{ de panico.}
+22b1	{1o tiro acerta a perna.}|{50}％{ de panico.}
+22e2	{1o tiro acerta a perna.}|{80}％{ de panico.}
+2313	{Tudo acerta ou erra}！！|{Nao se ataque for 1.}
+234a	{Ganha o 1o ataque.}
+2362	{Mantem o terreno}|{no corpo a corpo.}
+2392	{Cede o 1o ataque.}|{Prec}＋{10}％{. Poder}＋{10}％{.}
+23ce	{Cede o 1o ataque.}|{Prec}＋{15}％{. Poder}＋{20}％{.}
+240a	{Cede o 1o ataque.}|{Prec}＋{20}％{. Poder}＋{30}％{.}
+2446	{Cede o 1o ataque.}|{Prec}＋{30}％{. Poder}＋{50}％{.}
+2482	{Encadear skill +25}％{.}
+24a1	{Encadear skill +50}％{.}
+24c0	{Encadear skill +75}％{.}
+24df	{Encadear skill +100}％{.}
+2501	{Regras de corpo a corpo.}|{Anula terreno}＋{escudo.}
+2532	{1o tiro sempre acerta.}
+254d	{1o tiro sempre erra.}
+256a	{Pecas com 0 HP ficam}|{ate a luta acabar.}
+259b	{Encerra a luta sem}|{atacar primeiro.}
+25c5	{Escudo defende todo}|{ataque defensavel.}
+25f0	{1o tiro acerta corpo.}|{Rifles +10}％{ de poder.}
+2622	{1o tiro acerta corpo.}|{Rifles +20}％{ de poder.}
+2654	{1o tiro acerta corpo.}|{Rifles +30}％{ de poder.}
+2686	{1o tiro acerta corpo.}|{Rifles +50}％{ de poder.}
+26b8	{+5 balas disparadas.}|{Nao se ataque for 1.}
+26ec	{So corpo a corpo.}|{+1 ataque.}
+2715	{So corpo a corpo.}|{+2 ataques.}
+273f	{So corpo a corpo.}|{+3 ataques.}
+2769	{Causa dano LV x 20.}
+2782	{+1 ataque.}
+279b	{+2 ataques.}
+27b4	{+3 ataques.}
+27cd	{Poder de ataque +200}％{.}
+27eb	{Dispara tudo.}|{Poder de ataque +100}％{.}
+281b	{Soco atordoante critico}
+2833	{Destroi a peca.}
+2849	{Usa Z. O. C.}
+285e	{Rouba item do inimigo.}|{Nao vale na Arena.}
+288f	{Esquiva +5}％{. Prec +5}％{.}|{Skill +5}％{.}
+28ca	{Skill de combate +50}％{.}
+28ec	{Skill de combate +100}％|{.}
+290e	{Skill do inimigo cai a}|{1}／{2.}
+2932	{Skill do inimigo cai a}|{1}／{4.}
+2956	{No inicio do turno, cura}|{panico}＋{terror aliado.}
+2985	{No inicio, cura panico}|＋{terror}＋{atordoar.}
+29b7	{Protege unid. aliada.}|{So curta}＋{corpo a corpo.}
+29e6	{Inimigos proximos nao}|{se movem.}
+2a09	{Inimigos proximos nao}|{usam skill de combate.}
+2a36	{Esquiva +10}％{.}
+2a4c	{Esquiva +15}％{.}
+2a62	{Esquiva +20}％{.}
+2a78	{Esquiva inimiga -10}％{.}
+2a96	{Esquiva inimiga -15}％{.}
+2ab4	{Esquiva inimiga -20}％{.}
+2ad2	{Inimigos proximos nao}|{atacam.}
+2af6	{Precisao +10}％{.}
+2b0d	{Precisao +15}％{.}
+2b24	{Precisao +20}％{.}
+2b3b	{Precisao inimiga -10}％{.}
+2b5a	{Precisao inimiga -15}％{.}
+2b79	{Precisao inimiga -20}％{.}
+2b98	{Recup. de AP aliado}＋{2.}
+2bb9	{Recup. de AP inimigo -2.}
+2bdb	{Anula o bonus de}|{precisao do AP inimigo.}
+2c02	{Soma seu AP ao APB}|{aliado. Precisao sobe.}
+2c34	{Faz inimigo ferido}|{se render. Nao na arena.}
+2c63	{Anula skills de Honra}|{exceto Disable Owner.}
+2c94	{DF inimiga cai a 1}／{2.}
