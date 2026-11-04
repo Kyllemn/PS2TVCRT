@@ -67,17 +67,34 @@ static void load_from_base(int x, int y, int w, int h) {
 	LoadImage(&r, (const uint32_t *)tmp_buf);
 	DrawSync(0);
 }
-/* troca a tela: volta os retangulos do jogo anterior para a base e aplica os do novo */
+/* blocos 16x16 que o jogo selecionado cobre (para nao repintar a base por baixo deles) */
+static uint8_t covered[SCR_H / 16][SCR_W / 16];
+
+/* troca a tela sem passar por uma imagem intermediaria: primeiro volta para a base so os blocos
+ * do jogo anterior que o novo nao vai redesenhar, depois aplica os retangulos do novo */
 static void show(int from, int to) {
+	memset(covered, 0, sizeof covered);
+	const uint8_t *p = dat + hd->g[to].rects_off;
+	for (int i = 0; i < hd->g[to].nrects; i++) {
+		const uint16_t *r = (const uint16_t *)p;
+		for (int x = r[0]; x < r[0] + r[2]; x += 16) covered[r[1] / 16][x / 16] = 1;
+		p += 8 + r[2] * r[3] * 2;
+	}
 	if (from >= 0) {
-		const uint8_t *p = dat + hd->g[from].rects_off;
+		p = dat + hd->g[from].rects_off;
 		for (int i = 0; i < hd->g[from].nrects; i++) {
 			const uint16_t *r = (const uint16_t *)p;
-			load_from_base(r[0], r[1], r[2], r[3]);
+			int ty = r[1] / 16, x = r[0], end = r[0] + r[2];
+			while (x < end) {                      /* trechos da faixa nao cobertos pelo novo */
+				while (x < end && covered[ty][x / 16]) x += 16;
+				int x0 = x;
+				while (x < end && !covered[ty][x / 16]) x += 16;
+				if (x > x0) load_from_base(x0, r[1], x - x0, r[3]);
+			}
 			p += 8 + r[2] * r[3] * 2;
 		}
 	}
-	const uint8_t *p = dat + hd->g[to].rects_off;
+	p = dat + hd->g[to].rects_off;
 	for (int i = 0; i < hd->g[to].nrects; i++) {
 		const uint16_t *r = (const uint16_t *)p;
 		RECT rc = { r[0], r[1], r[2], r[3] };

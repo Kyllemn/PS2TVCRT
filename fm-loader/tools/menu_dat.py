@@ -89,8 +89,8 @@ def tela(cfg, sel, com_disco_sel=False):
             a_ = dk.split()[-1]; dk = ImageEnhance.Brightness(dk).enhance(0.45); dk.putalpha(a_)
             c.alpha_composite(dk, (dx, dy))
     dica = '←  →  ESCOLHER        ✕  JOGAR'
-    hw = d.textlength(dica, font=F2); d.text(((W - hw) / 2, H - 26), dica, font=F2, fill=(210, 220, 235, 255))
-    if cfg.get('rodape'): d.text((20, H - 26), cfg['rodape'], font=F2, fill=(170, 185, 205, 255))
+    hw = d.textlength(dica, font=F2); d.text(((W - hw) / 2, H - 48), dica, font=F2, fill=(210, 220, 235, 255))
+    if cfg.get('rodape'): d.text((36, H - 48), cfg['rodape'], font=F2, fill=(170, 185, 205, 255))
     return c.convert('RGB'), pos
 
 
