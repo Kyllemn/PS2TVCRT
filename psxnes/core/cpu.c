@@ -4,8 +4,10 @@
 #include "cpu.h"
 
 Cpu cpu;
+int32_t cpu_target;
 #ifdef PROFILE
 long instr_count, idle_skipped;
+long pc_cyc[65536];   /* ciclos gastos por endereco (para achar codigo quente) */
 #endif
 
 static const uint8_t cyc[256] = {
@@ -128,12 +130,13 @@ static void cpu_exec(int32_t target, int single) {
 	do {
 		if (chk) {
 			chk = 0;
+			if (cpu_target < target) target = cpu_target;
 			if (cpu.nmi) { cpu.nmi = 0; INTERRUPT(0xfffa, 0); }
 			else if (cpu.irq && !FI) INTERRUPT(0xfffe, 0);
 		}
 		uint8_t op = rd(PC++);
 #ifdef PROFILE
-		instr_count++;
+		instr_count++; pc_cyc[(uint16_t)(PC - 1)] += cyc[op];
 #endif
 		CYC += cyc[op];
 		switch (op) {
@@ -353,4 +356,8 @@ static void cpu_exec(int32_t target, int single) {
 }
 
 void cpu_step(void) { int n = cpu.nmi, i = cpu.irq; cpu.nmi = 0; cpu.irq = 0; cpu_exec(0, 1); cpu.nmi = n; cpu.irq = i; }
-void cpu_run(int32_t target) { if (cpu.cycles < target) cpu_exec(target, 0); }
+#ifndef DYNAREC
+void cpu_run(int32_t target) { cpu_target = target; if (cpu.cycles < target) cpu_exec(target, 0); }
+#endif
+/* uma instrucao interpretada (atende interrupcao pendente antes); usada pelo dynarec */
+void cpu_interp_one(void) { cpu_exec(cpu.cycles + 1, 1); }

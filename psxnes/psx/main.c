@@ -56,11 +56,11 @@ static uint8_t read_pad(void) {
 int main(void) {
 	ResetGraph(0);
 	video_init();
-	InitPAD(pad_buf[0], 34, pad_buf[1], 34);
 	InitCARD(1);
-	StartPAD();
 	StartCARD();
 	_bu_init();
+	InitPAD(pad_buf[0], 34, pad_buf[1], 34);
+	StartPAD();
 	ChangeClearPAD(0);
 	sound_init();
 	CdInit();
@@ -82,15 +82,17 @@ int main(void) {
 		sound_update();
 		save_frame((raw_btn & (PAD_L1 | PAD_R1 | PAD_SELECT)) == (PAD_L1 | PAD_R1 | PAD_SELECT) && !(prev_btn_combo));
 		prev_btn_combo = (raw_btn & (PAD_L1 | PAD_R1 | PAD_SELECT)) == (PAD_L1 | PAD_R1 | PAD_SELECT);
-		/* se a emulacao passou de 1 VSync, nao desenha a proxima frame (mantem a velocidade do jogo) */
+		/* ritmo de 60 frames/s com recuperacao: 'last' e o vblank em que esta frame deveria terminar.
+		 * Se a emulacao atrasou, a proxima frame nao e desenhada (so emulada) ate alcancar o relogio;
+		 * assim o jogo e o som mantem a velocidade certa mesmo com picos de carga. */
 		int now = VSync(-1);
-		int late = (now - last) > 1;
+		int late = now > last + 1;
 		uint16_t t2 = tnow();
-		/* ritmo exato de 60 frames/s: espera o vblank seguinte ao da frame anterior */
+		if (now > last + 4) last = now - 1;        /* muito atras (ex.: leitura do cartao): ressincroniza */
 		while (VSync(-1) <= last) ;
 		prof_emu += (uint16_t)(t1 - t0); prof_snd += (uint16_t)(t2 - t1); prof_wait += (uint16_t)(tnow() - t2); prof_frames++; prof_late += late;
 		video_present();
 		video_set_skip(late);
-		last = late ? VSync(-1) : last + 1;
+		last++;
 	}
 }

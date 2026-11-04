@@ -2,6 +2,8 @@
 #include "nes.h"
 #include "apu.h"
 static uint8_t irq_map;
+static void ppu_catchup(void);
+static inline void replan(void) { cpu_target = cpu.cycles; }   /* faz a CPU voltar ao laco da frame */
 static inline void irq_update(void) { cpu.irq = irq_map | apu_irq; }
 
 Ppu ppu;
@@ -48,10 +50,10 @@ static void mmc3_write(uint16_t a, uint8_t v) {
 	case 0x8001: cart.regs[cart.bank_sel] = v; mmc3_update(); break;
 	case 0xa000: if (!cart.four_screen) set_mirror(!(v & 1)); break;
 	case 0xa001: break;
-	case 0xc000: cart.irq_latch = v; break;
-	case 0xc001: cart.irq_counter = 0; cart.irq_reload = 1; break;
+	case 0xc000: cart.irq_latch = v; replan(); break;
+	case 0xc001: cart.irq_counter = 0; cart.irq_reload = 1; replan(); break;
 	case 0xe000: cart.irq_enable = 0; irq_map = 0; irq_update(); break;
-	case 0xe001: cart.irq_enable = 1; break;
+	case 0xe001: cart.irq_enable = 1; replan(); break;
 	}
 }
 static void mmc3_scanline(void) {
@@ -79,6 +81,7 @@ static inline void ppu_poke(uint16_t a, uint8_t v) {
 /* ---------------- barramento da CPU ---------------- */
 uint8_t bus_read(uint16_t a) {
 	if (a < 0x4000) {
+		ppu_catchup();
 		switch (a & 7) {
 		case 2: { uint8_t r = (ppu.status & 0xe0) | (ppu.openbus & 0x1f);
 			ppu.status &= 0x7f; ppu.w = 0; return r; }
@@ -92,10 +95,11 @@ uint8_t bus_read(uint16_t a) {
 	}
 	if (a == 0x4016) { uint8_t r = pad_strobe ? (pad_state & 1) : (pad_shift & 1); if (!pad_strobe) pad_shift = (pad_shift >> 1) | 0x80; return 0x40 | r; }
 	if (a == 0x4017) return 0x40;
-	if (a == 0x4015) { uint8_t r = apu_read_status(); irq_update(); return r; }
+	if (a == 0x4015) { apu_run(cpu.cycles); uint8_t r = apu_read_status(); irq_update(); return r; }
 	return a >> 8;
 }
 void bus_write(uint16_t a, uint8_t v) {
+	ppu_catchup();
 	if (a < 0x4000) {
 		ppu.openbus = v;
 		if ((a & 7) <= 1 || (a & 7) == 5 || (a & 7) == 6) ppu_rstate++;
@@ -104,7 +108,7 @@ void bus_write(uint16_t a, uint8_t v) {
 			if ((v & 0x80) && !(ppu.ctrl & 0x80) && (ppu.status & 0x80)) cpu.nmi = 1;
 			ppu.ctrl = v; ppu.t = (ppu.t & 0xf3ff) | ((v & 3) << 10);
 			break;
-		case 1: ppu.mask = v; break;
+		case 1: if ((ppu.mask ^ v) & 0x18) replan(); ppu.mask = v; break;
 		case 3: ppu.oamaddr = v; break;
 		case 4: ppu.oam[ppu.oamaddr++] = v; break;
 		case 5: if (!ppu.w) { ppu.t = (ppu.t & 0xffe0) | (v >> 3); ppu.x = v & 7; }
@@ -123,7 +127,7 @@ void bus_write(uint16_t a, uint8_t v) {
 		cpu.cycles += 513 + (cpu.cycles & 1); return;
 	}
 	if (a == 0x4016) { pad_strobe = v & 1; if (pad_strobe) pad_shift = pad_state; else pad_shift = pad_state; return; }
-	if (a < 0x4018) { apu_write(a, v); irq_update(); return; }
+	if (a < 0x4018) { apu_run(cpu.cycles); apu_write(a, v); irq_update(); if (a == 0x4017) replan(); return; }
 	if (a < 0x4020) return;
 	if (a < 0x8000) return;
 	if (cart.mapper == 4) mmc3_write(a, v);
@@ -222,19 +226,26 @@ static void inc_y(void) {
 	ppu.v = v;
 }
 
-/* ---------------- frame ---------------- */
+/* ---------------- frame ----------------
+ * A CPU roda em trechos longos (ate o proximo evento que gera interrupcao ou muda o $2002);
+ * os eventos de linha (render, rolagem, contador do MMC3) sao aplicados sob demanda:
+ * antes de qualquer acesso a PPU/mapper/APU e no fim de cada trecho (ppu_catchup).
+ * Cada linha tem dois eventos: ponto 0 (inicio) e ponto 260 (fim da parte visivel). */
+#define NEV 524
 static int32_t dot_acc;   /* ciclos de PPU acumulados (3 por ciclo de CPU) */
+static int32_t ev_d0;     /* pontos no inicio da frame */
+static int ev_k = NEV;    /* proximo evento */
+static int32_t ev_next = 0x7fffffff;   /* ciclo de CPU do proximo evento */
+static inline int32_t ev_cyc(int k) { return (ev_d0 + (k >> 1) * 341 + ((k & 1) ? 260 : 0)) / 3; }
 #ifdef NES_PROF
 #include <hwregs_c.h>
 volatile uint32_t prof_cpu, prof_apu, prof_line;
 #define PT() TIMER_VALUE(2)
-static void run_dots(int dots) { uint16_t a = PT(); dot_acc += dots; cpu_run(dot_acc / 3); uint16_t b = PT(); apu_run(cpu.cycles); irq_update(); prof_cpu += (uint16_t)(b - a); prof_apu += (uint16_t)(PT() - b); }
-#else
-static void run_dots(int dots) { dot_acc += dots; cpu_run(dot_acc / 3); apu_run(cpu.cycles); irq_update(); }
 #endif
 
-void nes_frame(void) {
-	for (int y = 0; y < 262; y++) {
+static void do_event(int k) {
+	int y = k >> 1;
+	if (!(k & 1)) {
 		ppu.line = y;
 		if (y < 240) {
 			if (rendering()) { ppu.v = (ppu.v & ~0x41f) | (ppu.t & 0x41f); }
@@ -249,27 +260,68 @@ void nes_frame(void) {
 			if (rendering()) render_line(y); else memset(nes_screen[y], ppu.pal[0], 256);
 #endif
 			if (ppu.sprite0_line == y) ppu.status |= 0x40;
-			run_dots(260);
-			if (rendering()) { inc_y(); if (cart.mapper == 4) mmc3_scanline(); }
-			run_dots(81);
 		} else if (y == 240) {
 #ifdef NES_GPU
 			gpu_frame_end();
 #endif
-			run_dots(341);
 		} else if (y == 241) {
 			ppu.status |= 0x80; ppu.frame++;
 			if (ppu.ctrl & 0x80) cpu.nmi = 1;
-			run_dots(341);
 		} else if (y == 261) {
 			ppu.status &= ~0xe0;
 #ifndef NES_GPU
 			ppu.sprite0_line = 255;
 #endif
-			run_dots(260);
-			if (rendering()) { if (cart.mapper == 4) mmc3_scanline(); ppu.v = (ppu.v & 0x41f) | (ppu.t & ~0x41f); }
-			run_dots(81);
-		} else run_dots(341);
+		}
+	} else {
+		if (y < 240) { if (rendering()) { inc_y(); if (cart.mapper == 4) mmc3_scanline(); } }
+		else if (y == 261) { if (rendering()) { if (cart.mapper == 4) mmc3_scanline(); ppu.v = (ppu.v & 0x41f) | (ppu.t & ~0x41f); } }
+	}
+}
+static void ppu_catchup(void) {
+	while (cpu.cycles >= ev_next) {
+		do_event(ev_k++);
+		ev_next = ev_k < NEV ? ev_cyc(ev_k) : 0x7fffffff;
+	}
+}
+/* proximo evento que a CPU precisa "ver" na hora certa */
+static int next_hard(void) {
+	int best = NEV;
+	static const int fixed[] = { 0, 241 * 2, 261 * 2 };
+	for (int i = 0; i < 3; i++) if (fixed[i] >= ev_k && fixed[i] < best) { best = fixed[i]; break; }
+	if (ppu.sprite0_line < 240) { int k = ppu.sprite0_line * 2; if (k >= ev_k && k < best) best = k; }
+	if (cart.mapper == 4 && cart.irq_enable && rendering()) {
+		/* simula o contador do MMC3 nas proximas linhas */
+		int cnt = cart.irq_counter, rl = cart.irq_reload;
+		for (int k = ev_k | 1; k < best; k += 2) {
+			int y = k >> 1;
+			if (y >= 240 && y != 261) continue;
+			if (cnt == 0 || rl) { cnt = cart.irq_latch; rl = 0; } else cnt--;
+			if (cnt == 0) { best = k; break; }
+		}
+	}
+	return best;
+}
+
+void nes_frame(void) {
+	ev_d0 = dot_acc; ev_k = 0; ev_next = ev_cyc(0);
+	dot_acc += 262 * 341;
+	int32_t end = dot_acc / 3;
+	for (;;) {
+		ppu_catchup();
+		if (cpu.cycles >= end && ev_k >= NEV) break;
+		int k = next_hard();
+		int32_t stop = k < NEV ? ev_cyc(k) : end;
+		int32_t ai = apu_next_irq(); if (ai < stop) stop = ai;
+		if (stop <= cpu.cycles) stop = cpu.cycles + 1;
+#ifdef NES_PROF
+		uint16_t a = PT(); cpu_run(stop); uint16_t b = PT();
+		apu_run(cpu.cycles); irq_update();
+		prof_cpu += (uint16_t)(b - a); prof_apu += (uint16_t)(PT() - b);
+#else
+		cpu_run(stop);
+		apu_run(cpu.cycles); irq_update();
+#endif
 	}
 }
 
@@ -298,4 +350,4 @@ int nes_load(uint8_t *rom, uint32_t size) {
 	ppu.sprite0_line = 255;
 	return 0;
 }
-void nes_reset(void) { apu_reset(); irq_map = 0; dot_acc = 0; cpu.cycles = 0; cpu_reset(); dot_acc = cpu.cycles * 3; }
+void nes_reset(void) { apu_reset(); irq_map = 0; dot_acc = 0; cpu.cycles = 0; cpu_reset(); dot_acc = cpu.cycles * 3; ev_k = NEV; ev_next = 0x7fffffff; }

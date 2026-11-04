@@ -114,6 +114,12 @@ uint8_t apu_read_status(void) {
 }
 
 void apu_frame_start(int32_t c) { (void)c; }
+int32_t apu_next_irq(void) {
+	if (seq_mode || irq_inhibit) return 0x7fffffff;
+	/* o IRQ sai no passo 4: faltam (4 - step) passos */
+	int32_t t = next_step; for (int s = step + 1; s < 4; s++) t += (s & 1) ? 7456 : 7457;
+	return t;
+}
 
 /* passos do sequenciador a cada ~7457 ciclos de CPU */
 void apu_run(int32_t now) {

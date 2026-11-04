@@ -20,4 +20,5 @@ void apu_write(uint16_t a, uint8_t v);
 uint8_t apu_read_status(void);
 void apu_run(int32_t cpu_cycles);   /* avanca o sequenciador ate o ciclo dado */
 void apu_frame_start(int32_t cpu_cycles);
+int32_t apu_next_irq(void);        /* ciclo do proximo IRQ de frame (ou INT32_MAX) */
 #endif

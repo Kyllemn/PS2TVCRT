@@ -29,6 +29,10 @@ uint8_t cpu_getp(void);
 void cpu_setp(uint8_t p);
 /* roda ate cpu.cycles >= alvo; devolve no fim da instrucao */
 void cpu_run(int32_t target);
+/* alvo corrente de cpu_run: o sistema pode baixar durante a execucao (ex.: IRQ reprogramado)
+ * para a CPU devolver o controle e o laco da frame replanejar */
+extern int32_t cpu_target;
 /* executa exatamente uma instrucao (para o teste) */
 void cpu_step(void);
+void cpu_interp_one(void);
 #endif
