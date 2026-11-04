@@ -21,6 +21,22 @@ def shadow(im,r=8,o=6):
     a=im.split()[-1] if im.mode=='RGBA' else Image.new('L',im.size,255)
     s=Image.new('RGBA',(im.width+4*r,im.height+4*r),(0,0,0,0))
     s.paste((0,0,0,180),(2*r+o,2*r+o),a); return s.filter(ImageFilter.GaussianBlur(r))
+def recorta(path,tol=28):
+    im=Image.open(I+path).convert('RGB'); W0,H0=im.size
+    from collections import deque
+    px=im.load(); m=Image.new('L',im.size,255); mp=m.load()
+    q=deque([(0,0),(W0-1,0),(0,H0-1),(W0-1,H0-1)])
+    for x in range(0,W0,8): q+=[(x,0),(x,H0-1)]
+    for y in range(0,H0,8): q+=[(0,y),(W0-1,y)]
+    while q:
+        x,y=q.pop()
+        if x<0 or y<0 or x>=W0 or y>=H0 or mp[x,y]==0: continue
+        r,g,b=px[x,y]
+        if min(r,g,b)<255-tol or max(r,g,b)-min(r,g,b)>20: continue
+        mp[x,y]=0; q+=[(x+1,y),(x-1,y),(x,y+1),(x,y-1)]
+    m=m.filter(ImageFilter.MinFilter(3)).filter(ImageFilter.GaussianBlur(0.8))
+    o=im.convert('RGBA'); o.putalpha(m); return o
+CAPAS={}
 def tela(sel):
     c=bg().convert('RGBA'); d=ImageDraw.Draw(c)
     nomes=['FRONT MISSION 1ST','FRONT MISSION 2']
@@ -32,11 +48,18 @@ def tela(sel):
     for k,cx in enumerate((W*0.28,W*0.72)):
         on=k==sel
         cw=200 if on else 168
-        cv=Image.open(I+capas[k]).convert('RGBA'); ch=int(cv.height*cw/cv.width); cv=cv.resize((cw,ch),Image.LANCZOS)
-        if not on: cv=ImageEnhance.Brightness(cv).enhance(0.45)
+        cv=CAPAS.setdefault(capas[k],recorta(capas[k])); ch=int(cv.height*cw/cv.width); cv=cv.resize((cw,ch),Image.LANCZOS)
+        if not on:
+            a_=cv.split()[-1]; cv=ImageEnhance.Brightness(cv).enhance(0.45); cv.putalpha(a_)
         x=int(cx-cw/2); y=110+(0 if on else 14)
-        s=shadow(cv); c.alpha_composite(s,(x-16,y-16)); c.alpha_composite(cv,(x,y))
-        if on: ImageDraw.Draw(c).rectangle((x-3,y-3,x+cw+2,y+ch+2),outline=(80,200,230,255),width=2)
+        s=shadow(cv); c.alpha_composite(s,(x-16,y-16))
+        if on: pass
+        c_later=(cv,x,y)
+        if on:
+            g=cv.split()[-1].filter(ImageFilter.MaxFilter(7)).filter(ImageFilter.GaussianBlur(5))
+            gl=Image.new('RGBA',cv.size,(80,200,230,0)); gl.putalpha(g.point(lambda v:int(v*0.8)))
+            c.alpha_composite(gl,(x,y))
+        c.alpha_composite(*[c_later[0]],(c_later[1],c_later[2]))
         ds=110 if on else 90
         dk=disc(discos[k],ds,-35 if on else 0)
         if not on: dk=Image.composite(ImageEnhance.Brightness(dk).enhance(0.45),Image.new('RGBA',dk.size,(0,0,0,0)),dk.split()[-1])
