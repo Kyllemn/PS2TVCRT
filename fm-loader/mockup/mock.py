@@ -22,6 +22,7 @@ def shadow(im,r=8,o=6):
     s=Image.new('RGBA',(im.width+4*r,im.height+4*r),(0,0,0,0))
     s.paste((0,0,0,180),(2*r+o,2*r+o),a); return s.filter(ImageFilter.GaussianBlur(r))
 def recorta(path,tol=28):
+    if path.endswith('.png'): return Image.open(I+path).convert('RGBA')
     im=Image.open(I+path).convert('RGB'); W0,H0=im.size
     from collections import deque
     px=im.load(); m=Image.new('L',im.size,255); mp=m.load()
@@ -40,7 +41,7 @@ CAPAS={}
 def tela(sel):
     c=bg().convert('RGBA'); d=ImageDraw.Draw(c)
     nomes=['FRONT MISSION 1ST','FRONT MISSION 2']
-    capas=['43.jpg','44.jpg']; discos=['45.jpg','42.jpg']
+    capas=['47.png','46.png']; discos=['45.jpg','42.jpg']
     # titulo
     t=nomes[sel]; tw=d.textlength(t,font=F)
     d.text(((W-tw)/2+2,52),t,font=F,fill=(0,0,0,200)); d.text(((W-tw)/2,50),t,font=F,fill=(235,240,245,255))
