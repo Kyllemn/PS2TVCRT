@@ -63,7 +63,7 @@ static inline uint8_t ppu_peek(uint16_t a) {
 }
 static inline void ppu_poke(uint16_t a, uint8_t v) {
 	a &= 0x3fff;
-	if (a < 0x2000) { if (cart.chr_ram) { ppu.chrmap[a >> 10][a & 0x3ff] = v; chr_dirty = 1; } return; }
+	if (a < 0x2000) { if (cart.chr_ram) { uint8_t *p = ppu.chrmap[a >> 10]; p[a & 0x3ff] = v; chr_dirty |= 1 << ((p - cart.chr) >> 10); } return; }
 	if (a < 0x3f00) { ppu.ntmap[(a >> 10) & 3][a & 0x3ff] = v; return; }
 	a &= 0x1f; if ((a & 0x13) == 0x10) a &= 0x0f;
 	ppu.pal[a] = v & 0x3f;
@@ -121,6 +121,7 @@ void bus_write(uint16_t a, uint8_t v) {
 }
 
 /* ---------------- PPU: render de uma linha ---------------- */
+#ifndef NES_GPU
 static void render_line(int y) {
 	uint8_t *out = nes_screen[y];
 	uint8_t bgpix[256 + 16];
@@ -181,8 +182,28 @@ static void render_line(int y) {
 	}
 	if (ppu.mask & 1) for (int i = 0; i < 256; i++) out[i] &= 0x30;
 }
+#endif
 
 static inline int rendering(void) { return ppu.mask & 0x18; }
+#ifdef NES_GPU
+void gpu_line(int y);        /* grava o estado da linha (psx/video.c) */
+void gpu_frame_end(void);    /* monta a lista de desenho da frame */
+static void sprite0_approx(void) {
+	/* sem render por software: o sprite 0 "bate" na primeira linha opaca dele */
+	ppu.sprite0_line = 255;
+	if ((ppu.mask & 0x18) != 0x18) return;
+	int h = (ppu.ctrl & 0x20) ? 16 : 8, y0 = ppu.oam[0] + 1;
+	for (int r = 0; r < h; r++) {
+		int row = (ppu.oam[2] & 0x80) ? h - 1 - r : r;
+		uint16_t pa = (h == 16) ? (((ppu.oam[1] & 1) << 12) | ((ppu.oam[1] & 0xfe) << 4) | ((row & 8) << 1) | (row & 7))
+		                        : (((ppu.ctrl & 8) ? 0x1000 : 0) | (ppu.oam[1] << 4) | row);
+		if (ppu.chrmap[pa >> 10][pa & 0x3ff] | ppu.chrmap[(pa + 8) >> 10][(pa + 8) & 0x3ff]) {
+			if (y0 + r < 239) ppu.sprite0_line = y0 + r;
+			return;
+		}
+	}
+}
+#endif
 static void inc_y(void) {
 	uint16_t v = ppu.v;
 	if ((v & 0x7000) != 0x7000) v += 0x1000;
@@ -201,17 +222,30 @@ void nes_frame(void) {
 		ppu.line = y;
 		if (y < 240) {
 			if (rendering()) { ppu.v = (ppu.v & ~0x41f) | (ppu.t & 0x41f); }
+#ifdef NES_GPU
+			if (y == 0) sprite0_approx();
+			gpu_line(y);
+#else
 			if (rendering()) render_line(y); else memset(nes_screen[y], ppu.pal[0], 256);
+#endif
 			if (ppu.sprite0_line == y) ppu.status |= 0x40;
 			run_dots(260);
 			if (rendering()) { inc_y(); if (cart.mapper == 4) mmc3_scanline(); }
 			run_dots(81);
+		} else if (y == 240) {
+#ifdef NES_GPU
+			gpu_frame_end();
+#endif
+			run_dots(341);
 		} else if (y == 241) {
 			ppu.status |= 0x80; ppu.frame++;
 			if (ppu.ctrl & 0x80) cpu.nmi = 1;
 			run_dots(341);
 		} else if (y == 261) {
-			ppu.status &= ~0xe0; ppu.sprite0_line = 255;
+			ppu.status &= ~0xe0;
+#ifndef NES_GPU
+			ppu.sprite0_line = 255;
+#endif
 			run_dots(260);
 			if (rendering()) { if (cart.mapper == 4) mmc3_scanline(); ppu.v = (ppu.v & 0x41f) | (ppu.t & ~0x41f); }
 			run_dots(81);

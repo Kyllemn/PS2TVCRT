@@ -4,6 +4,7 @@
 #include "cpu.h"
 
 Cpu cpu;
+static int32_t run_target;
 
 static inline uint8_t rd(uint16_t a) {
 	uint8_t *p = cpu.rmap[a >> 11];
@@ -93,11 +94,28 @@ static inline uint8_t lsr(uint8_t m) { cpu.c = m & 1; m >>= 1; SETNZ(m); return 
 static inline uint8_t rol(uint8_t m) { uint8_t c = cpu.c; cpu.c = m >> 7; m = (m << 1) | c; SETNZ(m); return m; }
 static inline uint8_t ror(uint8_t m) { uint8_t c = cpu.c; cpu.c = m & 1; m = (m >> 1) | (c << 7); SETNZ(m); return m; }
 
+/* laco ocioso: desvio para tras de ate 8 bytes cujo corpo so le memoria (sem escrever nada).
+ * Nada muda ate o fim do trecho atual de execucao (interrupcoes e a PPU so mudam entre trechos),
+ * entao o tempo restante pode ser pulado. */
+static int idle_body(uint16_t from, uint16_t to) {
+	uint16_t a = to;
+	while (a < from - 2) {
+		uint8_t op = rd(a);
+		switch (op) {
+		case 0xa5: case 0xa6: case 0xa4: case 0x24: case 0xc5: case 0x25: case 0x05: case 0xe4: case 0xc4: a += 2; break;
+		case 0xad: case 0xae: case 0xac: case 0x2c: case 0xcd: case 0x2d: case 0x0d: case 0xec: case 0xcc: a += 3; break;
+		case 0x29: case 0x09: case 0xc9: case 0xe0: case 0xc0: a += 2; break;
+		default: return 0;
+		}
+	}
+	return a == from - 2;
+}
 static inline void branch(int cond) {
 	int8_t off = (int8_t)rd(cpu.pc++);
 	if (cond) {
 		uint16_t n = cpu.pc + off;
 		cpu.cycles += ((cpu.pc ^ n) & 0xff00) ? 2 : 1;
+		if (off < 0 && off >= -10 && cpu.cycles < run_target && idle_body(cpu.pc, n)) cpu.cycles = run_target;
 		cpu.pc = n;
 	}
 }
@@ -252,7 +270,9 @@ void cpu_step(void) {
 	case 0x6e: RMW(ABS(), ror); break;
 	case 0x7e: RMW(absi(cpu.x, 0), ror); break;
 	/* saltos */
-	case 0x4c: cpu.pc = rd(cpu.pc) | (rd(cpu.pc + 1) << 8); break;
+	case 0x4c: t = rd(cpu.pc) | (rd(cpu.pc + 1) << 8);
+		if (t == cpu.pc - 1 && cpu.cycles < run_target) cpu.cycles = run_target;   /* JMP * : ocioso */
+		cpu.pc = t; break;
 	case 0x6c: t = rd(cpu.pc) | (rd(cpu.pc + 1) << 8);   /* bug da pagina */
 		cpu.pc = rd(t) | (rd((t & 0xff00) | ((t + 1) & 0xff)) << 8); break;
 	case 0x20: t = rd(cpu.pc) | (rd(cpu.pc + 1) << 8); cpu.pc++;
@@ -322,6 +342,7 @@ void cpu_step(void) {
 }
 
 void cpu_run(int32_t target) {
+	run_target = target;
 	while (cpu.cycles < target) {
 		if (cpu.nmi) { cpu.nmi = 0; interrupt(0xfffa, 0); }
 		else if (cpu.irq && !cpu.i) interrupt(0xfffe, 0);
