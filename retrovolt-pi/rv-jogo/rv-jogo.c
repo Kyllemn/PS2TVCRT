@@ -1666,10 +1666,17 @@ static void menu_tamanho(void)
 	LOG("menu do jogo: %dx%d ampliado %dx", mw, mh, e);
 }
 static int menu_sel;
-#define N_MENU 11
-enum { M_CONTINUAR, M_SALVAR, M_CARREGAR, M_VOLUME, M_CONV, M_IMAGEM, M_FILTRO, M_OPCOES, M_CONTROLES, M_REINICIAR, M_SAIR };
+#define N_MENU 12
+enum { M_CONTINUAR, M_SALVAR, M_CARREGAR, M_VOLUME, M_CONV, M_IMAGEM, M_FILTRO, M_OPCOES, M_CONTROLES, M_REINICIAR,
+       M_LISTA, M_SAIR };
 static const char *MENU[N_MENU] = {"CONTINUAR", "SALVAR ESTADO", "CARREGAR ESTADO", "VOLUME", "CONVERGENCIA",
-                                   "IMAGEM", "FILTRO DE IMAGEM", "OPCOES DO NUCLEO", "CONTROLES", "REINICIAR JOGO", "SAIR DO JOGO"};
+                                   "IMAGEM", "FILTRO DE IMAGEM", "OPCOES DO NUCLEO", "CONTROLES", "REINICIAR JOGO",
+                                   "VOLTAR PARA A LISTA", "SAIR DO JOGO"};
+/* itens que nao valem para a tela atual: CONVERGENCIA so no tubo; IMAGEM e FILTRO so no LCD */
+static bool menu_oculto(int i)
+{
+	return (i == M_CONV && !tubo) || ((i == M_IMAGEM || i == M_FILTRO) && tubo);
+}
 static int sub;           /* 0 = menu, 1 = opcoes do nucleo, 2 = controles, 3 = esperando botao,
                            * 4 = configurar um por um (assistente), 5 = espacos (save state),
                            * 6 = confirmar substituir, 7 = convergencia */
@@ -1917,8 +1924,8 @@ static uint8_t *png_le(const char *path, int *pw, int *ph)
 
 /* ------------------------------------------------------------------ save states (10 espacos) */
 #define N_SLOTS 10
-#define MINI_W 320
-#define MINI_H 240
+#define MINI_W 640
+#define MINI_H 480
 static struct { bool tem; char quando[24]; uint16_t mini[MINI_W * MINI_H]; int mw, mh; bool tem_mini; } slots[N_SLOTS];
 static int pv_x, pv_y, pv_w, pv_h; /* caixa da previa (tela logica) */
 static char slot_msg[48];
@@ -1930,16 +1937,23 @@ static void slot_path(int n, const char *ext, char *o, size_t t)
 }
 
 /* miniatura do ultimo quadro do jogo (antes do menu), sem nada por cima */
-static void slot_mini_rgb(uint8_t *rgb)
+/* miniatura = o ultimo quadro do jogo NA RESOLUCAO DELE (ate 640x480), sem pular pontos;
+ * a reducao (com media dos pontos) so acontece na hora de mostrar */
+static void slot_mini_rgb(uint8_t *rgb, int *pw, int *ph)
 {
-	for (int y = 0; y < MINI_H; y++)
-		for (int x = 0; x < MINI_W; x++) {
-			uint8_t *o = rgb + ((size_t)y * MINI_W + x) * 3;
+	int mw2 = ult_w ? (int)ult_w : 320, mh2 = ult_h ? (int)ult_h : 240;
+	if (mw2 > MINI_W) mw2 = MINI_W;
+	if (mh2 > MINI_H) mh2 = MINI_H;
+	*pw = mw2;
+	*ph = mh2;
+	for (int y = 0; y < mh2; y++)
+		for (int x = 0; x < mw2; x++) {
+			uint8_t *o = rgb + ((size_t)y * mw2 + x) * 3;
 			o[0] = o[1] = o[2] = 0;
 			if (!ult_q || !ult_w)
 				continue;
-			const uint8_t *src = ult_q + (size_t)(y * ult_h / MINI_H) * ult_pitch;
-			int sx = x * ult_w / MINI_W, bb = fb.bpp;
+			const uint8_t *src = ult_q + (size_t)(y * ult_h / mh2) * ult_pitch;
+			int sx = x * ult_w / mw2, bb = fb.bpp;
 			fb.bpp = 32;
 			uint32_t p = px_conv(src, sx, ult_fmt);
 			fb.bpp = bb;
@@ -1961,7 +1975,7 @@ static void slots_le(void)
 		slot_path(i, "png", p, sizeof p);
 		int w, h;
 		uint8_t *rgb = png_le(p, &w, &h);
-		if (rgb) {      /* miniaturas antigas (160x120) tambem servem */
+		if (rgb) {      /* miniaturas antigas (160x120, 320x240) tambem servem */
 			int mw2 = w > MINI_W ? MINI_W : w, mh2 = h > MINI_H ? MINI_H : h;
 			for (int y = 0; y < mh2; y++)
 				for (int x = 0; x < mw2; x++) {
@@ -1999,10 +2013,11 @@ static bool slot_salva(int n)
 		ok = false;
 	free(d);
 	if (ok) {
-		uint8_t rgb[MINI_W * MINI_H * 3];
-		slot_mini_rgb(rgb);
+		static uint8_t rgb[MINI_W * MINI_H * 3];
+		int mw2, mh2;
+		slot_mini_rgb(rgb, &mw2, &mh2);
 		slot_path(n, "png", p, sizeof p);
-		png_grava(p, rgb, MINI_W, MINI_H);
+		png_grava(p, rgb, mw2, mh2);
 		sync();
 	}
 	LOG("estado: slot %d %s", n + 1, ok ? "salvo" : "ERRO ao salvar");
@@ -2166,16 +2181,38 @@ static void conv_desenha(void)
 	fb_texto(-1, 70 + 4 * (F->ch + 8), "A SALVA  B VOLTA", 240, 236, 225, true);
 }
 
+/* ponto (x, y) da miniatura reduzida/ampliada para dw x dh: media dos pontos quando reduz */
+static void mini_ponto(int sl, int x, int y, int dw, int dh, int *r, int *g, int *b)
+{
+	int sw = slots[sl].mw, sh = slots[sl].mh;
+	int x0 = x * sw / dw, x1 = (x + 1) * sw / dw, y0 = y * sh / dh, y1 = (y + 1) * sh / dh;
+	if (x1 <= x0) x1 = x0 + 1;
+	if (y1 <= y0) y1 = y0 + 1;
+	int sr = 0, sg = 0, sb = 0, n = 0;
+	for (int yy = y0; yy < y1 && yy < sh; yy++)
+		for (int xx = x0; xx < x1 && xx < sw; xx++) {
+			uint16_t p = slots[sl].mini[yy * sw + xx];
+			sr += (p >> 11) << 3;
+			sg += ((p >> 5) & 63) << 2;
+			sb += (p & 31) << 3;
+			n++;
+		}
+	if (!n)
+		n = 1;
+	*r = sr / n; *g = sg / n; *b = sb / n;
+}
+
 static void slot_previa_nitida(void)
 {
-	if (tubo || m_esc < 2 || !slots[slot_sel].tem_mini)
+	/* com a pergunta "SUBSTITUIR?" aberta, a previa nitida nao e desenhada (ficaria por cima) */
+	if (tubo || m_esc < 2 || !slots[slot_sel].tem_mini || sub == 6)
 		return;
-	int sw = slots[slot_sel].mw, sh = slots[slot_sel].mh;
 	int X = m_ox + pv_x * m_esc, Y = m_oy + pv_y * m_esc, w = pv_w * m_esc, h = pv_h * m_esc;
 	for (int y = 0; y < h; y++)
 		for (int x = 0; x < w; x++) {
-			uint16_t p = slots[slot_sel].mini[(y * sh / h) * sw + x * sw / w];
-			fb_ponto(X + x, Y + y, (p >> 11) << 3, ((p >> 5) & 63) << 2, (p & 31) << 3);
+			int r, g, b;
+			mini_ponto(slot_sel, x, y, w, h, &r, &g, &b);
+			fb_ponto(X + x, Y + y, r, g, b);
 		}
 }
 
@@ -2228,9 +2265,13 @@ static void menu_desenha(void)
 		m_text(16, 50, a_nome, SLATE);
 		if (agora() < slot_msg_ate)
 			m_rtext(MW - 12, 50, slot_msg, rgb(90, 220, 140));
-		int y = 66;
+		int y = 66, visiveis = 0;
+		for (int i = 0; i < N_MENU; i++)
+			visiveis += !menu_oculto(i);
+		int passo_m = (MH - 20 - F->ch - y) / visiveis;
+		if (passo_m > F->ch + 6) passo_m = F->ch + 6;
 		for (int i = 0; i < N_MENU; i++) {
-			if (i == M_CONV && !tubo)
+			if (menu_oculto(i))
 				continue;
 			bool on = i == menu_sel;
 			if (i == M_VOLUME) {
@@ -2253,7 +2294,7 @@ static void menu_desenha(void)
 				m_item(y, MENU[i], on, nf, SLATE);
 			} else
 				m_item(y, MENU[i], on, NULL, SLATE);
-			y += F->ch + 4;
+			y += passo_m;
 		}
 		m_text(16, MH - 4 - F->ch, "START+SELECT VOLTA", SLATE);
 		m_rtext(MW - 12, MH - 4 - F->ch, "A ESCOLHE", SLATE);
@@ -2279,25 +2320,34 @@ static void menu_desenha(void)
 			pv_w = maxh * 4 / 3;
 		pv_h = pv_w * 3 / 4;
 		pv_x = MW - 14 - pv_w;
-		pv_y = y0;
+		pv_y = y0 + F->ch + 6;
+		if (pv_y + pv_h > MH - 14 - F->ch) {
+			pv_h = MH - 14 - F->ch - pv_y;
+			pv_w = pv_h * 4 / 3;
+			pv_x = MW - 14 - pv_w;
+		}
+		m_text(pv_x, y0, slots[slot_sel].tem ? slots[slot_sel].quando : "VAZIO",
+		       slots[slot_sel].tem ? IVORY : SLATE);
 		m_rect(pv_x - 2, pv_y - 2, pv_w + 4, pv_h + 4, slots[slot_sel].tem ? ORANGE : rgb(40, 50, 80));
 		m_rect(pv_x, pv_y, pv_w, pv_h, rgb(12, 18, 40));
 		if (slots[slot_sel].tem_mini) {
-			int sw = slots[slot_sel].mw, sh = slots[slot_sel].mh;
 			for (int y = 0; y < pv_h; y++)
-				for (int x = 0; x < pv_w; x++)
-					ov[(pv_y + y) * MW + pv_x + x] = slots[slot_sel].mini[(y * sh / pv_h) * sw + x * sw / pv_w];
+				for (int x = 0; x < pv_w; x++) {
+					int r, g, b;
+					mini_ponto(slot_sel, x, y, pv_w, pv_h, &r, &g, &b);
+					ov[(pv_y + y) * MW + pv_x + x] = rgb(r, g, b);
+				}
 		} else
 			m_text(pv_x + (pv_w - 5 * F->cw) / 2, pv_y + pv_h / 2 - F->ch / 2, "VAZIO", SLATE);
 		m_text(16, MH - 4 - F->ch, slot_modo ? "A CARREGA  B VOLTA" : "A SALVA  B VOLTA", SLATE);
 		if (sub == 6) {
 			char l1[40];
 			snprintf(l1, sizeof l1, "SUBSTITUIR O SLOT %d?", slot_sel + 1);
-			int w = 26 * F->cw;
-			m_rect((MW - w) / 2 - 4, 96, w + 8, 2 * F->ch + 20, rgb(40, 20, 20));
-			m_rect((MW - w) / 2 - 4, 96, w + 8, 2, ORANGE);
-			m_text((MW - (int)strlen(l1) * F->cw) / 2, 104, l1, IVORY);
-			m_text((MW - 13 * F->cw) / 2, 108 + F->ch, "A SIM   B NAO", IVORY);
+			int w = 26 * F->cw, bx = (MW - w) / 2 - 6, by = MH / 2 - F->ch - 10, bh = 2 * F->ch + 22;
+			m_rect(bx, by, w + 12, bh, rgb(255, 255, 255));            /* contorno branco */
+			m_rect(bx + 1, by + 1, w + 10, bh - 2, rgb(24, 44, 110));  /* fundo azul */
+			m_text((MW - (int)strlen(l1) * F->cw) / 2, by + 8, l1, IVORY);
+			m_text((MW - 13 * F->cw) / 2, by + 12 + F->ch, "A SIM   B NAO", IVORY);
 		}
 	} else if (sub == 1) {
 		if (!nvars)
@@ -2486,16 +2536,14 @@ static int menu_passo(uint32_t b, uint32_t novo, bool combo)
 	if (sub == 0) {
 		if (novo & VOLTA)
 			return M_CONTINUAR;
-		if (rep & (1u << B_UP)) {
-			menu_sel = (menu_sel + N_MENU - 1) % N_MENU;
-			if (menu_sel == M_CONV && !tubo)
-				menu_sel--;
-		}
-		if (rep & (1u << B_DOWN)) {
-			menu_sel = (menu_sel + 1) % N_MENU;
-			if (menu_sel == M_CONV && !tubo)
-				menu_sel++;
-		}
+		if (rep & (1u << B_UP))
+			do
+				menu_sel = (menu_sel + N_MENU - 1) % N_MENU;
+			while (menu_oculto(menu_sel));
+		if (rep & (1u << B_DOWN))
+			do
+				menu_sel = (menu_sel + 1) % N_MENU;
+			while (menu_oculto(menu_sel));
 		if (menu_sel == M_IMAGEM && !tubo && (novo & ((1u << B_LEFT) | (1u << B_RIGHT)))) {
 			imagem = !imagem;
 			imagem_grava();
@@ -2530,7 +2578,7 @@ static int menu_passo(uint32_t b, uint32_t novo, bool combo)
 				sub_mudou = false;
 				return -1;
 			}
-			if (menu_sel == M_CONTINUAR || menu_sel == M_REINICIAR || menu_sel == M_SAIR)
+			if (menu_sel == M_CONTINUAR || menu_sel == M_REINICIAR || menu_sel == M_SAIR || menu_sel == M_LISTA)
 				return menu_sel;
 		}
 		return -1;
@@ -2789,6 +2837,10 @@ int main(int argc, char **argv)
 				if (escolha == M_REINICIAR) {
 					LOG("reiniciar jogo");
 					core.reset();
+				} else if (escolha == M_LISTA) {
+					LOG("voltar para a lista");
+					ret = 10; /* o menu volta para a lista de jogos deste sistema */
+					break;
 				} else if (escolha == M_SAIR) {
 					LOG("sair do jogo");
 					break;

@@ -291,3 +291,21 @@ A aba JOGOS mostra so as pastas que tem jogos.
   jogo de 640x480 vira 320x240 cortando colunas/linhas, o texto quebra) e depois e
   ampliada 1,5x de forma irregular. Corrigir: gravar a miniatura na resolucao do proprio
   jogo (ate 640x480) e reduzir com media dos pontos so na hora de mostrar.
+
+## PENDENTE (mais tarde): fundo do menu
+- Imagem propria: RETROVOLT/imagens/fundo.png vira papel de parede (escurecido para leitura).
+- Fundo por console na aba JOGOS (fotos dos consoles enviadas pelo autor).
+
+## R14 (feito)
+- LCD em AUTO: o boot nao forca resolucao (o Linux usa a nativa) -> sem reinicio extra.
+  So forca acima de 1080 linhas (4K) ou quando escolhida a mao (com confirmacao).
+- Wi-Fi do topo: procura a cada 5 s ate achar; so apaga depois de 3 falhas seguidas.
+- Save state por jogo: pasta states/<sistema>/<codigo|rotulo|impressao digital do CD|nome>.
+- Miniatura na resolucao do jogo (ate 640x480) e reduzida com media; data/hora em cima
+  da previa; "SUBSTITUIR?" por cima da previa.
+- Popups de confirmacao: fundo azul com contorno branco (menu e menu do jogo).
+- Menu do jogo: VOLTAR PARA A LISTA (codigo 10: lista do sistema, cursor no jogo);
+  SAIR DO JOGO volta ao menu principal. Itens que nao valem somem (CONVERGENCIA no LCD;
+  IMAGEM e FILTRO no tubo).
+- PC Engine: lista unica (cartoes + CDs, le tambem roms/pcenginecd), INICIAR CD sempre;
+  sistemas de CD com nucleo aparecem sempre; BIOS do CD so e exigida para jogo de CD.
