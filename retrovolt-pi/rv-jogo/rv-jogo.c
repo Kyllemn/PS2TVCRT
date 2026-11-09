@@ -1640,6 +1640,32 @@ static void m_text(int x, int y, const char *s, uint16_t c)
 }
 static void m_rtext(int x, int y, const char *s, uint16_t c) { m_text(x - (int)strlen(s) * F->cw, y, s, c); }
 
+/* marca: RETRO (raio) VOLT em tamanho maior, igual ao menu principal */
+static void m_logo(int x, int y)
+{
+	static const char *RAIO[] = {".....####", "....####.", "....###..", "...####..", "...###...", "..#######",
+	                             "..######.", ".....###.", "....###..", "....##...", "...##....", "...#.....", "..#......"};
+	int esc = F->ch <= 10 ? 2 : 1;
+	const char *p1 = "RETRO", *p2 = "VOLT";
+	uint16_t IV = rgb(240, 236, 225), OR = rgb(255, 140, 40), AM = rgb(255, 196, 40);
+	for (int pass = 0; pass < 2; pass++) {
+		const char *t = pass ? p2 : p1;
+		int x0 = pass ? x + 5 * F->cw * esc + 13 : x;
+		for (int n = 0; t[n]; n++) {
+			int o = (unsigned char)t[n] - 32;
+			for (int r = 0; r < F->ch; r++)
+				for (int k = 0; k < F->cw; k++)
+					if (F->b[o * F->ch + r] >> k & 1)
+						m_rect(x0 + (n * F->cw + k) * esc, y + r * esc, esc, esc, pass ? OR : IV);
+		}
+	}
+	int xr = x + 5 * F->cw * esc + 2, alt = F->ch * esc;
+	for (int j = 0; j < 13; j++)
+		for (int i = 0; RAIO[j][i]; i++)
+			if (RAIO[j][i] == '#')
+				m_rect(xr + i, y + j * alt / 13 + 1, 1, alt / 13 + 1, AM);
+}
+
 static void menu_fundo(void)
 {
 	/* ultimo quadro do jogo reduzido para 320x240 e escurecido (25%) */
@@ -2042,12 +2068,11 @@ static void menu_desenha(void)
 	memcpy(ov, fundo, sizeof ov);
 	m_rect(0, 0, 6, MH, ORANGE);
 	m_rect(MW - 6, 0, 6, MH, ORANGE);
-	m_text(16, 6, "RETRO", IVORY);
-	m_text(16 + 5 * F->cw, 6, "VOLT", ORANGE);
+	m_logo(16, 3);
 	char hora[8];
 	time_t t = time(NULL);
 	strftime(hora, sizeof hora, "%H:%M", localtime(&t));
-	m_rtext(MW - 12, 6, hora, IVORY);
+	m_rtext(MW - 12, 3 + (F->ch <= 10 ? F->ch / 2 : 0), hora, IVORY);
 	if (sub == 7) {
 		conv_desenha();
 		return;
@@ -2055,8 +2080,8 @@ static void menu_desenha(void)
 	const char *titulo = sub == 0 ? "JOGO" : sub == 1 ? "OPCOES DO NUCLEO" : sub >= 5 ? (slot_modo ? "CARREGAR ESTADO" : "SALVAR ESTADO") : "CONTROLES";
 	if (sub == 4 && ass_pos >= n_ordem)
 		ass_pos = 0;
-	m_text(16, 28, titulo, IVORY);
-	m_rect(16, 28 + F->ch + 2, strlen(titulo) * F->cw, 2, ORANGE);
+	m_text(16, 30, titulo, IVORY);
+	m_rect(16, 30 + F->ch + 2, strlen(titulo) * F->cw, 2, ORANGE);
 	int passo = F->ch + 7, y0 = 52 + F->ch;
 	int cabem = (MH - 12 - F->ch - y0) / passo;
 	if (sub == 0) {

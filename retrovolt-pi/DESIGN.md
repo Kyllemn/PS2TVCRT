@@ -204,3 +204,14 @@ A aba JOGOS mostra so as pastas que tem jogos.
   OPCOES > VIDEO: SAIDA (AUTO/TUBO/LCD), FILTRO. Sem imagem: segurar SELECT 5 s troca.
 
 ## PENDENTE: avisos (resolucao/controle) dentro de um balao, mais apresentavel.
+
+## R07 (feito)
+- Troca TUBO/LCD so quando o aparelho detectado for diferente do boot atual (compara os
+  parametros de video, nao o texto) e com 2 leituras validas e iguais da EDID (soma de
+  verificacao), 1 s entre elas.
+- Marca maior: "RETRO" (raio amarelo) "VOLT", no menu e no menu do jogo.
+- Topo: icone de Wi-Fi + nome da rede (verde conectado). INFO: Wi-Fi, IP, MASCARA, GATEWAY.
+- Arte do disco: RETROVOLT/imagens/discos/<sistema>/<codigo>.png (ou nome do arquivo do
+  jogo). Aba DISCO e espaco ao lado da lista de jogos; sem arte = CD generico.
+- PENDENTE: base de imagens dos discos (procurar repositorio/scraper; ex.: ScreenScraper
+  tem "suporte" = arte do disco, precisa conta).
