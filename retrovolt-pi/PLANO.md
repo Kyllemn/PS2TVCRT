@@ -96,3 +96,19 @@ de cada uma na tela e no log), para achar o sinal certo num boot so.
   H.264 ate 1080p roda por software nos 4 nucleos A76, com folga para 720p.
 - Memoria (Pi de 2 GB): a pausa do RetroTV guarda ate ~15 min na RAM
   (~1 GB a 8-10 Mbit/s). Limitar a ~3 min (~250 MB) nesta placa.
+
+## Deteccao TUBO x LCD pela EDID (dados reais do autor, 09/11)
+EDID lida no ReplayOS, porta HDMI-A-1, cadeia HDMI>VGA>componente>tubo:
+fabricante "AGO", produto 0001, serial "10NC", 2013, EDID 1.3, entrada digital,
+tela 30x23 cm (4:3), SEM nome de monitor, preferida 1024x768@60 (48,4 kHz),
+outras 1920x1080, 1360x768, 1280x1024; nenhum modo de 15 kHz. E a EDID fixa do
+adaptador HDMI>VGA (a TV de tubo nao manda nada).
+Regras, em ordem:
+1. Lista de adaptadores conhecidos (fabricante+produto): AGO/0001 = conversor > TUBO.
+2. "Cara de conversor": sem nome de monitor (descritor 0xFC) + preferida <= 1024x768
+   + tela 4:3 > TUBO.
+3. Tem nome, preferida >= 1280x720 ou 16:9/16:10 > LCD (resolucao/proporcao dele).
+4. Duvida > pergunta unica TUBO/LCD (lembrada). Troca manual: video_saida no
+   retrovolt.cfg ou OPCOES > VIDEO; modo seguro com SELECT ao ligar.
+Limite conhecido: o mesmo adaptador num monitor VGA de PC parece igual (regra 2
+erra); a troca manual resolve. O LOG.TXT registra a EDID para ampliar a lista.
