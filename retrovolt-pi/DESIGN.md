@@ -215,3 +215,12 @@ A aba JOGOS mostra so as pastas que tem jogos.
   jogo). Aba DISCO e espaco ao lado da lista de jogos; sem arte = CD generico.
 - PENDENTE: base de imagens dos discos (procurar repositorio/scraper; ex.: ScreenScraper
   tem "suporte" = arte do disco, precisa conta).
+
+## R08 (feito)
+- Logo: raio colado no O e no V.
+- Lista de jogos (arquivos): CAPA do jogo a direita (imagens/capas/<sistema>/<codigo>.png
+  ou nome do arquivo); INICIAR CD e aba DISCO: arte do CD (imagens/discos/...).
+  Reducao numa thread + cache em imagens/.cache (so PNG; webp/jpg nao).
+- Receptor 8BitDo ligado desde o boot sem virar controle: 8 s depois do inicio, se o
+  receptor (USB 2dc8) estiver la e nenhum controle dele existir, "tira e poe" por
+  software (authorized 0 -> 1), uma vez por boot.

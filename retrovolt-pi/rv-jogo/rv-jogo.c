@@ -1650,7 +1650,7 @@ static void m_logo(int x, int y)
 	uint16_t IV = rgb(240, 236, 225), OR = rgb(255, 140, 40), AM = rgb(255, 196, 40);
 	for (int pass = 0; pass < 2; pass++) {
 		const char *t = pass ? p2 : p1;
-		int x0 = pass ? x + 5 * F->cw * esc + 13 : x;
+		int x0 = pass ? x + 5 * F->cw * esc + 7 : x; /* raio colado no O e no V */
 		for (int n = 0; t[n]; n++) {
 			int o = (unsigned char)t[n] - 32;
 			for (int r = 0; r < F->ch; r++)
@@ -1659,7 +1659,7 @@ static void m_logo(int x, int y)
 						m_rect(x0 + (n * F->cw + k) * esc, y + r * esc, esc, esc, pass ? OR : IV);
 		}
 	}
-	int xr = x + 5 * F->cw * esc + 2, alt = F->ch * esc;
+	int xr = x + 5 * F->cw * esc - 3, alt = F->ch * esc;
 	for (int j = 0; j < 13; j++)
 		for (int i = 0; RAIO[j][i]; i++)
 			if (RAIO[j][i] == '#')
