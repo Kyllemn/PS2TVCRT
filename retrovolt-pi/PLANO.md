@@ -80,3 +80,19 @@ HDMI (Pi 5) > adaptador HDMI-VGA > conversor VGA-componente > TV de tubo
 (boot ja em 240p), instalador automatico no 1o boot, SSH/Wi-Fi para log.
 Primeiro teste: tela que alterna sozinha entre variantes de 240p (com o nome
 de cada uma na tela e no log), para achar o sinal certo num boot so.
+
+## TV: RetroTV (aprovado)
+- Nucleo libretro RetroTV (github.com/chris-skitch/retrotv-libretro, licenca MIT),
+  o mesmo usado no ReplayOS: listas IPTV M3U (MPEG-TS/HLS), guia XMLTV,
+  troca de canal, estatica, NO SIGNAL, 4:3 / 240p / 50 Hz para tubo.
+- Integracao: o frontend abre o nucleo com a "grade" escolhida como conteudo
+  (arquivo .txt com o link M3U e opcional `epg=`, ou um .m3u). Pasta das grades:
+  `RETROVOLT/TV/` no pendrive (ou na pasta de dados). As partes de instalacao
+  do ReplayOS (install.sh, .cfg do ReplayOS) sao trocadas pelo nosso lancador.
+- Dependencia: o RetroTV carrega o FFmpeg do sistema por dlopen
+  (`libavcodec.so.61` = FFmpeg 7): usar Raspberry Pi OS baseado no Debian
+  Trixie (o Bookworm traz FFmpeg 5 e nao serve).
+- Decodificacao: o Pi 5 NAO tem decodificador H.264 por hardware (so HEVC);
+  H.264 ate 1080p roda por software nos 4 nucleos A76, com folga para 720p.
+- Memoria (Pi de 2 GB): a pausa do RetroTV guarda ate ~15 min na RAM
+  (~1 GB a 8-10 Mbit/s). Limitar a ~3 min (~250 MB) nesta placa.

@@ -11,7 +11,7 @@ HDMI > componente para TV de tubo). Detalhes tecnicos e fases ficam no plano.
 - Topo: "RETROVOLT" a esquerda, relogio a direita.
 - Ao lado (a esquerda) do relogio: icone de Wi-Fi + nome da rede quando
   conectado; "SEM WI-FI" quando nao conectado. Em fonte pequena (3x5).
-- Abas DISCO / JOGOS / OPCOES, trocadas com L1/R1, SEM numeros, fonte normal
+- Abas DISCO / JOGOS / TV / OPCOES, trocadas com L1/R1, SEM numeros, fonte normal
   (8x8, mesmo tamanho do resto); aba ativa em marfim com sublinhado laranja.
 - Listas uma embaixo da outra, sem numeros e sem contagem de itens.
 - Item selecionado: marca laranja a esquerda, nome em marfim sublinhado em
@@ -28,8 +28,15 @@ HDMI > componente para TV de tubo). Detalhes tecnicos e fases ficam no plano.
    (aprox. x 172-292, y 66-202 em 320x240) mostra uma imagem em ALTA RESOLUCAO
    do console selecionado, SEM moldura, trocando conforme a selecao.
    As imagens serao enviadas pelo autor no futuro.
-3. OPCOES: volume geral, video, convergencia (laterais amarelas), controles,
+3. TV (RetroTV, mockup `rv_F5_tv.png`): lista das "grades" de canais (cada
+   arquivo .txt/.m3u da pasta TV e uma grade; cada uma lembra o ultimo canal).
+   A direita: mini TV de tubo com barras de cor e "CH nn", ULTIMO CANAL,
+   AGORA / DEPOIS (do guia). Embaixo da lista: total de canais e estado do guia.
+   X ASSISTIR abre o RetroTV na grade escolhida (dentro dele vale a interface
+   propria do RetroTV: banner, guia, lista de canais, estatica, NO SIGNAL).
+4. OPCOES: volume geral, video, convergencia (laterais amarelas), controles,
    Wi-Fi, leitora, pastas de jogos, sistema, INFO, REINICIAR e DESLIGAR (vermelho).
+   (Status do sistema saiu de baixo do relogio; mockups atualizados.)
    INFO: temperatura, uso da CPU, memoria (RAM) e o dispositivo de jogos
    (SD ou pendrive, escolhido em PASTAS DE JOGOS) com o espaco usado.
    (Essas informacoes NAO ficam mais embaixo do relogio.)
