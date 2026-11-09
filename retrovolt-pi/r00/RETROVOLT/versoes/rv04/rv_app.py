@@ -739,6 +739,7 @@ class App:
         self.ultima_acao = ''
         self.aviso = None
         self.confirma = None
+        self.contagem = None      # (REINICIAR|DESLIGAR, hora final)
 
     # ---------------------------------------------------------- jogos
     def sistemas_com_jogos(self):
@@ -795,7 +796,7 @@ class App:
         saves = os.path.join(self.base, 'saves', sistema)
         os.makedirs(saves, exist_ok=True)
         cmd = [exe, '--nucleo', so, '--bios', os.path.join(self.base, 'bios'), '--saves', saves,
-               '--nome', nome[:60], '--fonte', F.nome,
+               '--nome', nome[:60], '--save', save, '--fonte', F.nome,
                '--conv', '%d,%d,%.3f,%.3f' % tuple(self.conv),
                '--opcoes', os.path.join(self.base, 'config', 'nucleos', nucleo.replace('_libretro.so', '.opt'))]
         cmd += ['--cd', self.leitora.dev] if cd else ['--jogo', arquivo]
@@ -858,6 +859,8 @@ class App:
                     y += F.ch + 9
             if self.confirma:
                 self.desenha_confirma(c)
+            if self.contagem:
+                self.desenha_contagem(c)
         elif t == 'conv':
             self.desenha_conv(c)
         elif t == 'fonte':
@@ -1028,12 +1031,16 @@ class App:
 
     # ---------------------------------------------------------- acoes
     def acao_menu(self, a):
+        if self.contagem:
+            if a == 'B':
+                print('opcoes: %s cancelado' % self.contagem[0], flush=True)
+                self.contagem = None
+            return
         if self.confirma:
             if a == 'A':
-                cmd = ['systemctl', 'poweroff' if self.confirma == 'DESLIGAR' else 'reboot']
-                print('opcoes: %s' % ' '.join(cmd), flush=True)
-                if not self.fb.fake:
-                    subprocess.Popen(cmd)
+                self.contagem = (self.confirma, time.monotonic() + 5)
+                print('opcoes: %s em 5 s' % self.confirma, flush=True)
+                threading.Thread(target=self.prepara_desligar, daemon=True).start()
             if a in ('A', 'B'):
                 self.confirma = None
             return
@@ -1165,6 +1172,39 @@ class App:
             if a == 'B':
                 self.tela = 'menu'
 
+    def prepara_desligar(self):
+        """durante a contagem: grava configuracao e log e esvazia os caches de disco"""
+        try:
+            cfg_gravar(self.cfg)
+        except Exception as ex:
+            print('desligar: cfg', ex, flush=True)
+        copia_log()
+        os.sync()
+
+    def fim_contagem(self):
+        acao = self.contagem[0]
+        self.contagem = None
+        c = Canvas()
+        cabecalho(c, self.aba, self.wifi, '')
+        c.ctext(110, 'DESLIGANDO...' if acao == 'DESLIGAR' else 'REINICIANDO...', ORANGE)
+        self.fb.show(c, self.conv)
+        copia_log()
+        os.sync()
+        cmd = ['systemctl', 'poweroff' if acao == 'DESLIGAR' else 'reboot']
+        print('opcoes: %s' % ' '.join(cmd), flush=True)
+        if not self.fb.fake:
+            subprocess.Popen(cmd)
+
+    def desenha_contagem(self, c):
+        acao, fim = self.contagem
+        n = max(1, int(fim - time.monotonic() + 0.999))
+        txt = '%s EM %d' % ('DESLIGANDO' if acao == 'DESLIGAR' else 'REINICIANDO', n)
+        w = max(len(txt), 14) * F.cw + 30
+        c.rect((W - w) // 2, 92, w, 2 * F.ch + 30, (40, 20, 20))
+        c.rect((W - w) // 2, 92, w, 2, RED if acao == 'DESLIGAR' else ORANGE)
+        c.ctext(104, txt, IVORY)
+        c.ctext(104 + F.ch + 8, 'B CANCELA', SLATE)
+
     def disco_novo(self):
         """disco entrou: se estiver no menu, abre o jogo na hora"""
         i = self.leitora.info or {}
@@ -1216,10 +1256,10 @@ class App:
             ultimo_desenho = time.monotonic()
             while True:
                 try:
-                    a = self.fila.get(timeout=1.0)
+                    a = self.fila.get(timeout=0.25 if self.contagem else 1.0)
                 except queue.Empty:
                     a = None
-                mudou = False
+                mudou = bool(self.contagem)
                 for b in [a] + self._pendentes():
                     if b is None:
                         continue
@@ -1233,6 +1273,9 @@ class App:
                     else:
                         self.acao(b)
                         mudou = True
+                if self.contagem and time.monotonic() >= self.contagem[1]:
+                    self.fim_contagem()
+                    continue
                 if self.aviso and time.monotonic() > self.aviso[1]:
                     self.aviso = None
                     mudou = True

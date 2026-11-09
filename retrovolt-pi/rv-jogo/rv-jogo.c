@@ -58,7 +58,7 @@ static double agora(void)
 
 /* ------------------------------------------------------------------ opcoes */
 static const char *a_nucleo, *a_jogo, *a_cd, *a_bios = ".", *a_saves = ".", *a_nome = "jogo";
-static const char *a_audio, *a_opcoes, *a_fonte = "6X10";
+static const char *a_audio, *a_opcoes, *a_fonte = "6X10", *a_save;
 static int conv_x, conv_y;
 static double conv_w = 1.0, conv_h = 1.0;
 
@@ -657,16 +657,36 @@ static void fb_abrir(void)
  * No Pi 5 o FBIO_WAITFORVSYNC do fbdev volta na hora (nao espera nada): por isso
  * cada metodo e medido e so vale se der um intervalo de tela de verdade (12-25 ms). */
 static int vs_tipo, vs_drm = -1;
-static unsigned vs_crtc;
+static unsigned vs_crtc, vs_seq;
+static bool vs_medindo = true;
+static long vs_ressinc;
 
 static bool vs_espera(int tipo)
 {
 	if (tipo == 1) {
 		union drm_wait_vblank v;
 		memset(&v, 0, sizeof v);
-		v.request.type = _DRM_VBLANK_RELATIVE | ((vs_crtc << _DRM_VBLANK_HIGH_CRTC_SHIFT) & _DRM_VBLANK_HIGH_CRTC_MASK);
-		v.request.sequence = 1;
-		return ioctl(vs_drm, DRM_IOCTL_WAIT_VBLANK, &v) == 0;
+		unsigned crtc = (vs_crtc << _DRM_VBLANK_HIGH_CRTC_SHIFT) & _DRM_VBLANK_HIGH_CRTC_MASK;
+		if (vs_medindo || !vs_seq) {
+			v.request.type = _DRM_VBLANK_RELATIVE | crtc;
+			v.request.sequence = 1;
+			if (ioctl(vs_drm, DRM_IOCTL_WAIT_VBLANK, &v))
+				return false;
+			vs_seq = v.reply.sequence;
+			return true;
+		}
+		/* espera o PROXIMO vblank depois do ultimo mostrado: se o quadro atrasou
+		 * um pouco, volta na hora e o jogo nao perde o passo */
+		v.request.type = _DRM_VBLANK_ABSOLUTE | crtc;
+		v.request.sequence = vs_seq + 1;
+		if (ioctl(vs_drm, DRM_IOCTL_WAIT_VBLANK, &v))
+			return false;
+		if ((int)(v.reply.sequence - (vs_seq + 1)) > 3) { /* atraso grande (ex.: CD): ressincroniza */
+			vs_seq = v.reply.sequence;
+			vs_ressinc++;
+		} else
+			vs_seq++;
+		return true;
 	}
 	uint32_t z = 0;
 	return ioctl(fb.fd, FBIO_WAITFORVSYNC, &z) == 0;
@@ -867,6 +887,7 @@ static pthread_mutex_t r_mx = PTHREAD_MUTEX_INITIALIZER;
 static double rs_pos, rs_passo_base = 1.0;
 static int16_t rs_ant[2];
 static bool som_ok, som_mudo;
+static long som_vazio;
 
 static void *som_thread(void *p)
 {
@@ -875,6 +896,13 @@ static void *som_thread(void *p)
 	while (!g_sair) {
 		pthread_mutex_lock(&r_mx);
 		int n = r_cnt < 256 ? r_cnt : 256;
+		if (n < 64 && r_cnt < 64 && n > 0) {
+			/* quase vazio: espera um pouco antes de completar com silencio */
+			pthread_mutex_unlock(&r_mx);
+			usleep(2000);
+			pthread_mutex_lock(&r_mx);
+			n = r_cnt < 256 ? r_cnt : 256;
+		}
 		for (int i = 0; i < n; i++) {
 			buf[i * 2] = ring[r_rd * 2];
 			buf[i * 2 + 1] = ring[r_rd * 2 + 1];
@@ -882,9 +910,13 @@ static void *som_thread(void *p)
 		}
 		r_cnt -= n;
 		pthread_mutex_unlock(&r_mx);
-		if (n < 256)
-			memset(buf + n * 2, 0, (256 - n) * 4);
-		long e = al.writei(al.pcm, buf, 256);
+		int m = n;
+		if (n == 0) {
+			memset(buf, 0, 64 * 4);
+			m = 64;
+			som_vazio++;
+		}
+		long e = al.writei(al.pcm, buf, m);
 		if (e < 0)
 			al.recover(al.pcm, (int)e, 1);
 	}
@@ -1169,7 +1201,7 @@ static void sram_carrega(void)
 	uint8_t *m = core.get_memory_data(RETRO_MEMORY_SAVE_RAM);
 	if (!srm_tam || !m)
 		return;
-	snprintf(srm_path, sizeof srm_path, "%s/%s.srm", a_saves, a_nome);
+	snprintf(srm_path, sizeof srm_path, "%s/%s.srm", a_saves, a_save ? a_save : a_nome);
 	FILE *f = fopen(srm_path, "rb");
 	if (f) {
 		size_t n = fread(m, 1, srm_tam, f);
@@ -1424,6 +1456,7 @@ int main(int argc, char **argv)
 		else if (!strcmp(k, "--bios")) a_bios = v;
 		else if (!strcmp(k, "--saves")) a_saves = v;
 		else if (!strcmp(k, "--nome")) a_nome = v;
+		else if (!strcmp(k, "--save")) a_save = v;
 		else if (!strcmp(k, "--audio")) a_audio = v;
 		else if (!strcmp(k, "--opcoes")) a_opcoes = v;
 		else if (!strcmp(k, "--fonte")) a_fonte = v;
@@ -1470,6 +1503,7 @@ int main(int argc, char **argv)
 	core.get_memory_data = simbolo("retro_get_memory_data");
 	core.get_memory_size = simbolo("retro_get_memory_size");
 
+	var_set("pcsx_rearmed_cd_readahead", "128", false); /* le o CD adiantado: menos espera */
 	opcoes_ler();
 	core.set_environment(environment);
 	core.set_video_refresh(video_cb);
@@ -1514,6 +1548,7 @@ int main(int argc, char **argv)
 	/* ritmo: 1 quadro do jogo por vsync quando as frequencias batem (<0,6%);
 	 * senao (ex.: jogo PAL 50 Hz numa tela 60 Hz) acumula o tempo */
 	double tela_hz = vs_escolhe();
+	vs_medindo = false;
 	fb.sem_vsync = vs_tipo == 0;
 	if (tela_hz <= 0)
 		tela_hz = tubo ? 60.005 : 60.0;
@@ -1601,8 +1636,9 @@ int main(int argc, char **argv)
 			static double t_ult;
 			double t = agora();
 			if (t_ult > 0)
-				LOG("ritmo: %.1f quadros/s; cd: %ld blocos, media %.0f ms, max %.0f ms, metodo %d",
-				    300 / (t - t_ult), cd_n_blocos, cd_n_blocos ? cd_t_total / cd_n_blocos * 1e3 : 0, cd_t_max * 1e3, cd_metodo);
+				LOG("ritmo: %.1f quadros/s; cd: %ld blocos, media %.0f ms, max %.0f ms, metodo %d; som: buffer %d%%, vazio %ld; ressinc %ld",
+				    300 / (t - t_ult), cd_n_blocos, cd_n_blocos ? cd_t_total / cd_n_blocos * 1e3 : 0, cd_t_max * 1e3, cd_metodo,
+				    r_cnt * 100 / RING, som_vazio, vs_ressinc);
 			t_ult = t;
 			cd_t_max = 0;
 		}
