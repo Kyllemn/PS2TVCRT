@@ -224,3 +224,8 @@ A aba JOGOS mostra so as pastas que tem jogos.
 - Receptor 8BitDo ligado desde o boot sem virar controle: 8 s depois do inicio, se o
   receptor (USB 2dc8) estiver la e nenhum controle dele existir, "tira e poe" por
   software (authorized 0 -> 1), uma vez por boot.
+
+## R09: LCD na resolucao nativa
+- Teste real (HP w1907, 1440x900): em 1280x720 o monitor deslocou e cortou a imagem.
+  Regra nova: LCD usa o modo PREFERIDO (nativo) da EDID; 1280x720 so como reserva.
+  1440x900 -> menu 384x240 x3 (1152x720, 16:10, bordas pretas); 1920x1080 -> 427x240 x4.
