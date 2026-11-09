@@ -112,3 +112,17 @@ Regras, em ordem:
    retrovolt.cfg ou OPCOES > VIDEO; modo seguro com SELECT ao ligar.
 Limite conhecido: o mesmo adaptador num monitor VGA de PC parece igual (regra 2
 erra); a troca manual resolve. O LOG.TXT registra a EDID para ampliar a lista.
+
+## Fases (proposta de 09/11)
+| Fase | Conteudo | O autor testa |
+|---|---|---|
+| R00 | Base: instalador, boot direto, versoes pelo pendrive, volta automatica, LOG.TXT, cartao protegido | Liga e mostra a nossa tela |
+| R01 | Video: deteccao TUBO/LCD (EDID), 240p, tela de teste com barras laranja da convergencia | Imagem certa no tubo |
+| R02 | Menu: abas, controle, OPCOES, Wi-Fi, criacao das pastas, retrovolt.cfg | Navegar no menu |
+| R03 | Primeiro nucleo: PS1 (pcsx_rearmed) pela pasta roms/ps1; popup START+SELECT; save states | Jogar |
+| R04 | Leitora USB (modo AO VIVO) com PS1 | Jogar pelo CD |
+| R05 | TV: RetroTV | Assistir canais |
+| R06 | Demais nucleos (cartucho e CD) | Jogar |
+| R07 | Acabamento: imagens dos consoles, BIOS, INFO, imagem propria do cartao | Tudo |
+Primeira instalacao (R00): internet por cabo de rede ou Wi-Fi so desta vez no
+Raspberry Pi Imager (o instalador baixa os pacotes). Depois, Wi-Fi so pelo menu.
