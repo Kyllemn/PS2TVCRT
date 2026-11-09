@@ -233,3 +233,8 @@ A aba JOGOS mostra so as pastas que tem jogos.
   canto superior direito com a SAIDA real ("320x240p 59.94Hz  SAIDA 1440x900" /
   "SAIDA TUBO 240p"); controle conectado no canto inferior esquerdo, mais largo.
   Menu: avisos no canto inferior esquerdo, mesmo estilo.
+
+## R10: filtros no menu do jogo
+- FILTRO DE IMAGEM no START+SELECT (so LCD): NENHUM / SCANLINES / SCANLINES LEVES / CRT
+  (scanlines + grade de fosforo). Vale na hora e fica salvo por nucleo
+  (config/nucleos/<nucleo>.filtro); OPCOES > VIDEO e o padrao. Menu do jogo sem filtro.

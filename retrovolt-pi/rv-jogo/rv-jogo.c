@@ -60,7 +60,11 @@ static double agora(void)
 /* ------------------------------------------------------------------ opcoes */
 static const char *a_nucleo, *a_jogo, *a_cd, *a_bios = ".", *a_saves = ".", *a_nome = "jogo";
 static const char *a_audio, *a_opcoes, *a_fonte = "6X10", *a_save, *a_states, *a_conv_arq;
-static int filtro; /* LCD: 0 nenhum, 1 scanlines */
+static int filtro; /* LCD: 0 nenhum, 1 scanlines, 2 scanlines leves, 3 CRT */
+static const char *FILTROS[] = {"NENHUM", "SCANLINES", "SCANLINES LEVES", "CRT"};
+#define N_FILTROS 4
+static const char *a_filtro_arq;
+static bool sem_filtro; /* menu do jogo: nunca com filtro */
 static int conv_menu_x, conv_menu_y; static double conv_menu_w = 1.0; /* convergencia geral (do menu) */
 static int volume = 100, volume_ini = -1;  /* 0..100 */
 static int cd_vel = 4;                     /* velocidade da leitora (x); 0 = maxima */
@@ -857,21 +861,36 @@ static void desenha(const void *data, unsigned w, unsigned h, size_t pitch, int 
 			if (yy < 0 || yy >= fb.h)
 				continue;
 			uint8_t *d = fb.back + (size_t)yy * fb.stride + (size_t)x0 * bpp;
-			bool escura = !tubo && filtro == 1 && lp >= 2 && k == lp - 1;
+			/* efeitos (so no LCD, com a imagem ampliada 2x ou mais):
+			 * scanlines = ultima linha de cada grupo mais escura (50% ou 25%);
+			 * CRT = scanlines 50% + grade de fosforo (1 coluna em 3 com 25% menos luz) */
+			int ef = (!tubo && lp >= 2 && !sem_filtro) ? filtro : 0;
+			int linha_esc = (ef == 1 || ef == 3) && k == lp - 1 ? 2 : (ef == 2 && k == lp - 1) ? 1 : 0;
+			bool grade = ef == 3;
 			if (bpp == 2) {
-				if (escura)
-					for (int i = i0; i < i1; i++)
-						((uint16_t *)d)[i] = (linha_tmp[xmap[i]] >> 1) & 0x7BEF;
-				else
-					for (int i = i0; i < i1; i++)
-						((uint16_t *)d)[i] = linha_tmp[xmap[i]];
+				uint16_t *o = (uint16_t *)d;
+				for (int i = i0; i < i1; i++) {
+					uint16_t p = linha_tmp[xmap[i]];
+					if (linha_esc == 2)
+						p = (p >> 1) & 0x7BEF;
+					else if (linha_esc == 1)
+						p -= (p >> 2) & 0x39E7;
+					if (grade && (x0 + i) % 3 == 2)
+						p -= (p >> 2) & 0x39E7;
+					o[i] = p;
+				}
 			} else {
-				if (escura)
-					for (int i = i0; i < i1; i++)
-						((uint32_t *)d)[i] = (linha_tmp[xmap[i]] >> 1) & 0x7F7F7F;
-				else
-					for (int i = i0; i < i1; i++)
-						((uint32_t *)d)[i] = linha_tmp[xmap[i]];
+				uint32_t *o = (uint32_t *)d;
+				for (int i = i0; i < i1; i++) {
+					uint32_t p = linha_tmp[xmap[i]];
+					if (linha_esc == 2)
+						p = (p >> 1) & 0x7F7F7F;
+					else if (linha_esc == 1)
+						p -= (p >> 2) & 0x3F3F3F;
+					if (grade && (x0 + i) % 3 == 2)
+						p -= (p >> 2) & 0x3F3F3F;
+					o[i] = p;
+				}
 			}
 		}
 	}
@@ -1617,10 +1636,10 @@ static bool environment(unsigned cmd, void *data)
 static uint16_t ov[MW * MH];
 static uint16_t fundo[MW * MH];
 static int menu_sel;
-#define N_MENU 9
-enum { M_CONTINUAR, M_SALVAR, M_CARREGAR, M_VOLUME, M_CONV, M_OPCOES, M_CONTROLES, M_REINICIAR, M_SAIR };
+#define N_MENU 10
+enum { M_CONTINUAR, M_SALVAR, M_CARREGAR, M_VOLUME, M_CONV, M_FILTRO, M_OPCOES, M_CONTROLES, M_REINICIAR, M_SAIR };
 static const char *MENU[N_MENU] = {"CONTINUAR", "SALVAR ESTADO", "CARREGAR ESTADO", "VOLUME", "CONVERGENCIA",
-                                   "OPCOES DO NUCLEO", "CONTROLES", "REINICIAR JOGO", "SAIR DO JOGO"};
+                                   "FILTRO DE IMAGEM", "OPCOES DO NUCLEO", "CONTROLES", "REINICIAR JOGO", "SAIR DO JOGO"};
 static int sub;           /* 0 = menu, 1 = opcoes do nucleo, 2 = controles, 3 = esperando botao,
                            * 4 = configurar um por um (assistente), 5 = espacos (save state),
                            * 6 = confirmar substituir, 7 = convergencia */
@@ -1965,6 +1984,31 @@ static bool slot_carrega(int n)
 	return ok;
 }
 
+/* ------------------------------------------------------------------ filtro por nucleo */
+static void filtro_le(void)
+{
+	FILE *f = a_filtro_arq ? fopen(a_filtro_arq, "r") : NULL;
+	int v;
+	if (f && fscanf(f, "%d", &v) == 1 && v >= 0 && v < N_FILTROS) {
+		filtro = v;
+		LOG("filtro deste nucleo: %s", FILTROS[v]);
+	}
+	if (f)
+		fclose(f);
+}
+static void filtro_grava(void)
+{
+	if (!a_filtro_arq)
+		return;
+	mkdir_pai(a_filtro_arq);
+	FILE *f = fopen(a_filtro_arq, "w");
+	if (f) {
+		fprintf(f, "%d\n# RETROVOLT: filtro deste nucleo (0 nenhum, 1 scanlines, 2 scanlines leves, 3 CRT)\n", filtro);
+		fclose(f);
+		sync();
+	}
+}
+
 /* ------------------------------------------------------------------ convergencia por nucleo */
 static void conv_le(void)
 {
@@ -2116,9 +2160,16 @@ static void menu_desenha(void)
 				m_item(y, MENU[i], on, nv, SLATE);
 				m_rect(bx, y + F->ch / 2 - 1, bw, 3, rgb(40, 50, 80));
 				m_rect(bx, y + F->ch / 2 - 1, bw * volume / 100, 3, on ? ORANGE : SLATE);
+			} else if (i == M_FILTRO) {
+				char nf[24];
+				if (tubo)
+					snprintf(nf, sizeof nf, "SO NO LCD");
+				else
+					snprintf(nf, sizeof nf, on ? "< %s >" : "%s", FILTROS[filtro]);
+				m_item(y, MENU[i], on, nf, SLATE);
 			} else
 				m_item(y, MENU[i], on, NULL, SLATE);
-			y += F->ch + 5;
+			y += F->ch + 4;
 		}
 		m_text(16, MH - 4 - F->ch, "START+SELECT VOLTA", SLATE);
 		m_rtext(MW - 12, MH - 4 - F->ch, "A ESCOLHE", SLATE);
@@ -2205,7 +2256,9 @@ static void menu_desenha(void)
 		}
 		m_text(16, MH - 4 - F->ch, sub == 3 ? "APERTE O BOTAO NOVO" : "A TROCA  B VOLTA", SLATE);
 	}
+	sem_filtro = true;
 	desenha(ov, MW, MH, MW * 2, RETRO_PIXEL_FORMAT_RGB565, 4.0 / 3.0);
+	sem_filtro = false;
 }
 
 /* um passo do menu do jogo: -1 = continua no menu; senao M_CONTINUAR / M_REINICIAR / M_SAIR */
@@ -2341,6 +2394,11 @@ static int menu_passo(uint32_t b, uint32_t novo, bool combo)
 			menu_sel = (menu_sel + N_MENU - 1) % N_MENU;
 		if (rep & (1u << B_DOWN))
 			menu_sel = (menu_sel + 1) % N_MENU;
+		if (menu_sel == M_FILTRO && !tubo && (novo & ((1u << B_LEFT) | (1u << B_RIGHT)))) {
+			filtro = (filtro + ((novo & (1u << B_LEFT)) ? N_FILTROS - 1 : 1)) % N_FILTROS;
+			filtro_grava();
+			LOG("filtro: %s", FILTROS[filtro]);
+		}
 		if (menu_sel == M_VOLUME && (rep & ((1u << B_LEFT) | (1u << B_RIGHT)))) {
 			int dv = (rep & (1u << B_LEFT)) ? -5 : 5;
 			volume = volume + dv < 0 ? 0 : volume + dv > 100 ? 100 : volume + dv;
@@ -2461,6 +2519,7 @@ int main(int argc, char **argv)
 		else if (!strcmp(k, "--states")) a_states = v;
 		else if (!strcmp(k, "--conv-arq")) a_conv_arq = v;
 		else if (!strcmp(k, "--filtro")) filtro = atoi(v);
+		else if (!strcmp(k, "--filtro-arq")) a_filtro_arq = v;
 		else if (!strcmp(k, "--cd-vel")) cd_vel = atoi(v);
 		else if (!strcmp(k, "--volume")) volume = atoi(v) < 0 ? 0 : atoi(v) > 100 ? 100 : atoi(v);
 		else if (!strcmp(k, "--audio")) a_audio = v;
@@ -2555,6 +2614,9 @@ int main(int argc, char **argv)
 	botoes_ler();
 	conv_menu_x = conv_x; conv_menu_y = conv_y; conv_menu_w = conv_w;
 	conv_le();
+	filtro_le();
+	if (filtro < 0 || filtro >= N_FILTROS)
+		filtro = 0;
 	if (cd_fd >= 0 && !cd_arquivo) {
 		pthread_t ta;
 		cd_ult_leitura = agora();
