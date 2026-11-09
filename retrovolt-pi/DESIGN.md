@@ -129,3 +129,10 @@ Subpastas de `roms/` (uma por console, criadas so as dos nucleos instalados):
 `atari2600, nes, snes, n64, gb, gbc, gba, mastersystem, megadrive, segacd, 32x,
 saturn, dreamcast, pcengine, pcenginecd, neogeo, neogeocd, ps1, 3do, arcade`.
 A aba JOGOS mostra so as pastas que tem jogos.
+
+## OPCOES > WI-FI (aprovado)
+- Buscar redes (lista com nome e forca do sinal), escolher, digitar a senha e pronto.
+- Senha: teclado na tela (pelo controle) ou teclado USB, se estiver ligado.
+- Mostra a rede conectada e o IP; opcao ESQUECER REDE.
+- A senha fica guardada protegida pelo sistema (nunca em texto aberto no pendrive).
+- O `retrovolt.cfg` (wifi_nome/wifi_senha) fica so como plano B.
