@@ -80,3 +80,18 @@ Opcoes que ficam para a pessoa:
 - VIDEO: SAIDA (AUTO / TUBO / LCD); FILTRO (NENHUM / SCANLINES / CRT, so no LCD);
   IMAGEM (ORIGINAL / TELA CHEIA).
 - Volume, convergencia (ja existente), e por jogo: OPCOES DO JOGO.
+
+## PENDENTE (pedido do autor, fazer depois)
+- Titulo "RETROVOLT" no topo do menu principal: "RETRO" em marfim e "VOLT" em laranja.
+
+## Menu do core (popup START+SELECT): SAVE STATE / LOAD STATE (aprovado)
+- Aba JOGO passa a ter: CONTINUAR, SAVE STATE, LOAD STATE, REINICIAR JOGO,
+  OPCOES DO JOGO.
+- 10 espacos (slots) por jogo, para salvar e para carregar.
+- Cada slot guarda junto uma miniatura (screenshot) do jogo no momento do save,
+  mais data/hora. A captura e feita por dentro do nucleo (ultimo quadro do jogo
+  antes do popup, sem o menu por cima), invisivel para o usuario.
+- Na lista de slots: miniatura + "SLOT n" + data/hora; slot vazio aparece como
+  "VAZIO". Salvar por cima de um slot usado pede confirmacao.
+- Arquivos: por jogo, `estado_N.state` + `estado_N.png` na pasta de dados
+  (`/rv-dados/states/<sistema>/<jogo>/`).
