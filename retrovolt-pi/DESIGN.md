@@ -229,3 +229,7 @@ A aba JOGOS mostra so as pastas que tem jogos.
 - Teste real (HP w1907, 1440x900): em 1280x720 o monitor deslocou e cortou a imagem.
   Regra nova: LCD usa o modo PREFERIDO (nativo) da EDID; 1280x720 so como reserva.
   1440x900 -> menu 384x240 x3 (1152x720, 16:10, bordas pretas); 1920x1080 -> 427x240 x4.
+- Avisos (R09): fundo laranja, letra azul, cantos arredondados. Jogo: resolucao no
+  canto superior direito com a SAIDA real ("320x240p 59.94Hz  SAIDA 1440x900" /
+  "SAIDA TUBO 240p"); controle conectado no canto inferior esquerdo, mais largo.
+  Menu: avisos no canto inferior esquerdo, mesmo estilo.

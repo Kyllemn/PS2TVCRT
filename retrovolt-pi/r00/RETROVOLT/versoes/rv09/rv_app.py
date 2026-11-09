@@ -1147,7 +1147,7 @@ class App:
         self.fb.show(c, self.conv)
 
     def mostra_aviso(self, txt):
-        cabe = (W - 60) // F.cw
+        cabe = (W - 44) // F.cw
         extra = (len(txt) - cabe) / 8.0 + 1.5 if len(txt) > cabe else 0
         agora = time.monotonic()
         self.aviso = (txt, agora + 4 + extra, agora)
@@ -1254,17 +1254,18 @@ class App:
                 c.text(24 + 9 * F.cw, y, v.upper(), IVORY)
                 y += F.ch + 3
         if self.aviso and time.monotonic() < self.aviso[1]:
+            # aviso: canto inferior esquerdo, fundo laranja, letra azul, cantos arredondados
             txt, _, ini = self.aviso
-            cabe = (W - 60) // F.cw
+            cabe = (W - 44) // F.cw
             vis = min(len(txt), cabe)
-            w = vis * F.cw + 16
-            x0 = (W - w) // 2
-            c.rect(x0, 190, w, F.ch + 10, (60, 30, 20))
-            c.rect(x0, 190, w, 1, ORANGE)
+            w = vis * F.cw + 12
+            x0, y0, h = 14, H - 24 - 2 * F.ch, F.ch + 6
+            c.rect(x0 + 1, y0, w - 2, h, ORANGE)
+            c.rect(x0, y0 + 1, w, h - 2, ORANGE)
             desl = 0
             if len(txt) > cabe:      # letreiro: espera 1 s, rola 8 letras/s, para no fim
                 desl = min(int(max(0.0, time.monotonic() - ini - 1.0) * 8 * F.cw), (len(txt) - cabe) * F.cw)
-            c.text_cortado(x0 + 8 - desl, 195, txt, IVORY, x0 + 8, x0 + 8 + vis * F.cw)
+            c.text_cortado(x0 + 6 - desl, y0 + 3, txt, NAV, x0 + 6, x0 + 6 + vis * F.cw)
         return c
 
     def desenha_pergunta_disco(self, c):
@@ -2071,11 +2072,11 @@ class App:
             ultimo_desenho = time.monotonic()
             while True:
                 try:
-                    rolando = self.aviso and len(self.aviso[0]) > (W - 60) // F.cw
+                    rolando = self.aviso and len(self.aviso[0]) > (W - 44) // F.cw
                     a = self.fila.get(timeout=0.25 if self.contagem else 0.1 if rolando else 1.0)
                 except queue.Empty:
                     a = None
-                mudou = bool(self.contagem) or bool(self.aviso and len(self.aviso[0]) > (W - 60) // F.cw)
+                mudou = bool(self.contagem) or bool(self.aviso and len(self.aviso[0]) > (W - 44) // F.cw)
                 for b in [a] + self._pendentes():
                     if b is None:
                         continue

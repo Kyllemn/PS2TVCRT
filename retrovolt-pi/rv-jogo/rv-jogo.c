@@ -880,17 +880,20 @@ static void desenha(const void *data, unsigned w, unsigned h, size_t pitch, int 
 /* aviso de resolucao: "640x480 @ 59.94 Hz" por 3 s no canto superior direito
  * da imagem, ao abrir o jogo e sempre que a resolucao do jogo mudar */
 static const Fonte *F;
-static char osd_txt[160], osd_pend[160];
-static double osd_ate, osd_ini;
+/* avisos na tela do jogo: fundo laranja, letra azul, cantos arredondados.
+ * resolucao: canto superior direito; controle: canto inferior esquerdo (mais largo).
+ * texto que nao cabe rola dentro da caixa (letreiro). */
+typedef struct { char txt[160]; double ini, ate; int max; bool baixo; } Aviso;
+static Aviso av_res = {.max = 46}, av_ctl = {.max = 50, .baixo = true};
+static char osd_pend[160];
 static bool osd_tem_pend;
-#define OSD_MAX 30 /* caracteres que cabem na caixa; maior que isso rola */
 
-static void osd(const char *t)
+static void aviso_poe(Aviso *a, const char *t)
 {
-	snprintf(osd_txt, sizeof osd_txt, "%s", t);
-	int n = strlen(osd_txt);
-	osd_ini = agora();
-	osd_ate = osd_ini + 3 + (n > OSD_MAX ? (n - OSD_MAX) / 8.0 + 1.5 : 0);
+	snprintf(a->txt, sizeof a->txt, "%s", t);
+	int n = strlen(a->txt);
+	a->ini = agora();
+	a->ate = a->ini + 3 + (n > a->max ? (n - a->max) / 8.0 + 1.5 : 0);
 }
 static unsigned osd_w, osd_h;
 
@@ -905,30 +908,34 @@ static void fb_ponto(int x, int y, int r, int g, int b)
 		((uint32_t *)d)[x] = (r << 16) | (g << 8) | b;
 }
 
-static void osd_desenha(void)
+static void aviso_desenha(Aviso *a)
 {
-	if (!osd_txt[0] || ult_x0 == -99999 || agora() > osd_ate)
+	if (!a->txt[0] || ult_x0 == -99999 || agora() > a->ate)
 		return;
 	int sx = tubo ? ult_cw / 320 : fb.h / 240;
 	if (sx < 1) sx = 1;
 	int sy = tubo ? (fb.h >= 400 ? 2 : 1) : sx;
-	int n = strlen(osd_txt), vis = n > OSD_MAX ? OSD_MAX : n;
+	int n = strlen(a->txt), cabe = (ult_cw / sx - 40) / F->cw;
+	int max = a->max < cabe ? a->max : cabe, vis = n > max ? max : n;
 	int tw = vis * F->cw * sx, th = F->ch * sy;
-	int x1 = ult_x0 + ult_cw - tw - 10 * sx, y1 = ult_y0 + 6 * sy;
-	for (int y = y1 - 2 * sy; y < y1 + th + 2 * sy; y++)
-		for (int x = x1 - 4 * sx; x < x1 + tw + 4 * sx; x++)
-			fb_ponto(x, y, 12, 18, 40);
-	/* letreiro: espera 1 s, rola 8 letras por segundo, para no fim */
-	int desl = 0;
-	if (n > OSD_MAX) {
-		double t = agora() - osd_ini - 1.0;
+	int x1 = a->baixo ? ult_x0 + 14 * sx : ult_x0 + ult_cw - tw - 14 * sx;
+	int y1 = a->baixo ? ult_y0 + ult_dh - th - 10 * sy : ult_y0 + 8 * sy;
+	int bx0 = x1 - 5 * sx, bx1 = x1 + tw + 5 * sx, by0 = y1 - 3 * sy, by1 = y1 + th + 2 * sy;
+	for (int y = by0; y < by1; y++)
+		for (int x = bx0; x < bx1; x++) {
+			bool canto = (x < bx0 + sx || x >= bx1 - sx) && (y < by0 + sy || y >= by1 - sy);
+			if (!canto)
+				fb_ponto(x, y, 255, 140, 40);
+		}
+	int desl = 0; /* letreiro: espera 1 s, rola 8 letras por segundo, para no fim */
+	if (n > max) {
+		double t = agora() - a->ini - 1.0;
 		desl = t > 0 ? (int)(t * 8 * F->cw) : 0;
-		if (desl > (n - OSD_MAX) * F->cw)
-			desl = (n - OSD_MAX) * F->cw;
+		if (desl > (n - max) * F->cw)
+			desl = (n - max) * F->cw;
 	}
-	int cx0 = x1, cx1 = x1 + tw; /* corta o texto na caixa */
 	for (int k = 0; k < n; k++) {
-		int o = (unsigned char)osd_txt[k] - 32;
+		int o = (unsigned char)a->txt[k] - 32;
 		if (o < 0 || o > 223)
 			continue;
 		for (int r = 0; r < F->ch; r++) {
@@ -936,14 +943,19 @@ static void osd_desenha(void)
 			for (int c = 0; c < F->cw; c++)
 				if (bits >> c & 1)
 					for (int yy = 0; yy < sy; yy++)
-						for (int xx = 0; xx < sx; xx++)
-						{
+						for (int xx = 0; xx < sx; xx++) {
 							int px = x1 + (k * F->cw + c - desl) * sx + xx;
-							if (px >= cx0 && px < cx1)
-								fb_ponto(px, y1 + r * sy + yy, 240, 236, 225);
+							if (px >= x1 && px < x1 + tw)
+								fb_ponto(px, y1 + r * sy + yy, 12, 18, 40);
 						}
 		}
 	}
+}
+
+static void osd_desenha(void)
+{
+	aviso_desenha(&av_res);
+	aviso_desenha(&av_ctl);
 }
 
 /* ultimo quadro do jogo (para o fundo do menu) */
@@ -968,9 +980,15 @@ static void video_cb(const void *data, unsigned w, unsigned h, size_t pitch)
 	if (w != osd_w || h != osd_h) {
 		osd_w = w;
 		osd_h = h;
-		char t[64];   /* mais de 288 linhas = entrelacado (480i); senao progressivo (240p) */
-		snprintf(t, sizeof t, "%ux%u%s @ %.2f Hz", w, h, h > 288 ? "i" : "p", av.timing.fps);
-		osd(t);
+		/* jogo: mais de 288 linhas = entrelacado (i), senao progressivo (p);
+		 * saida: o que vai de verdade para a TV/monitor */
+		char sai[32], t[96];
+		if (tubo)
+			snprintf(sai, sizeof sai, "TUBO %d%s", fb.h >= 400 ? fb.h : fb.h, fb.h >= 400 ? "i" : "p");
+		else
+			snprintf(sai, sizeof sai, "%dx%d", fb.w, fb.h);
+		snprintf(t, sizeof t, "%ux%u%s %.2fHz  SAIDA %s", w, h, h > 288 ? "i" : "p", av.timing.fps, sai);
+		aviso_poe(&av_res, t);
 		LOG("resolucao do jogo: %s", t);
 	}
 }
@@ -2557,6 +2575,10 @@ int main(int argc, char **argv)
 	LOG("tela %.3f Hz; %s", tela_hz, um_pra_um ? "1 quadro por vsync" : "ritmo pelo tempo");
 
 	controles_busca();
+	if (getenv("RV_TESTE_CTL")) { /* teste: aviso de controle */
+		snprintf(osd_pend, sizeof osd_pend, "CONTROLE 1: %s", getenv("RV_TESTE_CTL"));
+		osd_tem_pend = true;
+	}
 	pthread_t tb;
 	pthread_create(&tb, NULL, busca_thread, NULL);
 	governador(true);
@@ -2619,7 +2641,7 @@ int main(int argc, char **argv)
 		}
 		if (osd_tem_pend) {
 			osd_tem_pend = false;
-			osd(osd_pend);
+			aviso_poe(&av_ctl, osd_pend);
 		}
 		osd_desenha();
 		double t_run = agora() - tq;
