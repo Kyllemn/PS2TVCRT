@@ -83,6 +83,7 @@ Opcoes que ficam para a pessoa:
 
 ## PENDENTE (pedido do autor, fazer depois)
 - Titulo "RETROVOLT" no topo do menu principal: "RETRO" em marfim e "VOLT" em laranja.
+- Letras menores no 240p e escolher outra fonte (a 8x8 atual ficou grande na TV).
 
 ## Menu do core (popup START+SELECT): SAVE STATE / LOAD STATE (aprovado)
 - Aba JOGO passa a ter: CONTINUAR, SAVE STATE, LOAD STATE, REINICIAR JOGO,
