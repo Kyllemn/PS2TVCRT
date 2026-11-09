@@ -238,3 +238,18 @@ A aba JOGOS mostra so as pastas que tem jogos.
 - FILTRO DE IMAGEM no START+SELECT (so LCD): NENHUM / SCANLINES / SCANLINES LEVES / CRT
   (scanlines + grade de fosforo). Vale na hora e fica salvo por nucleo
   (config/nucleos/<nucleo>.filtro); OPCOES > VIDEO e o padrao. Menu do jogo sem filtro.
+
+## R11 (atualizacao grande; backup antes: commit 94e8f5d / RETROVOLT_BACKUP_R10.zip)
+- Disco: identifica em segundo plano (4 s depois do menu); NUNCA abre sozinho (so com A
+  na aba DISCO ou INICIAR CD); "saiu" so com 2 leituras seguidas sem disco.
+- 8BitDo: o receptor em XInput aparece como Microsoft (045e); religa se nao houver
+  controle de 2dc8/045e; lista os USB no log.
+- Log com tempos da entrada ("tempo: ...").
+- Tela logica adaptativa no LCD: esc = altura//240 (reduz se a largura < 320*esc);
+  W = largura//esc, H = altura//esc (1280x720 -> 426x240, 1440x900 -> 480x300,
+  800x600 -> 400x300, 640x480 -> 320x240). Tubo continua 320x240.
+- Capa e arte do disco no LCD desenhadas com os pontos do monitor (nitidas).
+- Menu do jogo em tela cheia, igual ao principal; previa do save state grande
+  (miniaturas 320x240); CONVERGENCIA so no tubo (menu e menu do jogo).
+- OPCOES > VIDEO > RESOLUCAO (LCD): modos do monitor; aplica e no boot pergunta
+  "MANTER?" por 15 s; sem resposta volta sozinho a anterior.
