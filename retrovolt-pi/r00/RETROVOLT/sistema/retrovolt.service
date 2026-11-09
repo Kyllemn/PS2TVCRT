@@ -1,0 +1,16 @@
+[Unit]
+Description=RETROVOLT Pi
+After=local-fs.target systemd-udev-settle.service
+Conflicts=getty@tty1.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/rv-lancador
+Restart=always
+RestartSec=3
+StandardInput=null
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

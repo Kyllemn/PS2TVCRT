@@ -1,0 +1,129 @@
+#!/bin/bash
+# RETROVOLT Pi - lancador (roda no boot pelo servico retrovolt.service).
+# 1. Procura um pendrive com a pasta RETROVOLT/ e monta em /media/rvusb.
+# 2. Escolhe a versao: a mais nova em RETROVOLT/versoes/ do pendrive que nao
+#    esteja marcada como ruim; senao, a versao instalada no cartao.
+# 3. Volta automatica: se uma versao nao chegar na tela inicial 2 vezes seguidas
+#    (travou, caiu, ou o Pi foi desligado no meio), ela e marcada como ruim e o
+#    lancador usa a anterior que funcionou.
+# 4. Grava tudo em RETROVOLT/LOG.TXT (pendrive) e em /var/lib/retrovolt/logs/.
+
+DADOS=/var/lib/retrovolt
+CARTAO=/opt/retrovolt/versoes
+USB=/media/rvusb
+OK=/run/retrovolt/ok
+mkdir -p "$DADOS/logs" "$DADOS/tentativas" /run/retrovolt
+LOGC="$DADOS/logs/LOG.TXT"
+: > "$LOGC"
+log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" | tee -a "$LOGC" >/dev/null; }
+
+monta_pendrive() {
+	mkdir -p "$USB"
+	mountpoint -q "$USB" && umount "$USB" 2>/dev/null
+	for i in $(seq 1 10); do               # o pendrive pode demorar uns segundos para aparecer
+		ls /dev/sd* >/dev/null 2>&1 && break
+		sleep 1
+	done
+	for dev in /dev/sd?[0-9] /dev/sd?; do
+		[ -b "$dev" ] || continue
+		tipo=$(blkid -o value -s TYPE "$dev" 2>/dev/null)
+		case "$tipo" in
+			vfat) opts="rw,noatime,flush,uid=0,gid=0,umask=000" ;;
+			exfat) opts="rw,noatime,uid=0,gid=0,umask=000" ;;
+			ext4) opts="rw,noatime" ;;
+			*) continue ;;
+		esac
+		if mount -o "$opts" "$dev" "$USB" 2>/dev/null; then
+			if [ -d "$USB/RETROVOLT" ]; then
+				log "pendrive: $dev ($tipo) com RETROVOLT/"
+				return 0
+			fi
+			umount "$USB"
+		fi
+	done
+	log "pendrive: nenhum com RETROVOLT/"
+	return 1
+}
+
+copia_log() {
+	if mountpoint -q "$USB" && [ -d "$USB/RETROVOLT" ]; then
+		cp "$LOGC" "$USB/RETROVOLT/LOG.TXT" 2>/dev/null
+		sync
+	fi
+}
+
+ruim() { [ -f "$DADOS/ruins" ] && grep -qx "$1" "$DADOS/ruins"; }
+
+# lista de candidatas: "origem diretorio", da mais preferida para a menos
+candidatas() {
+	if mountpoint -q "$USB" && [ -d "$USB/RETROVOLT/versoes" ]; then
+		for d in $(ls -1d "$USB"/RETROVOLT/versoes/rv[0-9]* 2>/dev/null | sort -rV); do
+			v=$(basename "$d")
+			[ -f "$d/rv_app.py" ] && ! ruim "usb:$v" && echo "usb $d"
+		done
+	fi
+	for d in $(ls -1d "$CARTAO"/rv[0-9]* 2>/dev/null | sort -rV); do
+		v=$(basename "$d")
+		[ -f "$d/rv_app.py" ] && ! ruim "cartao:$v" && echo "cartao $d"
+	done
+}
+
+log "=== RETROVOLT Pi: boot ==="
+log "placa: $(tr -d '\0' < /proc/device-tree/model 2>/dev/null)"
+log "memoria: $(awk '/MemTotal/{printf "%d MB", $2/1024}' /proc/meminfo)"
+log "temperatura: $(( $(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo 0) / 1000 ))C"
+for c in /sys/class/drm/card*-HDMI-A-*; do
+	[ -e "$c/status" ] || continue
+	log "$(basename "$c"): $(cat "$c/status"), modo $(head -1 "$c/modes" 2>/dev/null), edid $(wc -c < "$c/edid") bytes"
+done
+log "framebuffer: $(cat /sys/class/graphics/fb0/virtual_size 2>/dev/null) $(cat /sys/class/graphics/fb0/bits_per_pixel 2>/dev/null)bpp"
+log "kernel: $(uname -r)  cmdline: $(cat /proc/cmdline)"
+monta_pendrive
+copia_log
+
+while true; do
+	escolha=$(candidatas | head -1)
+	if [ -z "$escolha" ]; then
+		log "ERRO: nenhuma versao utilizavel (todas ruins ou ausentes). Acesse por SSH."
+		copia_log
+		sleep 3600
+		continue
+	fi
+	origem=${escolha%% *}; dir=${escolha#* }; v=$(basename "$dir")
+	chave="$origem:$v"
+	n=$(cat "$DADOS/tentativas/$chave" 2>/dev/null || echo 0)
+	if [ "$n" -ge 2 ]; then
+		log "versao $chave falhou $n vezes seguidas: marcada como ruim"
+		echo "$chave" >> "$DADOS/ruins"
+		rm -f "$DADOS/tentativas/$chave"
+		copia_log
+		continue
+	fi
+	echo $((n + 1)) > "$DADOS/tentativas/$chave"; sync
+	rm -f "$OK"
+	log "iniciando $chave (tentativa $((n + 1)))"
+	copia_log
+	ORIG=$( [ "$origem" = usb ] && echo PENDRIVE || echo CARTAO )
+	RV_VERSAO="$v" RV_ORIGEM="$ORIG" RV_USB="$USB" python3 "$dir/rv_app.py" >>"$LOGC" 2>&1 &
+	pid=$!
+	# espera a tela inicial (ate 30 s)
+	for i in $(seq 1 30); do
+		[ -f "$OK" ] && break
+		kill -0 $pid 2>/dev/null || break
+		sleep 1
+	done
+	if [ -f "$OK" ]; then
+		log "versao $chave chegou na tela inicial: OK"
+		echo 0 > "$DADOS/tentativas/$chave"
+		echo "$chave" > "$DADOS/ultima_boa"; sync
+		copia_log
+		wait $pid
+		log "versao $chave encerrou (codigo $?)"
+	else
+		kill $pid 2>/dev/null
+		wait $pid 2>/dev/null
+		log "versao $chave NAO chegou na tela inicial"
+	fi
+	copia_log
+	sleep 1
+done

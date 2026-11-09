@@ -1,0 +1,8 @@
+#!/bin/sh
+# copia a EDID do RetroVolt para dentro do initramfs (o video pode subir antes do disco)
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case "$1" in prereqs) prereqs; exit 0;; esac
+. /usr/share/initramfs-tools/hook-functions
+mkdir -p "$DESTDIR/usr/lib/firmware/edid"
+cp /usr/lib/firmware/edid/retrovolt-crt.bin "$DESTDIR/usr/lib/firmware/edid/"

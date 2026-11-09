@@ -1,0 +1,30 @@
+RETROVOLT Pi - R00 (base do sistema)
+====================================
+
+O QUE ESTA VERSAO FAZ
+- Instala a base do RetroVolt num Raspberry Pi OS Lite 64-bit novo.
+- O Pi passa a ligar direto numa tela do RetroVolt, em 240p na TV de tubo.
+- Versoes novas: e so copiar para RETROVOLT/versoes/ no pendrive.
+  Se uma versao travar 2 vezes, o Pi volta sozinho para a anterior.
+- Cada vez que liga, grava RETROVOLT/LOG.TXT neste pendrive.
+
+PASSO A PASSO (uma vez so)
+1. No PC, Raspberry Pi Imager: Raspberry Pi 5 > Raspberry Pi OS Lite (64-bit).
+   Configuracoes: nome do aparelho "retrovolt", usuario "rv" + senha,
+   Wi-Fi da sua casa, SSH ligado (com senha).
+2. Copie esta pasta RETROVOLT para a raiz de um pendrive (FAT32 ou exFAT).
+3. Coloque o cartao e o pendrive no Pi e ligue. Espere uns 2 minutos.
+   (A TV de tubo fica sem imagem nesta primeira vez. E normal.)
+4. No PC, abra o PowerShell e digite:   ssh rv@retrovolt.local
+   (responda "yes" na primeira vez e digite a senha)
+5. Cole este comando (uma linha so):
+
+sudo bash -c 'mkdir -p /media/rvusb; for d in /dev/sd?[0-9] /dev/sd?; do mount $d /media/rvusb 2>/dev/null && [ -d /media/rvusb/RETROVOLT ] && exec bash /media/rvusb/RETROVOLT/instalar.sh; umount /media/rvusb 2>/dev/null; done; echo PENDRIVE NAO ENCONTRADO'
+
+6. Espere terminar (alguns minutos). O Pi reinicia sozinho e a TV de tubo
+   deve mostrar a tela "BASE DO SISTEMA".
+
+SE ALGO DER ERRADO
+- Mande os arquivos RETROVOLT/LOG_INSTALACAO.TXT e RETROVOLT/LOG.TXT.
+- TV sem imagem depois de reiniciar: entre de novo por SSH e rode
+  sudo bash /media/rvusb/RETROVOLT/desfazer.sh   (volta o boot como era)
