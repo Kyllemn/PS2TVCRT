@@ -1235,6 +1235,10 @@ static void *busca_thread(void *x)
 	return NULL;
 }
 
+/* CONTROLES: remap[botao do nucleo] = botao do controle */
+static int remap[16] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+static uint32_t pad_core[2]; /* botoes ja remapeados, como o nucleo ve */
+
 static double abs_norm(struct dev *v, int c, int val) /* -1..1 */
 {
 	struct input_absinfo *a = &v->abs[c];
@@ -1322,13 +1326,11 @@ static void controles_le(void)
 
 static bool entrada_travada; /* depois do menu: espera soltar tudo */
 /* CONTROLES (menu do jogo): remap[botao do nucleo] = botao do controle; salvo por nucleo */
-static int remap[16] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
 static char *bot_desc[16];
 static int bot_ordem[16], n_ordem; /* botoes na ordem em que o nucleo descreve */
 static const char *a_botoes;
 static const char *NOME_FIS[16] = {"A", "X", "SELECT", "START", "CIMA", "BAIXO", "ESQUERDA", "DIREITA",
                                    "B", "Y", "LB", "RB", "LT", "RT", "L3", "R3"};
-static uint32_t pad_core[2]; /* botoes ja remapeados, como o nucleo ve */
 
 static void botoes_ler(void)
 {
@@ -2120,6 +2122,8 @@ int main(int argc, char **argv)
 		}
 		if (max_q && quadros >= max_q) {
 			if (getenv("RV_MENU_TESTE")) {
+				if (getenv("RV_MENU_SUB"))
+					sub = atoi(getenv("RV_MENU_SUB"));
 				menu_fundo();
 				menu_desenha();
 				fb_mostra();

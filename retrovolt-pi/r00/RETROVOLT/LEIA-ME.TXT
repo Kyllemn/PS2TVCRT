@@ -1,9 +1,11 @@
-RETROVOLT Pi - R00 (base do sistema)
-====================================
+RETROVOLT Pi - R05
+==================
 
 O QUE ESTA VERSAO FAZ
-- Instala a base do RetroVolt num Raspberry Pi OS Lite 64-bit novo.
-- O Pi passa a ligar direto numa tela do RetroVolt, em 240p na TV de tubo.
+- Instala o RetroVolt num Raspberry Pi OS Lite 64-bit novo (cartao novo).
+- O Pi passa a ligar direto no menu do RetroVolt, em 240p na TV de tubo, com som
+  pelo HDMI, botoes da caixa (POWER/RESET), PlayStation (disco e imagens).
+- Jogos, BIOS, saves e configuracao ficam no pendrive: trocar o cartao nao perde nada.
 - Versoes novas: e so copiar para RETROVOLT/versoes/ no pendrive.
   Se uma versao travar 2 vezes, o Pi volta sozinho para a anterior.
 - Cada vez que liga, grava RETROVOLT/LOG.TXT neste pendrive.
@@ -21,8 +23,8 @@ PASSO A PASSO (uma vez so)
 
 sudo bash -c 'mkdir -p /media/rvusb; for d in /dev/sd?[0-9] /dev/sd?; do mount $d /media/rvusb 2>/dev/null && [ -d /media/rvusb/RETROVOLT ] && exec bash /media/rvusb/RETROVOLT/instalar.sh; umount /media/rvusb 2>/dev/null; done; echo PENDRIVE NAO ENCONTRADO'
 
-6. Espere terminar (alguns minutos). O Pi reinicia sozinho e a TV de tubo
-   deve mostrar a tela "BASE DO SISTEMA".
+6. Espere terminar (uns 15 minutos). O Pi reinicia sozinho e a TV de tubo
+   mostra o menu do RetroVolt. Antes de ligar: chave SAFE SHUTDOWN da caixa em ON.
 
 SE ALGO DER ERRADO
 - Mande os arquivos RETROVOLT/LOG_INSTALACAO.TXT e RETROVOLT/LOG.TXT.

@@ -1,5 +1,5 @@
 #!/bin/bash
-# RETROVOLT Pi - instalador (R00). Rodar UMA vez, por SSH, num Raspberry Pi OS Lite
+# RETROVOLT Pi - instalador (R05). Rodar UMA vez, por SSH, num Raspberry Pi OS Lite
 # 64-bit recem-gravado. Nao precisa de tela: o progresso aparece aqui e vai para
 # RETROVOLT/LOG_INSTALACAO.TXT no pendrive. So mexe no boot no FINAL, depois de
 # conferir tudo; antes disso, se der erro, o Pi OS continua como estava.
@@ -10,7 +10,7 @@ LOG="$AQUI/LOG_INSTALACAO.TXT"
 say() { echo "$*"; echo "$(date '+%H:%M:%S') $*" >> "$LOG"; }
 falha() { say "ERRO: $*"; say "Nada foi alterado no boot. Mande o arquivo RETROVOLT/LOG_INSTALACAO.TXT."; sync; exit 1; }
 
-say "=== RETROVOLT Pi - instalacao R00 ==="
+say "=== RETROVOLT Pi - instalacao R05 ==="
 [ "$(id -u)" = 0 ] || falha "rode com sudo"
 
 # 1. conferencias
@@ -23,7 +23,7 @@ say "sistema: $PRETTY_NAME"
 [ "${VERSION_CODENAME:-}" = trixie ] || falha "precisa do Raspberry Pi OS baseado no Debian 13 (trixie); este e '${VERSION_CODENAME:-?}'. Grave a imagem mais nova no Raspberry Pi Imager."
 BOOT=/boot/firmware
 [ -f "$BOOT/cmdline.txt" ] && [ -f "$BOOT/config.txt" ] || falha "nao achei $BOOT/cmdline.txt e config.txt"
-for f in caixa.sh sistema/rv-caixa sistema/rv-caixa.service sistema/rv-lancador sistema/retrovolt.service sistema/retrovolt-crt.bin sistema/initramfs-edid versoes/rv00/rv_app.py; do
+for f in caixa.sh sistema/rv-caixa sistema/rv-caixa.service sistema/rv-lancador sistema/retrovolt.service sistema/retrovolt-crt.bin sistema/initramfs-edid versoes/rv05/rv_app.py versoes/rv05/rv-jogo versoes/rv05/nucleos/pcsx_rearmed_libretro.so; do
 	[ -f "$AQUI/$f" ] || falha "arquivo faltando no pendrive: RETROVOLT/$f"
 done
 
@@ -48,8 +48,10 @@ install -m 755 "$AQUI/sistema/rv-lancador" /usr/local/bin/rv-lancador
 install -m 644 "$AQUI/sistema/retrovolt.service" /etc/systemd/system/retrovolt.service
 install -d /usr/lib/firmware/edid /opt/retrovolt/versoes /var/lib/retrovolt/logs
 install -m 644 "$AQUI/sistema/retrovolt-crt.bin" /usr/lib/firmware/edid/retrovolt-crt.bin
-rm -rf /opt/retrovolt/versoes/rv00
-cp -r "$AQUI/versoes/rv00" /opt/retrovolt/versoes/rv00
+# versao de reserva no cartao (se o pendrive faltar ou a versao dele falhar)
+rm -rf /opt/retrovolt/versoes/rv05
+cp -r "$AQUI/versoes/rv05" /opt/retrovolt/versoes/rv05
+chmod 755 /opt/retrovolt/versoes/rv05/rv-jogo
 if [ -d /etc/initramfs-tools/hooks ]; then
 	install -m 755 "$AQUI/sistema/initramfs-edid" /etc/initramfs-tools/hooks/retrovolt-edid
 	say "atualizando o initramfs"
@@ -79,7 +81,7 @@ printf '\n[all]\n# RETROVOLT\ndisable_splash=1\n' >> "$BOOT/config.txt"
 # botoes POWER/RESET da caixa RetroFlag 64Pi (sem a caixa, nao atrapalha)
 bash "$AQUI/caixa.sh" >> "$LOG" 2>&1 || say "AVISO: caixa.sh falhou"
 say "cmdline: $cmd"
-echo "R00 $(date '+%Y-%m-%d %H:%M')" > /var/lib/retrovolt/instalado
+echo "R05 $(date '+%Y-%m-%d %H:%M')" > /var/lib/retrovolt/instalado
 sync
 say "=== PRONTO. O Pi vai reiniciar em 10 segundos e ligar no RetroVolt (240p). ==="
 say "Se a TV ficar sem imagem: por SSH, rode  sudo bash $AQUI/desfazer.sh"
