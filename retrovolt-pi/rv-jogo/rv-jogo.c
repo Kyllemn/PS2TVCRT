@@ -61,6 +61,7 @@ static double agora(void)
 static const char *a_nucleo, *a_jogo, *a_cd, *a_bios = ".", *a_saves = ".", *a_nome = "jogo";
 static const char *a_audio, *a_opcoes, *a_fonte = "6X10", *a_save;
 static int volume = 100, volume_ini = -1;  /* 0..100 */
+static int cd_vel = 4;                     /* velocidade da leitora (x); 0 = maxima */
 static int32_t ganho = 32768;              /* Q15 */
 static void volume_aplica(void) { double g = volume / 100.0; ganho = (int32_t)lround(g * g * 32768); }
 static int conv_x, conv_y;
@@ -354,6 +355,12 @@ static bool cd_abrir(const char *dev)
 			LOG("cd: nao abriu %s: %s", dev, strerror(errno));
 			return false;
 		}
+		/* PS1 precisa de 2x; a leitora no maximo faz barulho a toa. A leitura
+		 * adiantada (128 setores) cobre as esperas. Leitora que nao aceita: ignora. */
+		if (ioctl(cd_fd, CDROM_SELECT_SPEED, cd_vel) < 0)
+			LOG("cd: leitora nao aceitou velocidade %dx (%s): segue no padrao", cd_vel, strerror(errno));
+		else
+			LOG("cd: velocidade da leitora %dx", cd_vel);
 		struct cdrom_tochdr th;
 		if (ioctl(cd_fd, CDROMREADTOCHDR, &th) < 0) {
 			LOG("cd: sem TOC (sem disco?): %s", strerror(errno));
@@ -1547,6 +1554,7 @@ int main(int argc, char **argv)
 		else if (!strcmp(k, "--saves")) a_saves = v;
 		else if (!strcmp(k, "--nome")) a_nome = v;
 		else if (!strcmp(k, "--save")) a_save = v;
+		else if (!strcmp(k, "--cd-vel")) cd_vel = atoi(v);
 		else if (!strcmp(k, "--volume")) volume = atoi(v) < 0 ? 0 : atoi(v) > 100 ? 100 : atoi(v);
 		else if (!strcmp(k, "--audio")) a_audio = v;
 		else if (!strcmp(k, "--opcoes")) a_opcoes = v;

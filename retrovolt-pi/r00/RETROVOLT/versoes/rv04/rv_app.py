@@ -94,6 +94,8 @@ CFG_PADRAO = [
     ('video_altura', '1.000', 'altura da imagem (1.000 = todas as linhas; 0.950 = 95%)'),
     ('SOM', None, None),
     ('volume', '80', 'volume geral dos jogos, 0 a 100'),
+    ('LEITORA', None, None),
+    ('leitora_velocidade', '4', 'velocidade da leitora nos jogos (2, 4, 8...; 0 = maxima, mais barulho)'),
     ('MENU', None, None),
     ('fonte', '6X10', 'fonte do menu: ' + ', '.join(f[0] for f in FONTES_LISTA)),
 ]
@@ -676,7 +678,7 @@ def cabecalho(c, aba, wifi, rodape_d):
     c.text(16 + 5 * F.cw, 6, 'VOLT', ORANGE)
     hora = time.strftime('%H:%M')
     c.rtext(W - 12, 6, hora, IVORY)
-    c.rtext(W - 12 - (len(hora) + 2) * F.cw, 6, (wifi or 'SEM WI-FI')[:14].upper(), SLATE)
+    c.rtext(W - 12 - (len(hora) + 2) * F.cw, 6, (wifi or 'SEM WI-FI')[:14].upper(), GREEN if wifi else SLATE)
     x = 16
     for a in ABAS:
         on = a == aba
@@ -802,7 +804,7 @@ class App:
                '--nome', nome[:60], '--save', save, '--fonte', F.nome, '--volume', str(self.volume()),
                '--conv', '%d,%d,%.3f,%.3f' % tuple(self.conv),
                '--opcoes', os.path.join(self.base, 'config', 'nucleos', nucleo.replace('_libretro.so', '.opt'))]
-        cmd += ['--cd', self.leitora.dev] if cd else ['--jogo', arquivo]
+        cmd += ['--cd', self.leitora.dev, '--cd-vel', self.cfg.get('leitora_velocidade', '4')] if cd else ['--jogo', arquivo]
         if self.cfg.get('audio_dispositivo'):
             cmd += ['--audio', self.cfg['audio_dispositivo']]
         self.carregando(nome)
