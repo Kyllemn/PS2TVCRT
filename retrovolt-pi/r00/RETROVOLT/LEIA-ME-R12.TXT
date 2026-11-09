@@ -1,0 +1,13 @@
+RETROVOLT Pi - R12: PC Engine (HuCard) e PC Engine CD
+====================================================
+
+ONDE COLOCAR (no pendrive)
+- Jogos de cartao (HuCard):  RETROVOLT/roms/pcengine/      (.pce)
+- Jogos de CD:               RETROVOLT/roms/pcenginecd/    (.cue+.bin, .chd, .ccd, .m3u)
+- BIOS do CD (obrigatoria):  RETROVOLT/bios/syscard3.pce   (System Card 3.0)
+- Disco de PC Engine CD na leitora: aba DISCO ou JOGOS > PC ENGINE CD > INICIAR CD.
+
+MENU DO JOGO (START+SELECT)
+- IMAGEM (so LCD): ORIGINAL (nitida, com borda) ou TELA CHEIA (enche a altura).
+  Fica salvo por nucleo.
+- CONTROLES > CONFIGURAR UM POR UM: no PC Engine os botoes sao I, II, SELECT e RUN.

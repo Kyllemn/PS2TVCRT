@@ -253,3 +253,11 @@ A aba JOGOS mostra so as pastas que tem jogos.
   (miniaturas 320x240); CONVERGENCIA so no tubo (menu e menu do jogo).
 - OPCOES > VIDEO > RESOLUCAO (LCD): modos do monitor; aplica e no boot pergunta
   "MANTER?" por 15 s; sem resposta volta sozinho a anterior.
+
+## R12: PC Engine
+- Nucleo Beetle PCE Fast (mednafen_pce_fast) para PC Engine (roms/pcengine, .pce) e
+  PC Engine CD (roms/pcenginecd, .cue/.chd/.ccd/.m3u; disco fisico pelo CD virtual).
+- BIOS obrigatoria do CD: bios/syscard3.pce (o menu avisa se faltar, antes de abrir).
+- CD de PC Engine nao tem codigo: save pela "impressao digital" das faixas (PCECD-xxxxxxxx).
+- Menu do jogo: IMAGEM (LCD) ORIGINAL (ampliacao inteira) / TELA CHEIA (enche a altura,
+  linhas de 3 ou 4 pontos), salvo por nucleo (config/nucleos/<nucleo>.imagem).
