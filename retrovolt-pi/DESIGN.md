@@ -277,3 +277,9 @@ A aba JOGOS mostra so as pastas que tem jogos.
 - PC Engine: "INICIAR CD" (leitura direto da leitora) tem que aparecer SEMPRE no topo da
   lista, acima das roms, mesmo sem nenhuma rom de CD. Proposta: uma lista so, PC ENGINE =
   INICIAR CD + 2 linhas + cartoes (.pce) + imagens de CD; nao esconder sistema de CD sem roms.
+
+## R13: correcao da troca de resolucao (bug que deixou o LCD sem imagem)
+- A resolucao escolhida so vira definitiva (video_modo na configuracao) depois do
+  "MANTER? A". Sem resposta em 15 s: volta o boot anterior e a configuracao continua com a
+  ultima confirmada (a deteccao do boot nao forca mais a escolhida sem protecao).
+- Sair de VIDEO sem aplicar desfaz a resolucao mexida. Lista: 480 a 1080 linhas.
