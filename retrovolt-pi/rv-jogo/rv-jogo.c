@@ -23,6 +23,7 @@
 #include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <drm/drm.h>
 #include <linux/cdrom.h>
 #include <linux/fb.h>
 #include <linux/input.h>
@@ -652,15 +653,75 @@ static void fb_abrir(void)
 	LOG("video: %dx%d %dbpp (%s)", fb.w, fb.h, fb.bpp, tubo ? "TUBO" : "LCD");
 }
 
+/* espera do vsync: 1 = DRM (vblank do CRTC), 2 = fbdev; sem nenhum = ritmo pelo relogio.
+ * No Pi 5 o FBIO_WAITFORVSYNC do fbdev volta na hora (nao espera nada): por isso
+ * cada metodo e medido e so vale se der um intervalo de tela de verdade (12-25 ms). */
+static int vs_tipo, vs_drm = -1;
+static unsigned vs_crtc;
+
+static bool vs_espera(int tipo)
+{
+	if (tipo == 1) {
+		union drm_wait_vblank v;
+		memset(&v, 0, sizeof v);
+		v.request.type = _DRM_VBLANK_RELATIVE | ((vs_crtc << _DRM_VBLANK_HIGH_CRTC_SHIFT) & _DRM_VBLANK_HIGH_CRTC_MASK);
+		v.request.sequence = 1;
+		return ioctl(vs_drm, DRM_IOCTL_WAIT_VBLANK, &v) == 0;
+	}
+	uint32_t z = 0;
+	return ioctl(fb.fd, FBIO_WAITFORVSYNC, &z) == 0;
+}
+
+static double vs_mede(int tipo)
+{
+	if (!vs_espera(tipo))
+		return 0;
+	double t0 = agora();
+	for (int i = 0; i < 6; i++)
+		if (!vs_espera(tipo))
+			return 0;
+	return (agora() - t0) / 6;
+}
+
+static double vs_escolhe(void)
+{
+	if (fb.fake)
+		return 0;
+	char p[32];
+	for (int c = 0; c < 4 && !vs_tipo; c++) {
+		snprintf(p, sizeof p, "/dev/dri/card%d", c);
+		int fd = open(p, O_RDWR | O_CLOEXEC);
+		if (fd < 0)
+			continue;
+		vs_drm = fd;
+		for (vs_crtc = 0; vs_crtc < 4; vs_crtc++) {
+			double t = vs_mede(1);
+			LOG("vsync: %s crtc %u: %.2f ms", p, vs_crtc, t * 1e3);
+			if (t > 0.012 && t < 0.025) {
+				vs_tipo = 1;
+				return 1.0 / t;
+			}
+		}
+		close(fd);
+		vs_drm = -1;
+	}
+	double t = vs_mede(2);
+	LOG("vsync: fbdev: %.2f ms", t * 1e3);
+	if (t > 0.012 && t < 0.025) {
+		vs_tipo = 2;
+		return 1.0 / t;
+	}
+	LOG("vsync: nenhum funcionou: ritmo pelo relogio");
+	return 0;
+}
+
 static void fb_vsync(void)
 {
-	if (fb.sem_vsync)
-		return;
-	uint32_t z = 0;
-	if (ioctl(fb.fd, FBIO_WAITFORVSYNC, &z)) {
-		fb.sem_vsync = true;
-		LOG("AVISO: sem FBIO_WAITFORVSYNC (%s): ritmo pelo relogio", strerror(errno));
+	if (vs_tipo && !vs_espera(vs_tipo)) {
+		LOG("vsync: parou de funcionar: ritmo pelo relogio");
+		vs_tipo = 0;
 	}
+	fb.sem_vsync = vs_tipo == 0;
 }
 
 static void fb_mostra(void)
@@ -1452,15 +1513,10 @@ int main(int argc, char **argv)
 
 	/* ritmo: 1 quadro do jogo por vsync quando as frequencias batem (<0,6%);
 	 * senao (ex.: jogo PAL 50 Hz numa tela 60 Hz) acumula o tempo */
-	double tela_hz = 60.0;
-	if (!fb.sem_vsync) {
-		fb_vsync();
-		double t0 = agora();
-		for (int i = 0; i < 10; i++)
-			fb_vsync();
-		if (!fb.sem_vsync)
-			tela_hz = 10.0 / (agora() - t0);
-	}
+	double tela_hz = vs_escolhe();
+	fb.sem_vsync = vs_tipo == 0;
+	if (tela_hz <= 0)
+		tela_hz = tubo ? 60.005 : 60.0;
 	bool um_pra_um = !fb.sem_vsync && fabs(av.timing.fps - tela_hz) / tela_hz < 0.006;
 	LOG("tela %.3f Hz; %s", tela_hz, um_pra_um ? "1 quadro por vsync" : "ritmo pelo tempo");
 
