@@ -60,6 +60,9 @@ static double agora(void)
 /* ------------------------------------------------------------------ opcoes */
 static const char *a_nucleo, *a_jogo, *a_cd, *a_bios = ".", *a_saves = ".", *a_nome = "jogo";
 static const char *a_audio, *a_opcoes, *a_fonte = "6X10", *a_save;
+static int volume = 100, volume_ini = -1;  /* 0..100 */
+static int32_t ganho = 32768;              /* Q15 */
+static void volume_aplica(void) { double g = volume / 100.0; ganho = (int32_t)lround(g * g * 32768); }
 static int conv_x, conv_y;
 static double conv_w = 1.0, conv_h = 1.0;
 
@@ -975,7 +978,7 @@ static size_t audio_batch(const int16_t *d, size_t frames)
 	double cheio = (double)r_cnt / RING;
 	double passo = rs_passo_base * (1.0 + (cheio - 0.5) * 0.01);
 	for (size_t i = 0; i < frames; i++) {
-		int16_t l = d[i * 2], r = d[i * 2 + 1];
+		int16_t l = (int16_t)((d[i * 2] * ganho) >> 15), r = (int16_t)((d[i * 2 + 1] * ganho) >> 15);
 		while (rs_pos <= 1.0) {
 			if (r_cnt < RING) {
 				ring[r_wr * 2] = rs_ant[0] + (l - rs_ant[0]) * rs_pos;
@@ -1402,7 +1405,8 @@ static uint16_t ov[MW * MH];
 static uint16_t fundo[MW * MH];
 static const Fonte *F;
 static int menu_sel;
-static const char *MENU[] = {"CONTINUAR", "REINICIAR JOGO", "SAIR DO JOGO"};
+#define N_MENU 4
+static const char *MENU[N_MENU] = {"CONTINUAR", "VOLUME", "REINICIAR JOGO", "SAIR DO JOGO"};
 
 static uint16_t rgb(int r, int g, int b) { return ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3); }
 static void m_rect(int x, int y, int w, int h, uint16_t c)
@@ -1466,9 +1470,23 @@ static void menu_desenha(void)
 	m_rect(16, 28 + F->ch + 2, 4 * F->cw, 2, ORANGE);
 	m_text(16, 50, a_nome, SLATE);
 	int y = 76;
-	for (int i = 0; i < 3; i++) {
+	for (int i = 0; i < N_MENU; i++) {
 		bool on = i == menu_sel;
 		m_text(24, y, MENU[i], on ? IVORY : SLATE);
+		if (i == 1) { /* volume: barra + numero */
+			char nv[16];
+			snprintf(nv, sizeof nv, on ? "< %d >" : "%d", volume);
+			int bx = 24 + 16 * F->cw, bw = 100;
+			m_rect(bx, y + F->ch / 2 - 1, bw, 3, rgb(40, 50, 80));
+			m_rect(bx, y + F->ch / 2 - 1, bw * volume / 100, 3, on ? ORANGE : SLATE);
+			m_text(bx + bw + 8, y, nv, on ? ORANGE : SLATE);
+			if (on) {
+				m_rect(16, y - 1, 3, F->ch + 2, ORANGE);
+				m_rect(24, y + F->ch + 2, strlen(MENU[i]) * F->cw, 1, ORANGE);
+			}
+			y += F->ch + 12;
+			continue;
+		}
 		if (on) {
 			int w = strlen(MENU[i]) * F->cw;
 			m_rect(16, y - 1, 3, F->ch + 2, ORANGE);
@@ -1529,6 +1547,7 @@ int main(int argc, char **argv)
 		else if (!strcmp(k, "--saves")) a_saves = v;
 		else if (!strcmp(k, "--nome")) a_nome = v;
 		else if (!strcmp(k, "--save")) a_save = v;
+		else if (!strcmp(k, "--volume")) volume = atoi(v) < 0 ? 0 : atoi(v) > 100 ? 100 : atoi(v);
 		else if (!strcmp(k, "--audio")) a_audio = v;
 		else if (!strcmp(k, "--opcoes")) a_opcoes = v;
 		else if (!strcmp(k, "--fonte")) a_fonte = v;
@@ -1615,6 +1634,8 @@ int main(int argc, char **argv)
 	core.set_controller_port_device(0, RETRO_DEVICE_JOYPAD);
 	core.set_controller_port_device(1, RETRO_DEVICE_JOYPAD);
 	sram_carrega();
+	volume_aplica();
+	volume_ini = volume;
 	som_abrir(av.timing.sample_rate);
 
 	/* ritmo: 1 quadro do jogo por vsync quando as frequencias batem (<0,6%);
@@ -1663,18 +1684,37 @@ int main(int argc, char **argv)
 			else if (novo & ((1u << B_B) | (1u << B_START)))
 				escolha = menu_sel;
 			else if (novo & (1u << B_UP))
-				menu_sel = (menu_sel + 2) % 3;
+				menu_sel = (menu_sel + N_MENU - 1) % N_MENU;
 			else if (novo & (1u << B_DOWN))
-				menu_sel = (menu_sel + 1) % 3;
+				menu_sel = (menu_sel + 1) % N_MENU;
+			/* volume: esquerda/direita, de 5 em 5; segurando repete */
+			static double vol_prox;
+			int dv = 0;
+			if (menu_sel == 1 && (b & ((1u << B_LEFT) | (1u << B_RIGHT)))) {
+				int dir = (b & (1u << B_LEFT)) ? -5 : 5;
+				if (novo & ((1u << B_LEFT) | (1u << B_RIGHT))) {
+					dv = dir;
+					vol_prox = agora() + 0.4;
+				} else if (agora() >= vol_prox) {
+					dv = dir;
+					vol_prox = agora() + 0.08;
+				}
+			}
+			if (dv) {
+				volume = volume + dv < 0 ? 0 : volume + dv > 100 ? 100 : volume + dv;
+				volume_aplica();
+			}
+			if (escolha == 1) /* A no volume nao faz nada */
+				escolha = -1;
 			if (escolha >= 0) {
 				menu = false;
 				som_mudo = false;
 				entrada_travada = true;
 				ult_x0 = -99999;
-				if (escolha == 1) {
+				if (escolha == 2) {
 					LOG("reiniciar jogo");
 					core.reset();
-				} else if (escolha == 2) {
+				} else if (escolha == 3) {
 					LOG("sair do jogo");
 					break;
 				}
@@ -1742,6 +1782,14 @@ int main(int argc, char **argv)
 	fb_grava_fake();
 	g_sair = 1;
 	governador(false);
+	if (volume != volume_ini) { /* o menu do RetroVolt le e guarda na configuracao */
+		FILE *fv = fopen("/run/retrovolt/volume", "w");
+		if (fv) {
+			fprintf(fv, "%d\n", volume);
+			fclose(fv);
+		}
+		LOG("volume: %d", volume);
+	}
 	core.unload_game();
 	core.deinit();
 	LOG("fim (%ld quadros)", quadros);

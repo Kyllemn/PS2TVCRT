@@ -92,6 +92,8 @@ CFG_PADRAO = [
     ('video_posicao_y', '0', 'posicao vertical (linhas)'),
     ('video_largura', '1.000', 'largura da imagem (1.000 = tela toda; 0.900 = 90%)'),
     ('video_altura', '1.000', 'altura da imagem (1.000 = todas as linhas; 0.950 = 95%)'),
+    ('SOM', None, None),
+    ('volume', '80', 'volume geral dos jogos, 0 a 100'),
     ('MENU', None, None),
     ('fonte', '6X10', 'fonte do menu: ' + ', '.join(f[0] for f in FONTES_LISTA)),
 ]
@@ -664,7 +666,7 @@ class Leitora(threading.Thread):
 
 # ---------------------------------------------------------------- telas
 ABAS = ['DISCO', 'JOGOS', 'TV', 'OPCOES']
-OPCOES = ['CONVERGENCIA', 'FONTE', 'TESTE DO CONTROLE', 'INFO', 'REINICIAR', 'DESLIGAR']
+OPCOES = ['VOLUME', 'CONVERGENCIA', 'FONTE', 'TESTE DO CONTROLE', 'INFO', 'REINICIAR', 'DESLIGAR']
 
 
 def cabecalho(c, aba, wifi, rodape_d):
@@ -740,6 +742,7 @@ class App:
         self.aviso = None
         self.confirma = None
         self.contagem = None      # (REINICIAR|DESLIGAR, hora final)
+        self.vol_sujo = 0
 
     # ---------------------------------------------------------- jogos
     def sistemas_com_jogos(self):
@@ -796,7 +799,7 @@ class App:
         saves = os.path.join(self.base, 'saves', sistema)
         os.makedirs(saves, exist_ok=True)
         cmd = [exe, '--nucleo', so, '--bios', os.path.join(self.base, 'bios'), '--saves', saves,
-               '--nome', nome[:60], '--save', save, '--fonte', F.nome,
+               '--nome', nome[:60], '--save', save, '--fonte', F.nome, '--volume', str(self.volume()),
                '--conv', '%d,%d,%.3f,%.3f' % tuple(self.conv),
                '--opcoes', os.path.join(self.base, 'config', 'nucleos', nucleo.replace('_libretro.so', '.opt'))]
         cmd += ['--cd', self.leitora.dev] if cd else ['--jogo', arquivo]
@@ -806,6 +809,10 @@ class App:
         print('jogo: %s' % ' '.join(cmd), flush=True)
         copia_log()
         self.leitora.pausa.set()
+        try:
+            os.remove('/run/retrovolt/volume')
+        except OSError:
+            pass
         t0 = time.monotonic()
         try:
             r = subprocess.run(cmd).returncode
@@ -813,6 +820,12 @@ class App:
             r = -1
             print('jogo: nao rodou:', ex, flush=True)
         self.leitora.pausa.clear()
+        try:   # volume mudado no menu do jogo (START+SELECT)
+            v = int(open('/run/retrovolt/volume').read())
+            self.cfg['volume'] = str(max(0, min(100, v)))
+            cfg_gravar(self.cfg)
+        except (OSError, ValueError):
+            pass
         print('jogo: terminou (codigo %s, %.0f s)' % (r, time.monotonic() - t0), flush=True)
         self.ent.segurando.clear()
         self._pendentes()
@@ -848,6 +861,15 @@ class App:
                 y = 58
                 for n, s in enumerate(OPCOES):
                     on = n == self.sel['OPCOES']
+                    if s == 'VOLUME':
+                        v = self.volume()
+                        item(c, 24, y, s, on)
+                        bx, bw = 24 + 14 * F.cw, 100
+                        c.rect(bx, y + F.ch // 2 - 1, bw, 3, LINE)
+                        c.rect(bx, y + F.ch // 2 - 1, bw * v // 100, 3, ORANGE if on else SLATE)
+                        c.text(bx + bw + 8, y, ('< %d >' if on else '%d') % v, ORANGE if on else SLATE)
+                        y += F.ch + 9
+                        continue
                     if s == 'DESLIGAR':
                         c.text(24, y, s, RED if on else (150, 80, 70))
                         if on:
@@ -1094,12 +1116,19 @@ class App:
                 elif k == 'arq':
                     self.jogar(self.sistema, arquivo=v)
         elif self.aba == 'OPCOES':
+            if OPCOES[self.sel['OPCOES']] == 'VOLUME' and a in ('ESQ', 'DIR'):
+                v = max(0, min(100, self.volume() + (5 if a == 'DIR' else -5)))
+                self.cfg['volume'] = str(v)
+                self.vol_sujo = time.monotonic()
+                return
             if a == 'CIMA':
                 self.sel['OPCOES'] = (self.sel['OPCOES'] - 1) % len(OPCOES)
             elif a == 'BAIXO':
                 self.sel['OPCOES'] = (self.sel['OPCOES'] + 1) % len(OPCOES)
             elif a == 'A':
                 o = OPCOES[self.sel['OPCOES']]
+                if o == 'VOLUME':
+                    return
                 if o in ('REINICIAR', 'DESLIGAR'):
                     self.confirma = o
                     return
@@ -1171,6 +1200,12 @@ class App:
         elif t == 'info':
             if a == 'B':
                 self.tela = 'menu'
+
+    def volume(self):
+        try:
+            return max(0, min(100, int(self.cfg.get('volume', '80'))))
+        except ValueError:
+            return 80
 
     def prepara_desligar(self):
         """durante a contagem: grava configuracao e log e esvazia os caches de disco"""
@@ -1273,6 +1308,9 @@ class App:
                     else:
                         self.acao(b)
                         mudou = True
+                if self.vol_sujo and time.monotonic() - self.vol_sujo > 1.5:
+                    self.vol_sujo = 0
+                    cfg_gravar(self.cfg)
                 if self.contagem and time.monotonic() >= self.contagem[1]:
                     self.fim_contagem()
                     continue
