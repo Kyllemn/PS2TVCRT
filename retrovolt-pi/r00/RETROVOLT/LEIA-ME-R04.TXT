@@ -1,0 +1,25 @@
+RETROVOLT Pi - R04 (menu novo + PlayStation + leitora de CD)
+============================================================
+
+INSTALAR (uma vez)
+1. Descompacte o zip na raiz do pendrive (substitui/junta com a pasta RETROVOLT).
+2. Ligue o Pi com o pendrive. Ele ja abre o R04 sozinho.
+3. Para o SOM pelo HDMI e os botoes da caixa, rode uma vez por SSH:
+     sudo bash /media/rvusb/RETROVOLT/atualizar.sh
+   (o Pi reinicia sozinho no final)
+
+ONDE COLOCAR AS COISAS (no pendrive)
+- BIOS do PS1:   RETROVOLT/bios/        (soltas, ex.: scph5501.bin, scph1001.bin)
+- Jogos do PS1:  RETROVOLT/roms/ps1/    (.cue+.bin, .chd, .pbp, .iso; jogo de varios
+                                         discos pode ficar numa pasta com um .m3u)
+- Saves:         RETROVOLT/saves/ps1/   (criados sozinhos)
+
+USO
+- L1/R1 troca as abas DISCO / JOGOS / TV / OPCOES.
+- Coloque um disco de PS1 na leitora: o jogo abre sozinho.
+- JOGOS > PLAYSTATION: "INICIAR CD" (primeiro da lista) ou um jogo da pasta.
+- Dentro do jogo: START+SELECT abre o menu (CONTINUAR / REINICIAR JOGO / SAIR DO JOGO).
+  O save do memory card e gravado sozinho (a cada 5 s, se mudou, e ao sair).
+
+SE ALGO DER ERRADO
+- Mande o RETROVOLT/LOG.TXT (e o LOG_ATUALIZACAO.TXT, se rodou o atualizar.sh).

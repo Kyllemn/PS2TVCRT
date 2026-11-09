@@ -1,0 +1,6 @@
+# binarios gerados (vao no zip do pendrive): rv-jogo/build.sh e rv-jogo/mknucleos.sh
+rv-jogo/rv-jogo.arm64
+rv-jogo/rv-jogo.x86
+r00/RETROVOLT/versoes/*/rv-jogo
+r00/RETROVOLT/versoes/*/nucleos/
+__pycache__/

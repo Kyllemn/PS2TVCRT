@@ -82,8 +82,8 @@ Opcoes que ficam para a pessoa:
 - Volume, convergencia (ja existente), e por jogo: OPCOES DO JOGO.
 
 ## PENDENTE (pedido do autor, fazer depois)
-- Titulo "RETROVOLT" no topo do menu principal: "RETRO" em marfim e "VOLT" em laranja.
-- Letras menores no 240p e escolher outra fonte (a 8x8 atual ficou grande na TV).
+- (feito no R04) Titulo "RETRO" em marfim e "VOLT" em laranja.
+- (feito no R03/R04) Fonte escolhida: 6X10 (X11 misc-fixed). Fontes lisas (anti-aliasing) ficam para depois.
 
 ## Menu do core (popup START+SELECT): SAVE STATE / LOAD STATE (aprovado)
 - Aba JOGO passa a ter: CONTINUAR, SAVE STATE, LOAD STATE, REINICIAR JOGO,
@@ -146,3 +146,15 @@ A aba JOGOS mostra so as pastas que tem jogos.
 - RESET (GPIO2 -> KEY_RESTART, servico rv-caixa): toque reinicia o RetroVolt
   (volta ao menu); segurar 5 s reinicia o Pi. Com jogo rodando (futuro): pensar
   se o toque reinicia o jogo.
+
+## R04: leitora de CD + PlayStation (implementado)
+- Disco na leitora (menu aberto) = o jogo abre sozinho; ligar o Pi com disco tambem.
+  Durante um jogo, trocar o disco so mostra aviso depois.
+- JOGOS > PLAYSTATION: "INICIAR CD" e o primeiro item; 2 linhas vazias; depois os jogos.
+- rv-jogo (C) roda o nucleo: video no fb com a convergencia (largura/posicao; a altura
+  do jogo e 1:1, linha a linha), som ALSA pelo HDMI, START+SELECT = menu do jogo.
+- CD virtual: a leitora vira /run/retrovolt/cd/disco.cue+bin pela VFS do libretro
+  (READ CD 2352 bytes). Sem comando de velocidade na leitora.
+- Save do memory card pelo codigo do jogo (ex.: saves/ps1/SLUS-00892.srm): o mesmo
+  save vale para o disco e para a imagem do mesmo jogo.
+- EDID ganhou extensao CEA (som PCM + HDMI): precisa rodar atualizar.sh uma vez.

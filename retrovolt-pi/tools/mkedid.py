@@ -69,12 +69,30 @@ def edid():
     e[72:90] = d2
     e[90:108] = d3
     e[108:126] = name_desc('RETROVOLT CRT')
-    e[126] = 0                                 # sem extensoes
+    e[126] = 1                                 # 1 extensao (CEA-861: som pelo HDMI)
     e[127] = (-sum(e[:127])) & 0xff
-    return bytes(e)
+    return bytes(e) + cea()
+
+
+def cea():
+    """Extensao CEA-861: diz ao Pi que a "TV" aceita som (PCM 2 canais) e e HDMI.
+    Sem isso o Pi manda video sem som (modo DVI). Nao lista modos de video."""
+    blocos = bytes([
+        0x23, 0x09, 0x07, 0x07,                # audio: LPCM 2 canais, 32/44,1/48 kHz, 16/20/24 bits
+        0x83, 0x01, 0x00, 0x00,                # alto-falantes: esquerdo + direito
+        0x65, 0x03, 0x0C, 0x00, 0x10, 0x00,    # HDMI (OUI 00-0C-03), endereco 1.0.0.0
+    ])
+    c = bytearray(128)
+    c[0] = 0x02                                # CEA
+    c[1] = 0x03                                # revisao 3
+    c[2] = 4 + len(blocos)                     # inicio dos DTDs (nenhum)
+    c[3] = 0x40                                # suporta som basico
+    c[4:4 + len(blocos)] = blocos
+    c[127] = (-sum(c[:127])) & 0xff
+    return bytes(c)
 
 
 if __name__ == '__main__':
     b = edid()
     open(sys.argv[1], 'wb').write(b)
-    print('EDID', len(b), 'bytes, checksum ok' if sum(b) % 256 == 0 else 'ERRO')
+    print('EDID', len(b), 'bytes, checksum ok' if sum(b[:128]) % 256 == 0 and sum(b[128:]) % 256 == 0 else 'ERRO')
