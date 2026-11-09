@@ -59,7 +59,9 @@ static double agora(void)
 
 /* ------------------------------------------------------------------ opcoes */
 static const char *a_nucleo, *a_jogo, *a_cd, *a_bios = ".", *a_saves = ".", *a_nome = "jogo";
-static const char *a_audio, *a_opcoes, *a_fonte = "6X10", *a_save;
+static const char *a_audio, *a_opcoes, *a_fonte = "6X10", *a_save, *a_states, *a_conv_arq;
+static int filtro; /* LCD: 0 nenhum, 1 scanlines */
+static int conv_menu_x, conv_menu_y; static double conv_menu_w = 1.0; /* convergencia geral (do menu) */
 static int volume = 100, volume_ini = -1;  /* 0..100 */
 static int cd_vel = 4;                     /* velocidade da leitora (x); 0 = maxima */
 static int32_t ganho = 32768;              /* Q15 */
@@ -87,6 +89,9 @@ static struct {
 	void (*reset)(void);
 	void *(*get_memory_data)(unsigned);
 	size_t (*get_memory_size)(unsigned);
+	size_t (*serialize_size)(void);
+	bool (*serialize)(void *, size_t);
+	bool (*unserialize)(const void *, size_t);
 } core;
 
 static struct retro_system_av_info av;
@@ -157,6 +162,7 @@ static int64_t cd_tam;
 static pthread_mutex_t cd_mx = PTHREAD_MUTEX_INITIALIZER;
 static struct { int64_t lba; uint64_t uso; uint8_t d[BLOCO * SETOR]; } cd_cache[NCACHE];
 static uint64_t cd_relogio;
+static double cd_ult_leitura;
 
 /* faixas do disco (para saber se um setor e de audio) */
 static int cd_nfx;
@@ -293,6 +299,7 @@ static void cd_le_bloco(int64_t lba0, uint8_t *d)
 	double t = agora() - t0;
 	cd_n_blocos++;
 	cd_t_total += t;
+	cd_ult_leitura = agora();
 	if (t > cd_t_max)
 		cd_t_max = t;
 }
@@ -850,12 +857,22 @@ static void desenha(const void *data, unsigned w, unsigned h, size_t pitch, int 
 			if (yy < 0 || yy >= fb.h)
 				continue;
 			uint8_t *d = fb.back + (size_t)yy * fb.stride + (size_t)x0 * bpp;
-			if (bpp == 2)
-				for (int i = i0; i < i1; i++)
-					((uint16_t *)d)[i] = linha_tmp[xmap[i]];
-			else
-				for (int i = i0; i < i1; i++)
-					((uint32_t *)d)[i] = linha_tmp[xmap[i]];
+			bool escura = !tubo && filtro == 1 && lp >= 2 && k == lp - 1;
+			if (bpp == 2) {
+				if (escura)
+					for (int i = i0; i < i1; i++)
+						((uint16_t *)d)[i] = (linha_tmp[xmap[i]] >> 1) & 0x7BEF;
+				else
+					for (int i = i0; i < i1; i++)
+						((uint16_t *)d)[i] = linha_tmp[xmap[i]];
+			} else {
+				if (escura)
+					for (int i = i0; i < i1; i++)
+						((uint32_t *)d)[i] = (linha_tmp[xmap[i]] >> 1) & 0x7F7F7F;
+				else
+					for (int i = i0; i < i1; i++)
+						((uint32_t *)d)[i] = linha_tmp[xmap[i]];
+			}
 		}
 	}
 }
@@ -1348,7 +1365,7 @@ static void botoes_ler(void)
 
 static void mkdir_pai(const char *path)
 {
-	char d[4096];
+	char d[4400];
 	snprintf(d, sizeof d, "%s", path);
 	for (char *p = d + 1; *p; p++)
 		if (*p == '/') {
@@ -1582,11 +1599,16 @@ static bool environment(unsigned cmd, void *data)
 static uint16_t ov[MW * MH];
 static uint16_t fundo[MW * MH];
 static int menu_sel;
-#define N_MENU 6
-enum { M_CONTINUAR, M_VOLUME, M_OPCOES, M_CONTROLES, M_REINICIAR, M_SAIR };
-static const char *MENU[N_MENU] = {"CONTINUAR", "VOLUME", "OPCOES DO NUCLEO", "CONTROLES", "REINICIAR JOGO", "SAIR DO JOGO"};
+#define N_MENU 9
+enum { M_CONTINUAR, M_SALVAR, M_CARREGAR, M_VOLUME, M_CONV, M_OPCOES, M_CONTROLES, M_REINICIAR, M_SAIR };
+static const char *MENU[N_MENU] = {"CONTINUAR", "SALVAR ESTADO", "CARREGAR ESTADO", "VOLUME", "CONVERGENCIA",
+                                   "OPCOES DO NUCLEO", "CONTROLES", "REINICIAR JOGO", "SAIR DO JOGO"};
 static int sub;           /* 0 = menu, 1 = opcoes do nucleo, 2 = controles, 3 = esperando botao,
-                           * 4 = configurar um por um (assistente) */
+                           * 4 = configurar um por um (assistente), 5 = espacos (save state),
+                           * 6 = confirmar substituir, 7 = convergencia */
+static int slot_modo, slot_sel; /* 0 = salvar, 1 = carregar */
+static int cv_x, cv_y;          /* convergencia ao entrar (B desfaz) */
+static double cv_w;
 static int ass_pos;       /* assistente: posicao em bot_ordem */
 static int sub_sel, sub_ini;
 static bool sub_mudou;
@@ -1637,6 +1659,360 @@ static void menu_fundo(void)
 		}
 }
 
+/* ------------------------------------------------------------------ leitora acordada */
+/* parada num menu a leitora "dorme" e o jogo trava ao voltar. A cada 10 s sem
+ * leitura, le 1 setor direto da leitora (fora do cache) para ela continuar girando. */
+static void *cd_acorda_thread(void *x)
+{
+	(void)x;
+	uint8_t b[SETOR];
+	while (!g_sair) {
+		sleep(2);
+		if (agora() - cd_ult_leitura < 10)
+			continue;
+		pthread_mutex_lock(&cd_mx);
+		int64_t l = (cd_fx[0].dados ? cd_fx[0].lba : 0) + 16;
+		if (!cd_read_cd(l, 1, b, 0xF8))
+			cd_raw_ioctl(l, b);
+		cd_ult_leitura = agora();
+		pthread_mutex_unlock(&cd_mx);
+	}
+	return NULL;
+}
+
+/* ------------------------------------------------------------------ PNG simples (miniaturas) */
+static uint32_t crc_tab[256];
+static uint32_t crc32_(const uint8_t *d, size_t n, uint32_t c)
+{
+	if (!crc_tab[1])
+		for (uint32_t i = 0; i < 256; i++) {
+			uint32_t k = i;
+			for (int j = 0; j < 8; j++)
+				k = k & 1 ? 0xEDB88320u ^ (k >> 1) : k >> 1;
+			crc_tab[i] = k;
+		}
+	c = ~c;
+	for (size_t i = 0; i < n; i++)
+		c = crc_tab[(c ^ d[i]) & 255] ^ (c >> 8);
+	return ~c;
+}
+static void be32(uint8_t *p, uint32_t v) { p[0] = v >> 24; p[1] = v >> 16; p[2] = v >> 8; p[3] = v; }
+static void png_bloco(FILE *f, const char *tipo, const uint8_t *d, uint32_t n)
+{
+	uint8_t h[8];
+	be32(h, n);
+	memcpy(h + 4, tipo, 4);
+	fwrite(h, 1, 8, f);
+	if (n)
+		fwrite(d, 1, n, f);
+	uint32_t c = crc32_((const uint8_t *)tipo, 4, 0);
+	c = crc32_(d, n, c);
+	be32(h, c);
+	fwrite(h, 1, 4, f);
+}
+/* grava RGB (w*h*3) como PNG sem compressao (deflate "stored") */
+static bool png_grava(const char *path, const uint8_t *rgb, int w, int h)
+{
+	size_t cru = (size_t)(w * 3 + 1) * h, nb = (cru + 65534) / 65535;
+	size_t tz = 2 + cru + nb * 5 + 4;
+	uint8_t *z = malloc(tz), *q = z;
+	*q++ = 0x78; *q++ = 0x01;
+	uint32_t a = 1, b2 = 0;
+	uint8_t *linha = malloc(cru), *l = linha;
+	for (int y = 0; y < h; y++) {
+		*l++ = 0;
+		memcpy(l, rgb + (size_t)y * w * 3, w * 3);
+		l += w * 3;
+	}
+	for (size_t i = 0; i < cru; i++) {
+		a = (a + linha[i]) % 65521;
+		b2 = (b2 + a) % 65521;
+	}
+	for (size_t off = 0; off < cru; off += 65535) {
+		size_t n = cru - off < 65535 ? cru - off : 65535;
+		*q++ = off + n >= cru ? 1 : 0;
+		*q++ = n; *q++ = n >> 8; *q++ = ~n; *q++ = (~n) >> 8;
+		memcpy(q, linha + off, n);
+		q += n;
+	}
+	be32(q, (b2 << 16) | a);
+	q += 4;
+	FILE *f = fopen(path, "wb");
+	bool ok = f != NULL;
+	if (f) {
+		uint8_t ih[13];
+		fwrite("\x89PNG\r\n\x1a\n", 1, 8, f);
+		be32(ih, w); be32(ih + 4, h);
+		ih[8] = 8; ih[9] = 2; ih[10] = ih[11] = ih[12] = 0;
+		png_bloco(f, "IHDR", ih, 13);
+		png_bloco(f, "IDAT", z, q - z);
+		png_bloco(f, "IEND", NULL, 0);
+		fclose(f);
+	}
+	free(z);
+	free(linha);
+	return ok;
+}
+/* le de volta so os PNG gravados acima (sem compressao); devolve RGB ou NULL */
+static uint8_t *png_le(const char *path, int *pw, int *ph)
+{
+	FILE *f = fopen(path, "rb");
+	if (!f)
+		return NULL;
+	fseek(f, 0, SEEK_END);
+	long n = ftell(f);
+	fseek(f, 0, SEEK_SET);
+	uint8_t *d = malloc(n), *z = malloc(n);
+	size_t nz = 0;
+	int w = 0, h = 0;
+	bool ok = fread(d, 1, n, f) == (size_t)n && n > 8 && !memcmp(d, "\x89PNG", 4);
+	fclose(f);
+	for (long p = 8; ok && p + 12 <= n;) {
+		uint32_t len = (uint32_t)d[p] << 24 | d[p + 1] << 16 | d[p + 2] << 8 | d[p + 3];
+		if (p + 12 + (long)len > n)
+			break;
+		if (!memcmp(d + p + 4, "IHDR", 4)) {
+			w = d[p + 8] << 24 | d[p + 9] << 16 | d[p + 10] << 8 | d[p + 11];
+			h = d[p + 12] << 24 | d[p + 13] << 16 | d[p + 14] << 8 | d[p + 15];
+		} else if (!memcmp(d + p + 4, "IDAT", 4)) {
+			memcpy(z + nz, d + p + 8, len);
+			nz += len;
+		}
+		p += 12 + len;
+	}
+	uint8_t *rgb = NULL;
+	if (ok && w > 0 && h > 0 && w <= 640 && h <= 480 && nz > 2) {
+		size_t cru = (size_t)(w * 3 + 1) * h, got = 0;
+		uint8_t *lin = malloc(cru);
+		size_t p = 2;
+		while (p + 5 <= nz && got < cru) {
+			int fim = z[p] & 1;
+			if ((z[p] >> 1) & 3) /* comprimido: nao e nosso */
+				break;
+			size_t len = z[p + 1] | z[p + 2] << 8;
+			p += 5;
+			if (p + len > nz || got + len > cru)
+				break;
+			memcpy(lin + got, z + p, len);
+			got += len;
+			p += len;
+			if (fim)
+				break;
+		}
+		if (got == cru) {
+			rgb = malloc((size_t)w * h * 3);
+			for (int y = 0; y < h; y++)
+				memcpy(rgb + (size_t)y * w * 3, lin + (size_t)y * (w * 3 + 1) + 1, w * 3);
+			*pw = w;
+			*ph = h;
+		}
+		free(lin);
+	}
+	free(d);
+	free(z);
+	return rgb;
+}
+
+/* ------------------------------------------------------------------ save states (10 espacos) */
+#define N_SLOTS 10
+#define MINI_W 160
+#define MINI_H 120
+static struct { bool tem; char quando[24]; uint16_t mini[96 * 72]; bool tem_mini; } slots[N_SLOTS];
+static char slot_msg[48];
+static double slot_msg_ate;
+
+static void slot_path(int n, const char *ext, char *o, size_t t)
+{
+	snprintf(o, t, "%s/estado_%d.%s", a_states ? a_states : a_saves, n + 1, ext);
+}
+
+/* miniatura do ultimo quadro do jogo (antes do menu), sem nada por cima */
+static void slot_mini_rgb(uint8_t *rgb)
+{
+	for (int y = 0; y < MINI_H; y++)
+		for (int x = 0; x < MINI_W; x++) {
+			uint8_t *o = rgb + ((size_t)y * MINI_W + x) * 3;
+			o[0] = o[1] = o[2] = 0;
+			if (!ult_q || !ult_w)
+				continue;
+			const uint8_t *src = ult_q + (size_t)(y * ult_h / MINI_H) * ult_pitch;
+			int sx = x * ult_w / MINI_W, bb = fb.bpp;
+			fb.bpp = 32;
+			uint32_t p = px_conv(src, sx, ult_fmt);
+			fb.bpp = bb;
+			o[0] = p >> 16; o[1] = p >> 8; o[2] = p;
+		}
+}
+
+static void slots_le(void)
+{
+	for (int i = 0; i < N_SLOTS; i++) {
+		char p[4200];
+		struct stat st;
+		slot_path(i, "state", p, sizeof p);
+		slots[i].tem = !stat(p, &st);
+		slots[i].tem_mini = false;
+		if (!slots[i].tem)
+			continue;
+		strftime(slots[i].quando, sizeof slots[i].quando, "%d/%m %H:%M", localtime(&st.st_mtime));
+		slot_path(i, "png", p, sizeof p);
+		int w, h;
+		uint8_t *rgb = png_le(p, &w, &h);
+		if (rgb) {
+			for (int y = 0; y < 72; y++)
+				for (int x = 0; x < 96; x++) {
+					uint8_t *q = rgb + ((size_t)(y * h / 72) * w + x * w / 96) * 3;
+					slots[i].mini[y * 96 + x] = ((q[0] >> 3) << 11) | ((q[1] >> 2) << 5) | (q[2] >> 3);
+				}
+			slots[i].tem_mini = true;
+			free(rgb);
+		}
+	}
+}
+
+static bool slot_salva(int n)
+{
+	size_t t = core.serialize_size();
+	if (!t)
+		return false;
+	uint8_t *d = malloc(t);
+	bool ok = core.serialize(d, t);
+	char p[4200], tmp[4300];
+	slot_path(n, "state", p, sizeof p);
+	mkdir_pai(p);
+	snprintf(tmp, sizeof tmp, "%s.tmp", p);
+	FILE *f = ok ? fopen(tmp, "wb") : NULL;
+	if (f) {
+		ok = fwrite(d, 1, t, f) == t;
+		fflush(f);
+		fsync(fileno(f));
+		fclose(f);
+		if (ok)
+			rename(tmp, p);
+	} else
+		ok = false;
+	free(d);
+	if (ok) {
+		uint8_t rgb[MINI_W * MINI_H * 3];
+		slot_mini_rgb(rgb);
+		slot_path(n, "png", p, sizeof p);
+		png_grava(p, rgb, MINI_W, MINI_H);
+		sync();
+	}
+	LOG("estado: slot %d %s", n + 1, ok ? "salvo" : "ERRO ao salvar");
+	return ok;
+}
+
+static bool slot_carrega(int n)
+{
+	char p[4200];
+	slot_path(n, "state", p, sizeof p);
+	FILE *f = fopen(p, "rb");
+	if (!f)
+		return false;
+	fseek(f, 0, SEEK_END);
+	long t = ftell(f);
+	fseek(f, 0, SEEK_SET);
+	uint8_t *d = malloc(t);
+	bool ok = fread(d, 1, t, f) == (size_t)t && core.unserialize(d, t);
+	fclose(f);
+	free(d);
+	LOG("estado: slot %d %s", n + 1, ok ? "carregado" : "ERRO ao carregar");
+	return ok;
+}
+
+/* ------------------------------------------------------------------ convergencia por nucleo */
+static void conv_le(void)
+{
+	FILE *f = a_conv_arq ? fopen(a_conv_arq, "r") : NULL;
+	if (!f)
+		return;
+	int x, y;
+	double w;
+	if (fscanf(f, "%d %d %lf", &x, &y, &w) == 3) {
+		conv_x = x;
+		conv_y = y;
+		conv_w = w;
+		LOG("convergencia deste nucleo: %d %d %.3f", x, y, w);
+	}
+	fclose(f);
+}
+static void conv_grava(void)
+{
+	if (!a_conv_arq)
+		return;
+	mkdir_pai(a_conv_arq);
+	FILE *f = fopen(a_conv_arq, "w");
+	if (f) {
+		fprintf(f, "%d %d %.3f\n# RETROVOLT: posicao x, posicao y, largura (so deste nucleo)\n", conv_x, conv_y, conv_w);
+		fclose(f);
+		sync();
+	}
+}
+
+/* texto direto no framebuffer, em coordenadas 320x240 da imagem do jogo */
+static void fb_texto(int lx, int ly, const char *t, int r, int g, int b, bool caixa)
+{
+	int sx = ult_cw / 320 > 0 ? ult_cw / 320 : 1;
+	int sy = ult_dh / 240 > 0 ? ult_dh / 240 : 1;
+	int n = strlen(t), X = ult_x0 + lx * ult_cw / 320, Y = ult_y0 + ly * sy;
+	if (lx < 0) /* centralizado */
+		X = ult_x0 + (ult_cw - n * F->cw * sx) / 2;
+	if (caixa)
+		for (int y = Y - 2 * sy; y < Y + (F->ch + 2) * sy; y++)
+			for (int x = X - 4 * sx; x < X + (n * F->cw + 4) * sx; x++)
+				fb_ponto(x, y, 12, 18, 40);
+	for (int k = 0; k < n; k++) {
+		int o = (unsigned char)t[k] - 32;
+		if (o < 0 || o > 223)
+			continue;
+		for (int rr = 0; rr < F->ch; rr++) {
+			uint8_t bits = F->b[o * F->ch + rr];
+			for (int c = 0; c < F->cw; c++)
+				if (bits >> c & 1)
+					for (int yy = 0; yy < sy; yy++)
+						for (int xx = 0; xx < sx; xx++)
+							fb_ponto(X + (k * F->cw + c) * sx + xx, Y + rr * sy + yy, r, g, b);
+		}
+	}
+}
+
+static void fb_retangulo(int x, int y, int w, int h, int r, int g, int b)
+{
+	for (int j = y; j < y + h; j++)
+		for (int i = x; i < x + w; i++)
+			fb_ponto(i, j, r, g, b);
+}
+
+/* convergencia no jogo: a imagem do jogo com moldura e cantos laranja */
+static void conv_desenha(void)
+{
+	if (ult_q)
+		desenha(ult_q, ult_w, ult_h, ult_pitch, ult_fmt, av.geometry.aspect_ratio);
+	int sx = ult_cw / 320 > 0 ? ult_cw / 320 : 1, sy = ult_dh / 240 > 0 ? ult_dh / 240 : 1;
+	int x0 = ult_x0, y0 = ult_y0, w = ult_cw, h = ult_dh;
+	fb_retangulo(x0, y0, w, 2 * sy, 255, 140, 40);
+	fb_retangulo(x0, y0 + h - 2 * sy, w, 2 * sy, 255, 140, 40);
+	fb_retangulo(x0, y0, sx, h, 255, 140, 40);
+	fb_retangulo(x0 + w - sx, y0, sx, h, 255, 140, 40);
+	int cx = 24 * sx, cy = 6 * sy, lx = 6 * sx, ly = 24 * sy;
+	fb_retangulo(x0, y0, cx, cy, 255, 140, 40);
+	fb_retangulo(x0 + w - cx, y0, cx, cy, 255, 140, 40);
+	fb_retangulo(x0, y0 + h - cy, cx, cy, 255, 140, 40);
+	fb_retangulo(x0 + w - cx, y0 + h - cy, cx, cy, 255, 140, 40);
+	fb_retangulo(x0, y0, lx, ly, 255, 140, 40);
+	fb_retangulo(x0 + w - lx, y0, lx, ly, 255, 140, 40);
+	fb_retangulo(x0, y0 + h - ly, lx, ly, 255, 140, 40);
+	fb_retangulo(x0 + w - lx, y0 + h - ly, lx, ly, 255, 140, 40);
+	char l[64];
+	fb_texto(-1, 70, "CONVERGENCIA DESTE NUCLEO", 255, 140, 40, true);
+	snprintf(l, sizeof l, "X %+d  Y %+d  LARGURA %d%%", conv_x, conv_y, (int)lround(conv_w * 100));
+	fb_texto(-1, 70 + F->ch + 8, l, 240, 236, 225, true);
+	fb_texto(-1, 70 + 2 * (F->ch + 8), "SETAS POSICAO  LB/RB LARGURA", 120, 130, 160, true);
+	fb_texto(-1, 70 + 3 * (F->ch + 8), "SELECT IGUAL AO MENU", 120, 130, 160, true);
+	fb_texto(-1, 70 + 4 * (F->ch + 8), "A SALVA  B VOLTA", 240, 236, 225, true);
+}
+
 static void m_item(int y, const char *txt, bool on, const char *valor, uint16_t cor_valor)
 {
 	uint16_t IVORY = rgb(240, 236, 225), ORANGE = rgb(255, 140, 40), SLATE = rgb(120, 130, 160);
@@ -1672,7 +2048,11 @@ static void menu_desenha(void)
 	time_t t = time(NULL);
 	strftime(hora, sizeof hora, "%H:%M", localtime(&t));
 	m_rtext(MW - 12, 6, hora, IVORY);
-	const char *titulo = sub == 0 ? "JOGO" : sub == 1 ? "OPCOES DO NUCLEO" : "CONTROLES";
+	if (sub == 7) {
+		conv_desenha();
+		return;
+	}
+	const char *titulo = sub == 0 ? "JOGO" : sub == 1 ? "OPCOES DO NUCLEO" : sub >= 5 ? (slot_modo ? "CARREGAR ESTADO" : "SALVAR ESTADO") : "CONTROLES";
 	if (sub == 4 && ass_pos >= n_ordem)
 		ass_pos = 0;
 	m_text(16, 28, titulo, IVORY);
@@ -1681,7 +2061,9 @@ static void menu_desenha(void)
 	int cabem = (MH - 12 - F->ch - y0) / passo;
 	if (sub == 0) {
 		m_text(16, 50, a_nome, SLATE);
-		int y = 72;
+		if (agora() < slot_msg_ate)
+			m_rtext(MW - 12, 50, slot_msg, rgb(90, 220, 140));
+		int y = 66;
 		for (int i = 0; i < N_MENU; i++) {
 			bool on = i == menu_sel;
 			if (i == M_VOLUME) {
@@ -1693,10 +2075,42 @@ static void menu_desenha(void)
 				m_rect(bx, y + F->ch / 2 - 1, bw * volume / 100, 3, on ? ORANGE : SLATE);
 			} else
 				m_item(y, MENU[i], on, NULL, SLATE);
-			y += F->ch + 10;
+			y += F->ch + 5;
 		}
 		m_text(16, MH - 4 - F->ch, "START+SELECT VOLTA", SLATE);
 		m_rtext(MW - 12, MH - 4 - F->ch, "A ESCOLHE", SLATE);
+	} else if (sub == 5 || sub == 6) {
+		/* lista dos 10 espacos a esquerda; miniatura do selecionado a direita */
+		for (int i = 0; i < N_SLOTS; i++) {
+			char l[16];
+			snprintf(l, sizeof l, "SLOT %d", i + 1);
+			int y = y0 + i * (F->ch + 5);
+			bool on = i == slot_sel;
+			m_text(24, y, l, on ? IVORY : SLATE);
+			m_text(24 + 8 * F->cw, y, slots[i].tem ? slots[i].quando : "VAZIO", on ? ORANGE : SLATE);
+			if (on) {
+				m_rect(16, y - 1, 3, F->ch + 2, ORANGE);
+				m_rect(24, y + F->ch + 1, strlen(l) * F->cw, 1, ORANGE);
+			}
+		}
+		int bx = MW - 14 - 96 - 4, by = y0;
+		m_rect(bx - 2, by - 2, 100, 76, slots[slot_sel].tem ? ORANGE : rgb(40, 50, 80));
+		m_rect(bx, by, 96, 72, rgb(12, 18, 40));
+		if (slots[slot_sel].tem_mini)
+			for (int y = 0; y < 72; y++)
+				memcpy(&ov[(by + y) * MW + bx], &slots[slot_sel].mini[y * 96], 96 * 2);
+		else
+			m_text(bx + (96 - 5 * F->cw) / 2, by + 32, "VAZIO", SLATE);
+		m_text(16, MH - 4 - F->ch, slot_modo ? "A CARREGA  B VOLTA" : "A SALVA  B VOLTA", SLATE);
+		if (sub == 6) {
+			char l1[40];
+			snprintf(l1, sizeof l1, "SUBSTITUIR O SLOT %d?", slot_sel + 1);
+			int w = 26 * F->cw;
+			m_rect((MW - w) / 2 - 4, 96, w + 8, 2 * F->ch + 20, rgb(40, 20, 20));
+			m_rect((MW - w) / 2 - 4, 96, w + 8, 2, ORANGE);
+			m_text((MW - (int)strlen(l1) * F->cw) / 2, 104, l1, IVORY);
+			m_text((MW - 13 * F->cw) / 2, 108 + F->ch, "A SIM   B NAO", IVORY);
+		}
 	} else if (sub == 1) {
 		if (!nvars)
 			m_text(24, y0, "ESTE NUCLEO NAO TEM OPCOES", SLATE);
@@ -1767,6 +2181,77 @@ static int menu_passo(uint32_t b, uint32_t novo, bool combo)
 		rep = dirs & seg;
 		prox = agora() + 0.08;
 	}
+	if (sub == 7) { /* convergencia deste nucleo, com o jogo atras */
+		if (combo || (novo & VOLTA)) {
+			conv_x = cv_x; conv_y = cv_y; conv_w = cv_w;
+			ult_x0 = -99999;
+			sub = 0;
+			return combo ? M_CONTINUAR : -1;
+		}
+		int passo_x = tubo ? 6 : 2;
+		if (rep & (1u << B_LEFT)) conv_x -= passo_x;
+		if (rep & (1u << B_RIGHT)) conv_x += passo_x;
+		if (rep & (1u << B_UP)) conv_y -= 1;
+		if (rep & (1u << B_DOWN)) conv_y += 1;
+		if (novo & (1u << B_L)) conv_w -= 0.005;
+		if (novo & (1u << B_R)) conv_w += 0.005;
+		if (novo & (1u << B_SELECT)) {
+			conv_x = conv_menu_x; conv_y = conv_menu_y; conv_w = conv_menu_w;
+		}
+		conv_x = conv_x < -300 ? -300 : conv_x > 300 ? 300 : conv_x;
+		conv_y = conv_y < -20 ? -20 : conv_y > 20 ? 20 : conv_y;
+		conv_w = conv_w < 0.70 ? 0.70 : conv_w > 1.10 ? 1.10 : conv_w;
+		if (novo & (1u << B_B)) {
+			conv_grava();
+			snprintf(slot_msg, sizeof slot_msg, "CONVERGENCIA SALVA");
+			slot_msg_ate = agora() + 2.5;
+			ult_x0 = -99999;
+			sub = 0;
+		}
+		return -1;
+	}
+	if (sub == 6) { /* substituir o espaco usado? */
+		if (novo & (1u << B_B)) {
+			bool ok = slot_salva(slot_sel);
+			snprintf(slot_msg, sizeof slot_msg, ok ? "SALVO NO SLOT %d" : "ERRO AO SALVAR", slot_sel + 1);
+			slot_msg_ate = agora() + 2.5;
+			sub = 0;
+		} else if (novo & VOLTA)
+			sub = 5;
+		return -1;
+	}
+	if (sub == 5) {
+		if (combo)
+			return M_CONTINUAR;
+		if (novo & VOLTA) {
+			sub = 0;
+			return -1;
+		}
+		if (rep & (1u << B_UP))
+			slot_sel = (slot_sel + N_SLOTS - 1) % N_SLOTS;
+		if (rep & (1u << B_DOWN))
+			slot_sel = (slot_sel + 1) % N_SLOTS;
+		if (novo & OK) {
+			if (!slot_modo) {
+				if (slots[slot_sel].tem) {
+					sub = 6;
+					return -1;
+				}
+				bool ok = slot_salva(slot_sel);
+				snprintf(slot_msg, sizeof slot_msg, ok ? "SALVO NO SLOT %d" : "ERRO AO SALVAR", slot_sel + 1);
+				slot_msg_ate = agora() + 2.5;
+				sub = 0;
+			} else if (slots[slot_sel].tem) {
+				bool ok = slot_carrega(slot_sel);
+				sub = 0;
+				if (ok)
+					return M_CONTINUAR;
+				snprintf(slot_msg, sizeof slot_msg, "ERRO AO CARREGAR");
+				slot_msg_ate = agora() + 2.5;
+			}
+		}
+		return -1;
+	}
 	if (sub == 4) { /* assistente: um botao de cada vez, na ordem do nucleo */
 		if (combo) {
 			sub = 2;
@@ -1819,13 +2304,25 @@ static int menu_passo(uint32_t b, uint32_t novo, bool combo)
 			volume_aplica();
 		}
 		if (novo & OK) {
+			if (menu_sel == M_SALVAR || menu_sel == M_CARREGAR) {
+				slot_modo = menu_sel == M_CARREGAR;
+				slots_le();
+				sub = 5;
+				return -1;
+			}
+			if (menu_sel == M_CONV) {
+				cv_x = conv_x; cv_y = conv_y; cv_w = conv_w;
+				sub = 7;
+				ult_x0 = -99999;
+				return -1;
+			}
 			if (menu_sel == M_OPCOES || menu_sel == M_CONTROLES) {
 				sub = menu_sel == M_OPCOES ? 1 : 2;
 				sub_sel = sub_ini = 0;
 				sub_mudou = false;
 				return -1;
 			}
-			if (menu_sel != M_VOLUME)
+			if (menu_sel == M_CONTINUAR || menu_sel == M_REINICIAR || menu_sel == M_SAIR)
 				return menu_sel;
 		}
 		return -1;
@@ -1918,6 +2415,9 @@ int main(int argc, char **argv)
 		else if (!strcmp(k, "--nome")) a_nome = v;
 		else if (!strcmp(k, "--save")) a_save = v;
 		else if (!strcmp(k, "--botoes")) a_botoes = v;
+		else if (!strcmp(k, "--states")) a_states = v;
+		else if (!strcmp(k, "--conv-arq")) a_conv_arq = v;
+		else if (!strcmp(k, "--filtro")) filtro = atoi(v);
 		else if (!strcmp(k, "--cd-vel")) cd_vel = atoi(v);
 		else if (!strcmp(k, "--volume")) volume = atoi(v) < 0 ? 0 : atoi(v) > 100 ? 100 : atoi(v);
 		else if (!strcmp(k, "--audio")) a_audio = v;
@@ -1965,6 +2465,9 @@ int main(int argc, char **argv)
 	core.reset = simbolo("retro_reset");
 	core.get_memory_data = simbolo("retro_get_memory_data");
 	core.get_memory_size = simbolo("retro_get_memory_size");
+	core.serialize_size = simbolo("retro_serialize_size");
+	core.serialize = simbolo("retro_serialize");
+	core.unserialize = simbolo("retro_unserialize");
 
 	var_set("pcsx_rearmed_cd_readahead", "128", false); /* le o CD adiantado: menos espera */
 	opcoes_ler();
@@ -2007,6 +2510,13 @@ int main(int argc, char **argv)
 	core.set_controller_port_device(1, RETRO_DEVICE_JOYPAD);
 	sram_carrega();
 	botoes_ler();
+	conv_menu_x = conv_x; conv_menu_y = conv_y; conv_menu_w = conv_w;
+	conv_le();
+	if (cd_fd >= 0 && !cd_arquivo) {
+		pthread_t ta;
+		cd_ult_leitura = agora();
+		pthread_create(&ta, NULL, cd_acorda_thread, NULL);
+	}
 	volume_aplica();
 	volume_ini = volume;
 	som_abrir(av.timing.sample_rate);
@@ -2122,8 +2632,14 @@ int main(int argc, char **argv)
 		}
 		if (max_q && quadros >= max_q) {
 			if (getenv("RV_MENU_TESTE")) {
+				if (getenv("RV_SALVA_TESTE")) {
+					slot_salva(2);
+					slot_carrega(2);
+				}
 				if (getenv("RV_MENU_SUB"))
 					sub = atoi(getenv("RV_MENU_SUB"));
+				slots_le();
+				slot_sel = 2;
 				menu_fundo();
 				menu_desenha();
 				fb_mostra();

@@ -188,3 +188,19 @@ A aba JOGOS mostra so as pastas que tem jogos.
   nucleo em config/nucleos/<nucleo>.botoes (PS1, Neo Geo, Sega CD, PC Engine: cada um o seu).
 - Avisos de 3 s no canto superior direito: resolucao do jogo a cada troca ("640x480i",
   "320x240p" + Hz) e controle conectado (modelo); texto comprido rola (letreiro).
+
+## R06 (feito)
+- Menu do jogo: SALVAR ESTADO / CARREGAR ESTADO (10 espacos, miniatura 160x120 PNG do
+  ultimo quadro antes do menu, data/hora; substituir pede confirmacao), CONVERGENCIA
+  deste nucleo (com o jogo atras; salva em config/nucleos/<nucleo>.conv; SELECT = igual
+  ao menu), VOLUME, OPCOES DO NUCLEO, CONTROLES.
+- Leitora: durante o jogo, 1 leitura a cada 10 s sem uso (nao entra em descanso).
+- Leitora acordando nao conta mais como disco novo (popup so quando o disco sai/entra).
+- INFO abre na hora (dados de rede em segundo plano).
+- TUBO/LCD automatico: le a EDID verdadeira (kernel no LCD, DDC/i2c no tubo); AGO/0001 =
+  tubo; se nao combina com o boot, troca o cmdline.txt e reinicia (max 2 trocas/10 min).
+  LCD: menu em 1280x720 (ou o modo mais perto de 720 linhas), tela logica na proporcao
+  (16:9 = 426x240) ampliada inteira; jogos 4:3 ampliados inteiros; SCANLINES opcional.
+  OPCOES > VIDEO: SAIDA (AUTO/TUBO/LCD), FILTRO. Sem imagem: segurar SELECT 5 s troca.
+
+## PENDENTE: avisos (resolucao/controle) dentro de um balao, mais apresentavel.
