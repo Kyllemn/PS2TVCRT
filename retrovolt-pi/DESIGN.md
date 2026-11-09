@@ -272,3 +272,8 @@ A aba JOGOS mostra so as pastas que tem jogos.
   mostra certo). Causa provavel: o topo usa o valor da ultima consulta (nmcli a cada 30 s
   e no inicio, antes da rede subir); se a consulta falha/demora, fica vazio. Corrigir:
   consultar com mais frequencia ate achar a rede e nao apagar o nome numa falha isolada.
+- Menu do jogo: novo item VOLTAR PARA A LISTA (fecha o jogo e cai na lista de jogos
+  daquele sistema, com o cursor no jogo); SAIR DO JOGO continua (volta ao menu principal).
+- PC Engine: "INICIAR CD" (leitura direto da leitora) tem que aparecer SEMPRE no topo da
+  lista, acima das roms, mesmo sem nenhuma rom de CD. Proposta: uma lista so, PC ENGINE =
+  INICIAR CD + 2 linhas + cartoes (.pce) + imagens de CD; nao esconder sistema de CD sem roms.
