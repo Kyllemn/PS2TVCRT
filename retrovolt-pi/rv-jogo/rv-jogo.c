@@ -94,7 +94,8 @@ static enum retro_pixel_format pixfmt = RETRO_PIXEL_FORMAT_0RGB1555;
 
 /* variaveis do nucleo (opcoes): chave, valor */
 #define MAXVAR 256
-static struct { char *k, *v; } vars[MAXVAR];
+static struct { char *k, *v, *desc, *vals[64]; int nvals; } vars[MAXVAR];
+static bool vars_mudou;   /* opcao mudada no menu: o nucleo le no proximo quadro */
 static int nvars;
 
 static void var_set(const char *k, const char *v, bool so_se_novo)
@@ -862,8 +863,18 @@ static void desenha(const void *data, unsigned w, unsigned h, size_t pitch, int 
 /* aviso de resolucao: "640x480 @ 59.94 Hz" por 3 s no canto superior direito
  * da imagem, ao abrir o jogo e sempre que a resolucao do jogo mudar */
 static const Fonte *F;
-static char osd_txt[64];
-static double osd_ate;
+static char osd_txt[160], osd_pend[160];
+static double osd_ate, osd_ini;
+static bool osd_tem_pend;
+#define OSD_MAX 30 /* caracteres que cabem na caixa; maior que isso rola */
+
+static void osd(const char *t)
+{
+	snprintf(osd_txt, sizeof osd_txt, "%s", t);
+	int n = strlen(osd_txt);
+	osd_ini = agora();
+	osd_ate = osd_ini + 3 + (n > OSD_MAX ? (n - OSD_MAX) / 8.0 + 1.5 : 0);
+}
 static unsigned osd_w, osd_h;
 
 static void fb_ponto(int x, int y, int r, int g, int b)
@@ -884,11 +895,21 @@ static void osd_desenha(void)
 	int sx = tubo ? ult_cw / 320 : fb.h / 240;
 	if (sx < 1) sx = 1;
 	int sy = tubo ? (fb.h >= 400 ? 2 : 1) : sx;
-	int n = strlen(osd_txt), tw = n * F->cw * sx, th = F->ch * sy;
+	int n = strlen(osd_txt), vis = n > OSD_MAX ? OSD_MAX : n;
+	int tw = vis * F->cw * sx, th = F->ch * sy;
 	int x1 = ult_x0 + ult_cw - tw - 10 * sx, y1 = ult_y0 + 6 * sy;
 	for (int y = y1 - 2 * sy; y < y1 + th + 2 * sy; y++)
 		for (int x = x1 - 4 * sx; x < x1 + tw + 4 * sx; x++)
 			fb_ponto(x, y, 12, 18, 40);
+	/* letreiro: espera 1 s, rola 8 letras por segundo, para no fim */
+	int desl = 0;
+	if (n > OSD_MAX) {
+		double t = agora() - osd_ini - 1.0;
+		desl = t > 0 ? (int)(t * 8 * F->cw) : 0;
+		if (desl > (n - OSD_MAX) * F->cw)
+			desl = (n - OSD_MAX) * F->cw;
+	}
+	int cx0 = x1, cx1 = x1 + tw; /* corta o texto na caixa */
 	for (int k = 0; k < n; k++) {
 		int o = (unsigned char)osd_txt[k] - 32;
 		if (o < 0 || o > 223)
@@ -899,7 +920,11 @@ static void osd_desenha(void)
 				if (bits >> c & 1)
 					for (int yy = 0; yy < sy; yy++)
 						for (int xx = 0; xx < sx; xx++)
-							fb_ponto(x1 + (k * F->cw + c) * sx + xx, y1 + r * sy + yy, 240, 236, 225);
+						{
+							int px = x1 + (k * F->cw + c - desl) * sx + xx;
+							if (px >= cx0 && px < cx1)
+								fb_ponto(px, y1 + r * sy + yy, 240, 236, 225);
+						}
 		}
 	}
 }
@@ -926,11 +951,11 @@ static void video_cb(const void *data, unsigned w, unsigned h, size_t pitch)
 	if (w != osd_w || h != osd_h) {
 		osd_w = w;
 		osd_h = h;
-		snprintf(osd_txt, sizeof osd_txt, "%ux%u @ %.2f Hz", w, h, av.timing.fps);
-		osd_ate = agora() + 3;
-		LOG("resolucao do jogo: %s", osd_txt);
+		char t[64];   /* mais de 288 linhas = entrelacado (480i); senao progressivo (240p) */
+		snprintf(t, sizeof t, "%ux%u%s @ %.2f Hz", w, h, h > 288 ? "i" : "p", av.timing.fps);
+		osd(t);
+		LOG("resolucao do jogo: %s", t);
 	}
-	osd_desenha();
 }
 
 /* ------------------------------------------------------------------ som (ALSA via dlopen) */
@@ -1183,6 +1208,10 @@ static void controles_busca(void)
 			v.porta = pad && npads > 0 ? 1 : 0;
 			devs[ndevs++] = v;
 			LOG("controle: %s (%s) -> jogador %d", v.nome, p, v.porta + 1);
+			if (v.pad) {   /* aviso na tela (a thread so deixa pendente; o laco principal mostra) */
+				snprintf(osd_pend, sizeof osd_pend, "CONTROLE %d: %s", v.porta + 1, v.nome);
+				osd_tem_pend = true;
+			}
 		} else
 			close(fd);
 		pthread_mutex_unlock(&dv_mx);
@@ -1282,17 +1311,87 @@ static void controles_le(void)
 		}
 		pad_bot[p] = b;
 		memcpy(pad_ana[p], a, sizeof a);
+		uint32_t c = 0;
+		for (int id = 0; id < 16; id++)
+			if (b >> remap[id] & 1)
+				c |= 1u << id;
+		pad_core[p] = c;
 	}
 	pthread_mutex_unlock(&dv_mx);
 }
 
 static bool entrada_travada; /* depois do menu: espera soltar tudo */
+/* CONTROLES (menu do jogo): remap[botao do nucleo] = botao do controle; salvo por nucleo */
+static int remap[16] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+static char *bot_desc[16];
+static const char *a_botoes;
+static const char *NOME_FIS[16] = {"A", "X", "SELECT", "START", "CIMA", "BAIXO", "ESQUERDA", "DIREITA",
+                                   "B", "Y", "LB", "RB", "LT", "RT", "L3", "R3"};
+static uint32_t pad_core[2]; /* botoes ja remapeados, como o nucleo ve */
+
+static void botoes_ler(void)
+{
+	FILE *f = a_botoes ? fopen(a_botoes, "r") : NULL;
+	if (!f)
+		return;
+	int a, b;
+	char l[64];
+	while (fgets(l, sizeof l, f))
+		if (sscanf(l, "%d = %d", &a, &b) == 2 && a >= 0 && a < 16 && b >= 0 && b < 16)
+			remap[a] = b;
+	fclose(f);
+	LOG("controles: lidos de %s", a_botoes);
+}
+
+static void mkdir_pai(const char *path)
+{
+	char d[4096];
+	snprintf(d, sizeof d, "%s", path);
+	for (char *p = d + 1; *p; p++)
+		if (*p == '/') {
+			*p = 0;
+			mkdir(d, 0755);
+			*p = '/';
+		}
+}
+
+static void botoes_grava(void)
+{
+	if (!a_botoes)
+		return;
+	mkdir_pai(a_botoes);
+	FILE *f = fopen(a_botoes, "w");
+	if (!f)
+		return;
+	fprintf(f, "# RETROVOLT: botao do nucleo = botao do controle (0=A 1=X 2=SELECT 3=START 4-7=direcional 8=B 9=Y 10=LB 11=RB 12=LT 13=RT 14=L3 15=R3)\n");
+	for (int i = 0; i < 16; i++)
+		fprintf(f, "%d = %d\n", i, remap[i]);
+	fclose(f);
+	sync();
+	LOG("controles: gravados em %s", a_botoes);
+}
+
+static void opcoes_grava(void)
+{
+	if (!a_opcoes)
+		return;
+	mkdir_pai(a_opcoes);
+	FILE *f = fopen(a_opcoes, "w");
+	if (!f)
+		return;
+	fprintf(f, "# RETROVOLT: opcoes do nucleo (mudadas no menu do jogo)\n");
+	for (int i = 0; i < nvars; i++)
+		fprintf(f, "%s = \"%s\"\n", vars[i].k, vars[i].v);
+	fclose(f);
+	sync();
+	LOG("opcoes do nucleo: gravadas em %s", a_opcoes);
+}
 static void input_poll(void) {}
 static int16_t input_state(unsigned port, unsigned device, unsigned index, unsigned id)
 {
 	if (port > 1 || entrada_travada)
 		return 0;
-	uint32_t b = pad_bot[port] & 0xffff;
+	uint32_t b = pad_core[port];
 	if ((device & RETRO_DEVICE_MASK) == RETRO_DEVICE_JOYPAD) {
 		if (id == RETRO_DEVICE_ID_JOYPAD_MASK)
 			return b;
@@ -1402,6 +1501,13 @@ static bool environment(unsigned cmd, void *data)
 			memcpy(def, p, n);
 			def[n] = 0;
 			var_set(v->key, def, true);
+			for (int i = 0; i < nvars; i++)       /* guarda descricao e valores para o menu */
+				if (!strcmp(vars[i].k, v->key) && !vars[i].desc) {
+					vars[i].desc = strndup(v->value, strchr(v->value, ';') - v->value);
+					char *lista = strdup(p), *sv = NULL;
+					for (char *t = strtok_r(lista, "|", &sv); t && vars[i].nvals < 64; t = strtok_r(NULL, "|", &sv))
+						vars[i].vals[vars[i].nvals++] = t;
+				}
 		}
 		return true;
 	}
@@ -1416,7 +1522,8 @@ static bool environment(unsigned cmd, void *data)
 		return false;
 	}
 	case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE:
-		*(bool *)data = false;
+		*(bool *)data = vars_mudou;
+		vars_mudou = false;
 		return true;
 	case RETRO_ENVIRONMENT_GET_VFS_INTERFACE: {
 		struct retro_vfs_interface_info *vi = data;
@@ -1444,7 +1551,13 @@ static bool environment(unsigned cmd, void *data)
 	case RETRO_ENVIRONMENT_SET_MESSAGE:
 		LOG("mensagem: %s", ((const struct retro_message *)data)->msg);
 		return true;
-	case RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS:
+	case RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS: {
+		const struct retro_input_descriptor *d = data;
+		for (; d && d->description; d++)
+			if (d->port == 0 && d->device == RETRO_DEVICE_JOYPAD && d->id < 16 && !bot_desc[d->id])
+				bot_desc[d->id] = strdup(d->description);
+		return true;
+	}
 	case RETRO_ENVIRONMENT_SET_CONTROLLER_INFO:
 	case RETRO_ENVIRONMENT_SET_SUBSYSTEM_INFO:
 	case RETRO_ENVIRONMENT_SET_MEMORY_MAPS:
@@ -1464,8 +1577,12 @@ static bool environment(unsigned cmd, void *data)
 static uint16_t ov[MW * MH];
 static uint16_t fundo[MW * MH];
 static int menu_sel;
-#define N_MENU 4
-static const char *MENU[N_MENU] = {"CONTINUAR", "VOLUME", "REINICIAR JOGO", "SAIR DO JOGO"};
+#define N_MENU 6
+enum { M_CONTINUAR, M_VOLUME, M_OPCOES, M_CONTROLES, M_REINICIAR, M_SAIR };
+static const char *MENU[N_MENU] = {"CONTINUAR", "VOLUME", "OPCOES DO NUCLEO", "CONTROLES", "REINICIAR JOGO", "SAIR DO JOGO"};
+static int sub;           /* 0 = menu, 1 = opcoes do nucleo, 2 = controles, 3 = esperando botao */
+static int sub_sel, sub_ini;
+static bool sub_mudou;
 
 static uint16_t rgb(int r, int g, int b) { return ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3); }
 static void m_rect(int x, int y, int w, int h, uint16_t c)
@@ -1513,6 +1630,29 @@ static void menu_fundo(void)
 		}
 }
 
+static void m_item(int y, const char *txt, bool on, const char *valor, uint16_t cor_valor)
+{
+	uint16_t IVORY = rgb(240, 236, 225), ORANGE = rgb(255, 140, 40), SLATE = rgb(120, 130, 160);
+	m_text(24, y, txt, on ? IVORY : SLATE);
+	if (on) {
+		int w = strlen(txt) * F->cw;
+		m_rect(16, y - 1, 3, F->ch + 2, ORANGE);
+		m_rect(24, y + F->ch + 2, w, 1, ORANGE);
+		if (!valor)
+			m_text(24 + w + F->cw, y, "->", ORANGE);
+	}
+	if (valor)
+		m_rtext(MW - 14, y, valor, on ? ORANGE : cor_valor);
+}
+
+static void maius(char *d, const char *s, int max)
+{
+	int i = 0;
+	for (; s[i] && i < max - 1; i++)
+		d[i] = (s[i] >= 'a' && s[i] <= 'z') ? s[i] - 32 : s[i];
+	d[i] = 0;
+}
+
 static void menu_desenha(void)
 {
 	uint16_t IVORY = rgb(240, 236, 225), ORANGE = rgb(255, 140, 40), SLATE = rgb(120, 130, 160);
@@ -1525,38 +1665,160 @@ static void menu_desenha(void)
 	time_t t = time(NULL);
 	strftime(hora, sizeof hora, "%H:%M", localtime(&t));
 	m_rtext(MW - 12, 6, hora, IVORY);
-	m_text(16, 28, "JOGO", IVORY);
-	m_rect(16, 28 + F->ch + 2, 4 * F->cw, 2, ORANGE);
-	m_text(16, 50, a_nome, SLATE);
-	int y = 76;
-	for (int i = 0; i < N_MENU; i++) {
-		bool on = i == menu_sel;
-		m_text(24, y, MENU[i], on ? IVORY : SLATE);
-		if (i == 1) { /* volume: barra + numero */
-			char nv[16];
-			snprintf(nv, sizeof nv, on ? "< %d >" : "%d", volume);
-			int bx = 24 + 16 * F->cw, bw = 100;
-			m_rect(bx, y + F->ch / 2 - 1, bw, 3, rgb(40, 50, 80));
-			m_rect(bx, y + F->ch / 2 - 1, bw * volume / 100, 3, on ? ORANGE : SLATE);
-			m_text(bx + bw + 8, y, nv, on ? ORANGE : SLATE);
-			if (on) {
-				m_rect(16, y - 1, 3, F->ch + 2, ORANGE);
-				m_rect(24, y + F->ch + 2, strlen(MENU[i]) * F->cw, 1, ORANGE);
+	const char *titulo = sub == 0 ? "JOGO" : sub == 1 ? "OPCOES DO NUCLEO" : "CONTROLES";
+	m_text(16, 28, titulo, IVORY);
+	m_rect(16, 28 + F->ch + 2, strlen(titulo) * F->cw, 2, ORANGE);
+	int passo = F->ch + 7, y0 = 52 + F->ch;
+	int cabem = (MH - 12 - F->ch - y0) / passo;
+	if (sub == 0) {
+		m_text(16, 50, a_nome, SLATE);
+		int y = 72;
+		for (int i = 0; i < N_MENU; i++) {
+			bool on = i == menu_sel;
+			if (i == M_VOLUME) {
+				char nv[16];
+				snprintf(nv, sizeof nv, on ? "< %d >" : "%d", volume);
+				int bx = 24 + 18 * F->cw, bw = 90;
+				m_item(y, MENU[i], on, nv, SLATE);
+				m_rect(bx, y + F->ch / 2 - 1, bw, 3, rgb(40, 50, 80));
+				m_rect(bx, y + F->ch / 2 - 1, bw * volume / 100, 3, on ? ORANGE : SLATE);
+			} else
+				m_item(y, MENU[i], on, NULL, SLATE);
+			y += F->ch + 10;
+		}
+		m_text(16, MH - 4 - F->ch, "START+SELECT VOLTA", SLATE);
+		m_rtext(MW - 12, MH - 4 - F->ch, "A ESCOLHE", SLATE);
+	} else if (sub == 1) {
+		if (!nvars)
+			m_text(24, y0, "ESTE NUCLEO NAO TEM OPCOES", SLATE);
+		if (sub_sel < sub_ini) sub_ini = sub_sel;
+		if (sub_sel >= sub_ini + cabem) sub_ini = sub_sel - cabem + 1;
+		for (int k = 0; k < cabem && sub_ini + k < nvars; k++) {
+			int i = sub_ini + k;
+			char d[48], v[24];
+			maius(d, vars[i].desc ? vars[i].desc : vars[i].k, (MW - 40) / F->cw - 12);
+			maius(v, vars[i].v, 12);
+			char vv[32];
+			snprintf(vv, sizeof vv, i == sub_sel ? "<%s>" : "%s", v);
+			m_item(y0 + k * passo, d, i == sub_sel, vv, SLATE);
+		}
+		m_text(16, MH - 4 - F->ch, "<- -> MUDA  B VOLTA", SLATE);
+		char pos[16];
+		snprintf(pos, sizeof pos, "%d/%d", sub_sel + 1, nvars);
+		m_rtext(MW - 12, MH - 4 - F->ch, pos, SLATE);
+	} else {
+		/* 16 botoes do nucleo + PADRAO */
+		int n = 17;
+		if (sub_sel < sub_ini) sub_ini = sub_sel;
+		if (sub_sel >= sub_ini + cabem) sub_ini = sub_sel - cabem + 1;
+		for (int k = 0; k < cabem && sub_ini + k < n; k++) {
+			int i = sub_ini + k;
+			if (i == 16) {
+				m_item(y0 + k * passo, "VOLTAR AO PADRAO", i == sub_sel, NULL, SLATE);
+				continue;
 			}
-			y += F->ch + 12;
-			continue;
+			char d[40];
+			maius(d, bot_desc[i] ? bot_desc[i] : NOME_FIS[i], 20);
+			const char *val = (sub == 3 && i == sub_sel) ? "APERTE..." : NOME_FIS[remap[i]];
+			m_item(y0 + k * passo, d, i == sub_sel, val, remap[i] != i ? ORANGE : SLATE);
 		}
-		if (on) {
-			int w = strlen(MENU[i]) * F->cw;
-			m_rect(16, y - 1, 3, F->ch + 2, ORANGE);
-			m_rect(24, y + F->ch + 2, w, 1, ORANGE);
-			m_text(24 + w + F->cw, y, "->", ORANGE);
-		}
-		y += F->ch + 12;
+		m_text(16, MH - 4 - F->ch, sub == 3 ? "APERTE O BOTAO NOVO" : "A TROCA  B VOLTA", SLATE);
 	}
-	m_text(16, MH - 4 - F->ch, "START+SELECT VOLTA", SLATE);
-	m_rtext(MW - 12, MH - 4 - F->ch, "A ESCOLHE", SLATE);
 	desenha(ov, MW, MH, MW * 2, RETRO_PIXEL_FORMAT_RGB565, 4.0 / 3.0);
+}
+
+/* um passo do menu do jogo: -1 = continua no menu; senao M_CONTINUAR / M_REINICIAR / M_SAIR */
+static int menu_passo(uint32_t b, uint32_t novo, bool combo)
+{
+	const uint32_t OK = (1u << B_B) | (1u << B_START), VOLTA = 1u << B_A;
+	/* repeticao ao segurar (cima/baixo/esquerda/direita) */
+	static double prox;
+	static uint32_t seg;
+	uint32_t dirs = b & ((1u << B_UP) | (1u << B_DOWN) | (1u << B_LEFT) | (1u << B_RIGHT));
+	uint32_t rep = novo & dirs;
+	if (rep) {
+		seg = rep;
+		prox = agora() + 0.4;
+	} else if (dirs && (dirs & seg) && agora() >= prox) {
+		rep = dirs & seg;
+		prox = agora() + 0.08;
+	}
+	if (sub == 3) { /* esperando o botao novo para sub_sel */
+		uint32_t m = novo & 0xffff;
+		if (m && !combo) {
+			for (int f = 0; f < 16; f++)
+				if (m >> f & 1) {
+					remap[sub_sel] = f;
+					sub_mudou = true;
+					LOG("controles: %s -> %s", bot_desc[sub_sel] ? bot_desc[sub_sel] : NOME_FIS[sub_sel], NOME_FIS[f]);
+					break;
+				}
+			sub = 2;
+		}
+		return -1;
+	}
+	if (combo) {
+		if (sub == 1 && sub_mudou) opcoes_grava();
+		if (sub == 2 && sub_mudou) botoes_grava();
+		sub = 0;
+		return M_CONTINUAR;
+	}
+	if (sub == 0) {
+		if (novo & VOLTA)
+			return M_CONTINUAR;
+		if (rep & (1u << B_UP))
+			menu_sel = (menu_sel + N_MENU - 1) % N_MENU;
+		if (rep & (1u << B_DOWN))
+			menu_sel = (menu_sel + 1) % N_MENU;
+		if (menu_sel == M_VOLUME && (rep & ((1u << B_LEFT) | (1u << B_RIGHT)))) {
+			int dv = (rep & (1u << B_LEFT)) ? -5 : 5;
+			volume = volume + dv < 0 ? 0 : volume + dv > 100 ? 100 : volume + dv;
+			volume_aplica();
+		}
+		if (novo & OK) {
+			if (menu_sel == M_OPCOES || menu_sel == M_CONTROLES) {
+				sub = menu_sel == M_OPCOES ? 1 : 2;
+				sub_sel = sub_ini = 0;
+				sub_mudou = false;
+				return -1;
+			}
+			if (menu_sel != M_VOLUME)
+				return menu_sel;
+		}
+		return -1;
+	}
+	int n = sub == 1 ? nvars : 17;
+	if (novo & VOLTA) {
+		if (sub == 1 && sub_mudou) opcoes_grava();
+		if (sub == 2 && sub_mudou) botoes_grava();
+		sub = 0;
+		return -1;
+	}
+	if (n && (rep & (1u << B_UP)))
+		sub_sel = (sub_sel + n - 1) % n;
+	if (n && (rep & (1u << B_DOWN)))
+		sub_sel = (sub_sel + 1) % n;
+	if (sub == 1 && nvars && (rep & ((1u << B_LEFT) | (1u << B_RIGHT))) && vars[sub_sel].nvals) {
+		int k = 0, nv = vars[sub_sel].nvals;
+		for (int i = 0; i < nv; i++)
+			if (!strcmp(vars[sub_sel].vals[i], vars[sub_sel].v))
+				k = i;
+		k = (k + ((rep & (1u << B_LEFT)) ? nv - 1 : 1)) % nv;
+		free(vars[sub_sel].v);
+		vars[sub_sel].v = strdup(vars[sub_sel].vals[k]);
+		vars_mudou = true;
+		sub_mudou = true;
+		LOG("opcao: %s = %s", vars[sub_sel].k, vars[sub_sel].v);
+	}
+	if (sub == 2 && (novo & OK)) {
+		if (sub_sel == 16) {
+			for (int i = 0; i < 16; i++)
+				remap[i] = i;
+			sub_mudou = true;
+		} else
+			sub = 3;
+	}
+	return -1;
 }
 
 /* ------------------------------------------------------------------ principal */
@@ -1606,6 +1868,7 @@ int main(int argc, char **argv)
 		else if (!strcmp(k, "--saves")) a_saves = v;
 		else if (!strcmp(k, "--nome")) a_nome = v;
 		else if (!strcmp(k, "--save")) a_save = v;
+		else if (!strcmp(k, "--botoes")) a_botoes = v;
 		else if (!strcmp(k, "--cd-vel")) cd_vel = atoi(v);
 		else if (!strcmp(k, "--volume")) volume = atoi(v) < 0 ? 0 : atoi(v) > 100 ? 100 : atoi(v);
 		else if (!strcmp(k, "--audio")) a_audio = v;
@@ -1694,6 +1957,7 @@ int main(int argc, char **argv)
 	core.set_controller_port_device(0, RETRO_DEVICE_JOYPAD);
 	core.set_controller_port_device(1, RETRO_DEVICE_JOYPAD);
 	sram_carrega();
+	botoes_ler();
 	volume_aplica();
 	volume_ini = volume;
 	som_abrir(av.timing.sample_rate);
@@ -1732,49 +1996,22 @@ int main(int argc, char **argv)
 		if (!menu && combo) {
 			menu = true;
 			menu_sel = 0;
+			sub = 0;
 			som_mudo = true;
 			menu_fundo();
 			LOG("menu aberto");
 			sram_grava(false);
 		} else if (menu) {
-			/* botao de baixo (A do Xbox/8BitDo) ou START escolhe; o da direita volta */
-			int escolha = -1;
-			if (combo || (novo & (1u << B_A)))
-				escolha = 0;
-			else if (novo & ((1u << B_B) | (1u << B_START)))
-				escolha = menu_sel;
-			else if (novo & (1u << B_UP))
-				menu_sel = (menu_sel + N_MENU - 1) % N_MENU;
-			else if (novo & (1u << B_DOWN))
-				menu_sel = (menu_sel + 1) % N_MENU;
-			/* volume: esquerda/direita, de 5 em 5; segurando repete */
-			static double vol_prox;
-			int dv = 0;
-			if (menu_sel == 1 && (b & ((1u << B_LEFT) | (1u << B_RIGHT)))) {
-				int dir = (b & (1u << B_LEFT)) ? -5 : 5;
-				if (novo & ((1u << B_LEFT) | (1u << B_RIGHT))) {
-					dv = dir;
-					vol_prox = agora() + 0.4;
-				} else if (agora() >= vol_prox) {
-					dv = dir;
-					vol_prox = agora() + 0.08;
-				}
-			}
-			if (dv) {
-				volume = volume + dv < 0 ? 0 : volume + dv > 100 ? 100 : volume + dv;
-				volume_aplica();
-			}
-			if (escolha == 1) /* A no volume nao faz nada */
-				escolha = -1;
+			int escolha = menu_passo(b, novo, combo);
 			if (escolha >= 0) {
 				menu = false;
 				som_mudo = false;
 				entrada_travada = true;
 				ult_x0 = -99999;
-				if (escolha == 2) {
+				if (escolha == M_REINICIAR) {
 					LOG("reiniciar jogo");
 					core.reset();
-				} else if (escolha == 3) {
+				} else if (escolha == M_SAIR) {
 					LOG("sair do jogo");
 					break;
 				}
@@ -1796,6 +2033,11 @@ int main(int argc, char **argv)
 				acc -= 1.0;
 			}
 		}
+		if (osd_tem_pend) {
+			osd_tem_pend = false;
+			osd(osd_pend);
+		}
+		osd_desenha();
 		double t_run = agora() - tq;
 		if (t_run > pico_run) pico_run = t_run;
 		static int n_lentos;

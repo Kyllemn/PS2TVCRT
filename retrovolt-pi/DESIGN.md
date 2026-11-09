@@ -178,3 +178,13 @@ A aba JOGOS mostra so as pastas que tem jogos.
   fosforo + brilho leve) / SUAVE. No tubo nunca ha filtro.
 - Pre-requisito: deteccao TUBO/LCD em tempo de execucao (hoje a EDID do boot forca 240p):
   ler a EDID real pelo DDC, o RetroVolt escolhe o modo (KMS) - tubo = adaptador AGO/0001.
+
+## Menu do jogo (START+SELECT) - rv05 (codigo)
+- Itens: CONTINUAR, VOLUME, OPCOES DO NUCLEO, CONTROLES, REINICIAR JOGO, SAIR DO JOGO.
+- OPCOES DO NUCLEO: as opcoes que o proprio nucleo oferece (como no RetroArch), <- -> muda,
+  vale na hora; salvas por nucleo em config/nucleos/<nucleo>.opt.
+- CONTROLES: cada botao do nucleo (com o nome que o nucleo da: Cross, Circle...) e o botao
+  do controle que o aciona; A troca (aperta o botao novo), VOLTAR AO PADRAO; salvo por
+  nucleo em config/nucleos/<nucleo>.botoes (PS1, Neo Geo, Sega CD, PC Engine: cada um o seu).
+- Avisos de 3 s no canto superior direito: resolucao do jogo a cada troca ("640x480i",
+  "320x240p" + Hz) e controle conectado (modelo); texto comprido rola (letreiro).

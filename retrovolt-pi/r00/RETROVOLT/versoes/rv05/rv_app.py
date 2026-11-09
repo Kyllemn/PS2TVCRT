@@ -190,6 +190,22 @@ class Canvas:
                         if 0 <= xx < W:
                             self.px[yy * W + xx] = c
 
+    def text_cortado(self, x, y, s, c, xa, xb):
+        for n, ch in enumerate(s):
+            o = ord(ch) - 32
+            if o < 0 or o > 223:
+                continue
+            for r in range(F.ch):
+                b = F.b[o * F.ch + r]
+                yy = y + r
+                if not 0 <= yy < H:
+                    continue
+                for k in range(F.cw):
+                    if b >> k & 1:
+                        xx = x + n * F.cw + k
+                        if xa <= xx < xb and 0 <= xx < W:
+                            self.px[yy * W + xx] = c
+
     def rtext(self, x, y, s, c):
         self.text(x - len(s) * F.cw, y, s, c)
 
@@ -331,6 +347,7 @@ class Entrada(threading.Thread):
         self.nomes = []
         self.segurando = {}
         self.modo_texto = False     # teclado USB digitando (senha do Wi-Fi)
+        self.ja_procurou = False
         self.shift = False
         self.caps = False
         self.layout = 'br'
@@ -429,9 +446,13 @@ class Entrada(threading.Thread):
                     continue
                 self.devs[p] = d
                 print('entrada: %s (%s)' % (d.name, p), flush=True)
+                keys = caps.get(self.e.EV_KEY, [])
+                if self.ja_procurou and (self.e.BTN_SOUTH in keys or self.e.BTN_GAMEPAD in keys):
+                    self.fila.put('_controle:' + d.name)
             except OSError:
                 pass
         self.nomes = [d.name for d in self.devs.values()]
+        self.ja_procurou = True
 
     def solta(self, nome):
         self.segurando.pop(nome, None)
@@ -919,7 +940,8 @@ class App:
         cmd = [exe, '--nucleo', so, '--bios', os.path.join(self.base, 'bios'), '--saves', saves,
                '--nome', nome[:60], '--save', save, '--fonte', F.nome, '--volume', str(self.volume()),
                '--conv', '%d,%d,%.3f,%.3f' % tuple(self.conv),
-               '--opcoes', os.path.join(self.base, 'config', 'nucleos', nucleo.replace('_libretro.so', '.opt'))]
+               '--opcoes', os.path.join(self.base, 'config', 'nucleos', nucleo.replace('_libretro.so', '.opt')),
+               '--botoes', os.path.join(self.base, 'config', 'nucleos', nucleo.replace('_libretro.so', '.botoes'))]
         cmd += ['--cd', self.leitora.dev, '--cd-vel', self.cfg.get('leitora_velocidade', '4')] if cd else ['--jogo', arquivo]
         if self.cfg.get('audio_dispositivo'):
             cmd += ['--audio', self.cfg['audio_dispositivo']]
@@ -959,7 +981,10 @@ class App:
         self.fb.show(c, self.conv)
 
     def mostra_aviso(self, txt):
-        self.aviso = (txt, time.monotonic() + 4)
+        cabe = (W - 60) // F.cw
+        extra = (len(txt) - cabe) / 8.0 + 1.5 if len(txt) > cabe else 0
+        agora = time.monotonic()
+        self.aviso = (txt, agora + 4 + extra, agora)
 
     # ---------------------------------------------------------- desenho
     def desenha(self):
@@ -1059,11 +1084,17 @@ class App:
                 c.text(96, y, v.upper(), IVORY)
                 y += F.ch + 6
         if self.aviso and time.monotonic() < self.aviso[1]:
-            txt = self.aviso[0][:48]
-            w = len(txt) * F.cw + 16
-            c.rect((W - w) // 2, 190, w, F.ch + 10, (60, 30, 20))
-            c.rect((W - w) // 2, 190, w, 1, ORANGE)
-            c.ctext(195, txt, IVORY)
+            txt, _, ini = self.aviso
+            cabe = (W - 60) // F.cw
+            vis = min(len(txt), cabe)
+            w = vis * F.cw + 16
+            x0 = (W - w) // 2
+            c.rect(x0, 190, w, F.ch + 10, (60, 30, 20))
+            c.rect(x0, 190, w, 1, ORANGE)
+            desl = 0
+            if len(txt) > cabe:      # letreiro: espera 1 s, rola 8 letras/s, para no fim
+                desl = min(int(max(0.0, time.monotonic() - ini - 1.0) * 8 * F.cw), (len(txt) - cabe) * F.cw)
+            c.text_cortado(x0 + 8 - desl, 195, txt, IVORY, x0 + 8, x0 + 8 + vis * F.cw)
         return c
 
     def desenha_pergunta_disco(self, c):
@@ -1702,10 +1733,11 @@ class App:
             ultimo_desenho = time.monotonic()
             while True:
                 try:
-                    a = self.fila.get(timeout=0.25 if self.contagem else 1.0)
+                    rolando = self.aviso and len(self.aviso[0]) > (W - 60) // F.cw
+                    a = self.fila.get(timeout=0.25 if self.contagem else 0.1 if rolando else 1.0)
                 except queue.Empty:
                     a = None
-                mudou = bool(self.contagem)
+                mudou = bool(self.contagem) or bool(self.aviso and len(self.aviso[0]) > (W - 60) // F.cw)
                 for b in [a] + self._pendentes():
                     if b is None:
                         continue
@@ -1716,6 +1748,9 @@ class App:
                             self.pergunta_disco = None
                         mudou = True
                     elif b == '_wifi':
+                        mudou = True
+                    elif b.startswith('_controle:'):
+                        self.mostra_aviso('CONTROLE CONECTADO: ' + b[10:].upper())
                         mudou = True
                     elif b.startswith('_txt:') or b in ('_ok', '_apaga', '_sai'):
                         if self.tela == 'teclado':
