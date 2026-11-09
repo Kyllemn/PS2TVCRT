@@ -261,3 +261,14 @@ A aba JOGOS mostra so as pastas que tem jogos.
 - CD de PC Engine nao tem codigo: save pela "impressao digital" das faixas (PCECD-xxxxxxxx).
 - Menu do jogo: IMAGEM (LCD) ORIGINAL (ampliacao inteira) / TELA CHEIA (enche a altura,
   linhas de 3 ou 4 pontos), salvo por nucleo (config/nucleos/<nucleo>.imagem).
+
+## PENDENTE para a proxima release (pedido do autor, fazer junto com outras coisas)
+- Save states: 10 espacos POR JOGO (nao por nucleo). Jogo novo = o sistema cria sozinho
+  os 10 espacos daquele jogo. Conferir: hoje a pasta e states/<sistema>/<codigo ou nome>;
+  achar o caso em que jogos diferentes caem na mesma pasta (ex.: disco sem codigo/rotulo
+  vira "DISCO"; jogo aberto antes da R06 sem --states).
+- Previa do save state: data e hora EM CIMA da imagem.
+- Topo do menu: o nome do Wi-Fi as vezes mostra "SEM WI-FI" estando conectado (o INFO
+  mostra certo). Causa provavel: o topo usa o valor da ultima consulta (nmcli a cada 30 s
+  e no inicio, antes da rede subir); se a consulta falha/demora, fica vazio. Corrigir:
+  consultar com mais frequencia ate achar a rede e nao apagar o nome numa falha isolada.
