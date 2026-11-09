@@ -283,3 +283,11 @@ A aba JOGOS mostra so as pastas que tem jogos.
   "MANTER? A". Sem resposta em 15 s: volta o boot anterior e a configuracao continua com a
   ultima confirmada (a deteccao do boot nao forca mais a escolhida sem protecao).
 - Sair de VIDEO sem aplicar desfaz a resolucao mexida. Lista: 480 a 1080 linhas.
+- Popups de confirmacao (SUBSTITUIR SLOT, DESLIGAR/REINICIAR, COPIAR SAVES, REINICIAR
+  AGORA etc.): fundo AZUL (no lugar do vermelho escuro) com contorno BRANCO.
+  Bug: no LCD o "SUBSTITUIR O SLOT?" fica atras da previa (a previa nitida e desenhada
+  por ultimo direto na tela); a confirmacao tem que ficar por cima.
+- Previa do save state com qualidade ruim: a miniatura e tirada pulando pontos (ex.:
+  jogo de 640x480 vira 320x240 cortando colunas/linhas, o texto quebra) e depois e
+  ampliada 1,5x de forma irregular. Corrigir: gravar a miniatura na resolucao do proprio
+  jogo (ate 640x480) e reduzir com media dos pontos so na hora de mostrar.
