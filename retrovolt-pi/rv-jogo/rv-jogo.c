@@ -1324,6 +1324,7 @@ static bool entrada_travada; /* depois do menu: espera soltar tudo */
 /* CONTROLES (menu do jogo): remap[botao do nucleo] = botao do controle; salvo por nucleo */
 static int remap[16] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
 static char *bot_desc[16];
+static int bot_ordem[16], n_ordem; /* botoes na ordem em que o nucleo descreve */
 static const char *a_botoes;
 static const char *NOME_FIS[16] = {"A", "X", "SELECT", "START", "CIMA", "BAIXO", "ESQUERDA", "DIREITA",
                                    "B", "Y", "LB", "RB", "LT", "RT", "L3", "R3"};
@@ -1554,8 +1555,10 @@ static bool environment(unsigned cmd, void *data)
 	case RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS: {
 		const struct retro_input_descriptor *d = data;
 		for (; d && d->description; d++)
-			if (d->port == 0 && d->device == RETRO_DEVICE_JOYPAD && d->id < 16 && !bot_desc[d->id])
+			if (d->port == 0 && d->device == RETRO_DEVICE_JOYPAD && d->id < 16 && !bot_desc[d->id]) {
 				bot_desc[d->id] = strdup(d->description);
+				bot_ordem[n_ordem++] = d->id;
+			}
 		return true;
 	}
 	case RETRO_ENVIRONMENT_SET_CONTROLLER_INFO:
@@ -1580,7 +1583,9 @@ static int menu_sel;
 #define N_MENU 6
 enum { M_CONTINUAR, M_VOLUME, M_OPCOES, M_CONTROLES, M_REINICIAR, M_SAIR };
 static const char *MENU[N_MENU] = {"CONTINUAR", "VOLUME", "OPCOES DO NUCLEO", "CONTROLES", "REINICIAR JOGO", "SAIR DO JOGO"};
-static int sub;           /* 0 = menu, 1 = opcoes do nucleo, 2 = controles, 3 = esperando botao */
+static int sub;           /* 0 = menu, 1 = opcoes do nucleo, 2 = controles, 3 = esperando botao,
+                           * 4 = configurar um por um (assistente) */
+static int ass_pos;       /* assistente: posicao em bot_ordem */
 static int sub_sel, sub_ini;
 static bool sub_mudou;
 
@@ -1666,6 +1671,8 @@ static void menu_desenha(void)
 	strftime(hora, sizeof hora, "%H:%M", localtime(&t));
 	m_rtext(MW - 12, 6, hora, IVORY);
 	const char *titulo = sub == 0 ? "JOGO" : sub == 1 ? "OPCOES DO NUCLEO" : "CONTROLES";
+	if (sub == 4 && ass_pos >= n_ordem)
+		ass_pos = 0;
 	m_text(16, 28, titulo, IVORY);
 	m_rect(16, 28 + F->ch + 2, strlen(titulo) * F->cw, 2, ORANGE);
 	int passo = F->ch + 7, y0 = 52 + F->ch;
@@ -1706,21 +1713,36 @@ static void menu_desenha(void)
 		char pos[16];
 		snprintf(pos, sizeof pos, "%d/%d", sub_sel + 1, nvars);
 		m_rtext(MW - 12, MH - 4 - F->ch, pos, SLATE);
+	} else if (sub == 4) {
+		int id = bot_ordem[ass_pos];
+		char d[40], l[48];
+		maius(d, bot_desc[id] ? bot_desc[id] : NOME_FIS[id], 24);
+		snprintf(l, sizeof l, "%d DE %d", ass_pos + 1, n_ordem);
+		m_text(24, y0, l, SLATE);
+		m_text(24, y0 + 2 * passo, "APERTE O BOTAO PARA:", IVORY);
+		m_text(24, y0 + 3 * passo, d, ORANGE);
+		snprintf(l, sizeof l, "AGORA: %s", NOME_FIS[remap[id]]);
+		m_text(24, y0 + 5 * passo, l, SLATE);
+		m_text(16, MH - 4 - F->ch, "START+SELECT CANCELA", SLATE);
 	} else {
-		/* 16 botoes do nucleo + PADRAO */
-		int n = 17;
+		/* CONFIGURAR UM POR UM + 16 botoes do nucleo + PADRAO */
+		int n = 18;
 		if (sub_sel < sub_ini) sub_ini = sub_sel;
 		if (sub_sel >= sub_ini + cabem) sub_ini = sub_sel - cabem + 1;
 		for (int k = 0; k < cabem && sub_ini + k < n; k++) {
-			int i = sub_ini + k;
+			int i = sub_ini + k - 1;
+			if (i == -1) {
+				m_item(y0 + k * passo, "CONFIGURAR UM POR UM", sub_sel == 0, NULL, SLATE);
+				continue;
+			}
 			if (i == 16) {
-				m_item(y0 + k * passo, "VOLTAR AO PADRAO", i == sub_sel, NULL, SLATE);
+				m_item(y0 + k * passo, "VOLTAR AO PADRAO", i + 1 == sub_sel, NULL, SLATE);
 				continue;
 			}
 			char d[40];
 			maius(d, bot_desc[i] ? bot_desc[i] : NOME_FIS[i], 20);
-			const char *val = (sub == 3 && i == sub_sel) ? "APERTE..." : NOME_FIS[remap[i]];
-			m_item(y0 + k * passo, d, i == sub_sel, val, remap[i] != i ? ORANGE : SLATE);
+			const char *val = (sub == 3 && i + 1 == sub_sel) ? "APERTE..." : NOME_FIS[remap[i]];
+			m_item(y0 + k * passo, d, i + 1 == sub_sel, val, remap[i] != i ? ORANGE : SLATE);
 		}
 		m_text(16, MH - 4 - F->ch, sub == 3 ? "APERTE O BOTAO NOVO" : "A TROCA  B VOLTA", SLATE);
 	}
@@ -1743,14 +1765,33 @@ static int menu_passo(uint32_t b, uint32_t novo, bool combo)
 		rep = dirs & seg;
 		prox = agora() + 0.08;
 	}
-	if (sub == 3) { /* esperando o botao novo para sub_sel */
+	if (sub == 4) { /* assistente: um botao de cada vez, na ordem do nucleo */
+		if (combo) {
+			sub = 2;
+			return -1;
+		}
+		uint32_t m = novo & 0xffff;
+		for (int f = 0; m && f < 16; f++)
+			if (m >> f & 1) {
+				remap[bot_ordem[ass_pos]] = f;
+				sub_mudou = true;
+				if (++ass_pos >= n_ordem) {
+					botoes_grava();
+					sub_mudou = false;
+					sub = 2;
+				}
+				break;
+			}
+		return -1;
+	}
+	if (sub == 3) { /* esperando o botao novo para o item sub_sel (botao sub_sel - 1) */
 		uint32_t m = novo & 0xffff;
 		if (m && !combo) {
 			for (int f = 0; f < 16; f++)
 				if (m >> f & 1) {
-					remap[sub_sel] = f;
+					remap[sub_sel - 1] = f;
 					sub_mudou = true;
-					LOG("controles: %s -> %s", bot_desc[sub_sel] ? bot_desc[sub_sel] : NOME_FIS[sub_sel], NOME_FIS[f]);
+					LOG("controles: %s -> %s", bot_desc[sub_sel - 1] ? bot_desc[sub_sel - 1] : NOME_FIS[sub_sel - 1], NOME_FIS[f]);
 					break;
 				}
 			sub = 2;
@@ -1787,7 +1828,7 @@ static int menu_passo(uint32_t b, uint32_t novo, bool combo)
 		}
 		return -1;
 	}
-	int n = sub == 1 ? nvars : 17;
+	int n = sub == 1 ? nvars : 18;
 	if (novo & VOLTA) {
 		if (sub == 1 && sub_mudou) opcoes_grava();
 		if (sub == 2 && sub_mudou) botoes_grava();
@@ -1811,7 +1852,13 @@ static int menu_passo(uint32_t b, uint32_t novo, bool combo)
 		LOG("opcao: %s = %s", vars[sub_sel].k, vars[sub_sel].v);
 	}
 	if (sub == 2 && (novo & OK)) {
-		if (sub_sel == 16) {
+		if (sub_sel == 0) {
+			if (!n_ordem) /* nucleo nao descreveu os botoes: todos os 16 */
+				for (int i = 0; i < 16; i++)
+					bot_ordem[n_ordem++] = i;
+			ass_pos = 0;
+			sub = 4;
+		} else if (sub_sel == 17) {
 			for (int i = 0; i < 16; i++)
 				remap[i] = i;
 			sub_mudou = true;
