@@ -859,6 +859,51 @@ static void desenha(const void *data, unsigned w, unsigned h, size_t pitch, int 
 	}
 }
 
+/* aviso de resolucao: "640x480 @ 59.94 Hz" por 3 s no canto superior direito
+ * da imagem, ao abrir o jogo e sempre que a resolucao do jogo mudar */
+static const Fonte *F;
+static char osd_txt[64];
+static double osd_ate;
+static unsigned osd_w, osd_h;
+
+static void fb_ponto(int x, int y, int r, int g, int b)
+{
+	if (x < 0 || y < 0 || x >= fb.w || y >= fb.h)
+		return;
+	uint8_t *d = fb.back + (size_t)y * fb.stride;
+	if (fb.bpp == 16)
+		((uint16_t *)d)[x] = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+	else
+		((uint32_t *)d)[x] = (r << 16) | (g << 8) | b;
+}
+
+static void osd_desenha(void)
+{
+	if (!osd_txt[0] || ult_x0 == -99999 || agora() > osd_ate)
+		return;
+	int sx = tubo ? ult_cw / 320 : fb.h / 240;
+	if (sx < 1) sx = 1;
+	int sy = tubo ? (fb.h >= 400 ? 2 : 1) : sx;
+	int n = strlen(osd_txt), tw = n * F->cw * sx, th = F->ch * sy;
+	int x1 = ult_x0 + ult_cw - tw - 10 * sx, y1 = ult_y0 + 6 * sy;
+	for (int y = y1 - 2 * sy; y < y1 + th + 2 * sy; y++)
+		for (int x = x1 - 4 * sx; x < x1 + tw + 4 * sx; x++)
+			fb_ponto(x, y, 12, 18, 40);
+	for (int k = 0; k < n; k++) {
+		int o = (unsigned char)osd_txt[k] - 32;
+		if (o < 0 || o > 223)
+			continue;
+		for (int r = 0; r < F->ch; r++) {
+			uint8_t bits = F->b[o * F->ch + r];
+			for (int c = 0; c < F->cw; c++)
+				if (bits >> c & 1)
+					for (int yy = 0; yy < sy; yy++)
+						for (int xx = 0; xx < sx; xx++)
+							fb_ponto(x1 + (k * F->cw + c) * sx + xx, y1 + r * sy + yy, 240, 236, 225);
+		}
+	}
+}
+
 /* ultimo quadro do jogo (para o fundo do menu) */
 static uint8_t *ult_q;
 static unsigned ult_w, ult_h;
@@ -878,6 +923,14 @@ static void video_cb(const void *data, unsigned w, unsigned h, size_t pitch)
 	memcpy(ult_q, data, t);
 	ult_w = w; ult_h = h; ult_pitch = pitch; ult_fmt = pixfmt;
 	desenha(data, w, h, pitch, pixfmt, av.geometry.aspect_ratio);
+	if (w != osd_w || h != osd_h) {
+		osd_w = w;
+		osd_h = h;
+		snprintf(osd_txt, sizeof osd_txt, "%ux%u @ %.2f Hz", w, h, av.timing.fps);
+		osd_ate = agora() + 3;
+		LOG("resolucao do jogo: %s", osd_txt);
+	}
+	osd_desenha();
 }
 
 /* ------------------------------------------------------------------ som (ALSA via dlopen) */
@@ -1410,7 +1463,6 @@ static bool environment(unsigned cmd, void *data)
 #define NAV 0x0885   /* (12,18,40) em RGB565 */
 static uint16_t ov[MW * MH];
 static uint16_t fundo[MW * MH];
-static const Fonte *F;
 static int menu_sel;
 #define N_MENU 4
 static const char *MENU[N_MENU] = {"CONTINUAR", "VOLUME", "REINICIAR JOGO", "SAIR DO JOGO"};

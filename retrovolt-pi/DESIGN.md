@@ -160,12 +160,19 @@ A aba JOGOS mostra so as pastas que tem jogos.
   save vale para o disco e para a imagem do mesmo jogo.
 - EDID ganhou extensao CEA (som PCM + HDMI): precisa rodar atualizar.sh uma vez.
 
-## PENDENTE (proxima atualizacao maior): disco reconhecido -> popup
+## Aviso de resolucao no jogo (feito no codigo, rv-jogo)
+- Ao abrir o nucleo e sempre que a resolucao do jogo muda: "640x480 @ 59.94 Hz" por
+  3 s no canto superior direito da imagem (como no ReplayOS).
+
+## (codigo do rv05) disco reconhecido -> popup
 - Ao reconhecer um disco NAO iniciar direto: popup no meio da tela com o nome do
   jogo e a plataforma, perguntando INICIAR? (A SIM / B NAO). Nao = volta ao menu.
 
 ## LCD (pedido do autor): menu 720p 16:9, jogos 480p, filtros (a fazer)
-- Menu no LCD em 1280x720 (16:9): tela logica 426x240 ampliada 3x.
+- Menu no LCD em 1280x720 (16:9): tela logica 426x240 ampliada 3x. Monitor sem 720p:
+  o Pi escolhe sozinho o modo da lista do monitor (EDID) mais perto de 720 linhas,
+  logo acima ou logo abaixo (ex.: 1366x768, 1280x800, 1024x600), preferindo 16:9; a
+  tela logica acompanha a proporcao (240 de altura) e a ampliacao fica inteira.
 - Jogos no LCD em 640x480 (480p), proporcao do jogo (4:3) centralizada, laterais pretas.
 - OPCOES > VIDEO > FILTRO (so LCD): NENHUM / SCANLINES (intensidade) / CRT (mascara de
   fosforo + brilho leve) / SUAVE. No tubo nunca ha filtro.
