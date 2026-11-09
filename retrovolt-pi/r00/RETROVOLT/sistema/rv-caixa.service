@@ -1,0 +1,11 @@
+[Unit]
+Description=RETROVOLT Pi - botao RESET da caixa
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/local/bin/rv-caixa
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

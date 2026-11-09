@@ -9,6 +9,8 @@ for f in cmdline.txt config.txt; do
 	fi
 done
 systemctl disable --now retrovolt.service 2>/dev/null
+systemctl disable --now rv-caixa.service 2>/dev/null
+rm -f /etc/systemd/logind.conf.d/retrovolt.conf
 systemctl enable getty@tty1.service 2>/dev/null
 rm -f /etc/systemd/journald.conf.d/retrovolt.conf
 sync

@@ -23,7 +23,7 @@ say "sistema: $PRETTY_NAME"
 [ "${VERSION_CODENAME:-}" = trixie ] || falha "precisa do Raspberry Pi OS baseado no Debian 13 (trixie); este e '${VERSION_CODENAME:-?}'. Grave a imagem mais nova no Raspberry Pi Imager."
 BOOT=/boot/firmware
 [ -f "$BOOT/cmdline.txt" ] && [ -f "$BOOT/config.txt" ] || falha "nao achei $BOOT/cmdline.txt e config.txt"
-for f in sistema/rv-lancador sistema/retrovolt.service sistema/retrovolt-crt.bin sistema/initramfs-edid versoes/rv00/rv_app.py; do
+for f in caixa.sh sistema/rv-caixa sistema/rv-caixa.service sistema/rv-lancador sistema/retrovolt.service sistema/retrovolt-crt.bin sistema/initramfs-edid versoes/rv00/rv_app.py; do
 	[ -f "$AQUI/$f" ] || falha "arquivo faltando no pendrive: RETROVOLT/$f"
 done
 
@@ -76,6 +76,8 @@ cmd="$cmd drm.edid_firmware=HDMI-A-1:edid/retrovolt-crt.bin,HDMI-A-2:edid/retrov
 echo "$cmd" > "$BOOT/cmdline.txt"
 cp "$BOOT/config.txt.antes-retrovolt" "$BOOT/config.txt"
 printf '\n[all]\n# RETROVOLT\ndisable_splash=1\n' >> "$BOOT/config.txt"
+# botoes POWER/RESET da caixa RetroFlag 64Pi (sem a caixa, nao atrapalha)
+bash "$AQUI/caixa.sh" >> "$LOG" 2>&1 || say "AVISO: caixa.sh falhou"
 say "cmdline: $cmd"
 echo "R00 $(date '+%Y-%m-%d %H:%M')" > /var/lib/retrovolt/instalado
 sync

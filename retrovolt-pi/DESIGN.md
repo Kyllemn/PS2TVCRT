@@ -137,3 +137,12 @@ A aba JOGOS mostra so as pastas que tem jogos.
 - Mostra a rede conectada e o IP; opcao ESQUECER REDE.
 - A senha fica guardada protegida pelo sistema (nunca em texto aberto no pendrive).
 - O `retrovolt.cfg` (wifi_nome/wifi_senha) fica so como plano B.
+
+## Caixa RetroFlag 64Pi: botoes POWER e RESET (implementado: caixa.sh)
+- Chave SAFE SHUTDOWN da caixa em ON. Nao usa o script da RetroFlag (RPi.GPIO
+  nao funciona no Pi 5): overlays gpio-key + config.txt.
+- GPIO4 e GPIO14 ligados = Pi funcionando (a caixa corta a energia quando caem).
+- POWER (GPIO3 -> KEY_POWER): desligamento seguro pelo systemd-logind.
+- RESET (GPIO2 -> KEY_RESTART, servico rv-caixa): toque reinicia o RetroVolt
+  (volta ao menu); segurar 5 s reinicia o Pi. Com jogo rodando (futuro): pensar
+  se o toque reinicia o jogo.

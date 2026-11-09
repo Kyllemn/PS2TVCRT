@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+"""RETROVOLT Pi - botao RESET da caixa (RetroFlag 64Pi e parecidas).
+
+O POWER da caixa vira a tecla KEY_POWER (overlay gpio-key no GPIO3) e quem
+desliga e o proprio sistema (systemd-logind), igual ao botao do Pi 5.
+O RESET vira KEY_RESTART (GPIO2) e e tratado aqui:
+  - toque curto: reinicia o RetroVolt (volta para o menu, uns 3 segundos);
+  - segurar 5 segundos: reinicia o Raspberry Pi.
+"""
+import select
+import subprocess
+import time
+
+import evdev
+
+KEY_RESTART = 408
+SEGURAR = 5.0
+
+
+def acha():
+    for p in evdev.list_devices():
+        try:
+            d = evdev.InputDevice(p)
+        except OSError:
+            continue
+        if KEY_RESTART in d.capabilities().get(evdev.ecodes.EV_KEY, []):
+            return d
+        d.close()
+    return None
+
+
+def roda(cmd):
+    print('rv-caixa:', ' '.join(cmd), flush=True)
+    subprocess.run(cmd)
+
+
+def main():
+    while True:
+        d = acha()
+        if not d:
+            time.sleep(5)
+            continue
+        print('rv-caixa: RESET em %s (%s)' % (d.path, d.name), flush=True)
+        apertou = None
+        try:
+            while True:
+                espera = None if apertou is None else max(0.0, apertou + SEGURAR - time.monotonic())
+                r, _, _ = select.select([d.fd], [], [], espera)
+                if not r:                       # segurou 5 s
+                    apertou = None
+                    roda(['systemctl', 'reboot'])
+                    continue
+                for e in d.read():
+                    if e.type != evdev.ecodes.EV_KEY or e.code != KEY_RESTART:
+                        continue
+                    if e.value == 1:
+                        apertou = time.monotonic()
+                    elif e.value == 0 and apertou is not None:
+                        apertou = None
+                        roda(['systemctl', 'restart', 'retrovolt.service'])
+        except OSError:
+            time.sleep(2)
+
+
+if __name__ == '__main__':
+    main()
