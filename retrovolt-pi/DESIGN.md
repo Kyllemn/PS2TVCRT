@@ -309,3 +309,14 @@ A aba JOGOS mostra so as pastas que tem jogos.
   IMAGEM e FILTRO no tubo).
 - PC Engine: lista unica (cartoes + CDs, le tambem roms/pcenginecd), INICIAR CD sempre;
   sistemas de CD com nucleo aparecem sempre; BIOS do CD so e exigida para jogo de CD.
+
+## R15 (feito)
+- Leitora sempre girando (regra fixa: a cada 10 s sem leitura, le 1 setor). Agora le
+  onde o jogo parou e com o comando certo (audio ou dados). Antes lia dados na faixa 1,
+  que no PC Engine e audio: falhava e a leitora dormia (picote/travada ao voltar).
+- Leitura adiante: thread le os 6 blocos seguintes enquanto o jogo usa o atual; cache de
+  48 blocos; a leitora tem trava propria (o jogo pega do cache sem esperar a leitora).
+- Faixa de audio lida em bloco (16 setores num comando), nao setor por setor.
+- vsync medido pela mediana de 30 intervalos (uma medida so dava 60,6 Hz e tirava o PC
+  Engine do 1 quadro por vsync).
+- Log "ritmo" mostra "adiante usados/lidos".

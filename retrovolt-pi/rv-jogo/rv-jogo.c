@@ -159,16 +159,27 @@ static void opcoes_ler(void)
 #define CD_BIN CD_DIR "/disco.bin"
 #define SETOR 2352
 #define BLOCO 16 /* setores por leitura */
-#define NCACHE 8
+#define NCACHE 48
+#define PF_BLOCOS 6 /* blocos lidos adiante, em segundo plano */
 
 static int cd_fd = -1;
 static bool cd_arquivo; /* teste: --cd aponta para um .bin */
 static char cd_cue[4096];
 static int64_t cd_tam;
+/* cd_mx protege o cache; cd_io_mx protege a leitora (so um comando por vez).
+ * A leitura na leitora acontece sem cd_mx, para o jogo achar no cache o que ja
+ * foi lido adiante enquanto outro bloco esta chegando. */
 static pthread_mutex_t cd_mx = PTHREAD_MUTEX_INITIALIZER;
-static struct { int64_t lba; uint64_t uso; uint8_t d[BLOCO * SETOR]; } cd_cache[NCACHE];
+static pthread_mutex_t cd_io_mx = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t cd_cv = PTHREAD_COND_INITIALIZER;    /* um bloco ficou pronto */
+static pthread_cond_t cd_pf_cv = PTHREAD_COND_INITIALIZER; /* pedido de leitura adiante */
+static struct { int64_t lba; uint64_t uso; bool lendo, adiantado; uint8_t d[BLOCO * SETOR]; } cd_cache[NCACHE];
 static uint64_t cd_relogio;
-static double cd_ult_leitura;
+static volatile double cd_ult_leitura;
+static volatile int64_t cd_ult_lba;
+static int64_t cd_pf_base = -1; /* primeiro bloco a ler adiante */
+static uint64_t cd_pf_ger;      /* muda a cada pedido novo */
+static long cd_n_adiante, cd_n_acertos_pf;
 
 /* faixas do disco (para saber se um setor e de audio) */
 static int cd_nfx;
@@ -293,8 +304,8 @@ static void cd_le_bloco(int64_t lba0, uint8_t *d)
 		return;
 	}
 	double t0 = agora();
-	bool ok = cd_metodo == 0 && cd_faixa(lba0) == cd_faixa(lba0 + n - 1) && cd_fx[cd_faixa(lba0)].dados &&
-	          cd_read_cd(lba0, n, d, 0xF8);
+	bool mesma = cd_metodo == 0 && cd_faixa(lba0) == cd_faixa(lba0 + n - 1);
+	bool ok = mesma && cd_read_cd(lba0, n, d, cd_fx[cd_faixa(lba0)].dados ? 0xF8 : 0x10);
 	if (!ok)
 		for (int i = 0; i < n; i++)
 			if (!cd_le_setor(lba0 + i, d + i * SETOR)) {
@@ -306,8 +317,42 @@ static void cd_le_bloco(int64_t lba0, uint8_t *d)
 	cd_n_blocos++;
 	cd_t_total += t;
 	cd_ult_leitura = agora();
+	cd_ult_lba = lba0;
 	if (t > cd_t_max)
 		cd_t_max = t;
+}
+
+/* procura o bloco no cache (com cd_mx) */
+static int cd_acha(int64_t b0)
+{
+	for (int k = 0; k < NCACHE; k++)
+		if (cd_cache[k].lba == b0)
+			return k;
+	return -1;
+}
+
+/* escolhe a vaga mais antiga que nao esta sendo lida (com cd_mx) */
+static int cd_vaga(void)
+{
+	int v = -1;
+	for (int k = 0; k < NCACHE; k++)
+		if (!cd_cache[k].lendo && (v < 0 || cd_cache[k].uso < cd_cache[v].uso))
+			v = k;
+	return v;
+}
+
+/* le o bloco b0 da leitora para a vaga k (entra e sai com cd_mx) */
+static void cd_carrega(int k, int64_t b0)
+{
+	cd_cache[k].lba = b0;
+	cd_cache[k].lendo = true;
+	pthread_mutex_unlock(&cd_mx);
+	pthread_mutex_lock(&cd_io_mx);
+	cd_le_bloco(b0, cd_cache[k].d);
+	pthread_mutex_unlock(&cd_io_mx);
+	pthread_mutex_lock(&cd_mx);
+	cd_cache[k].lendo = false;
+	pthread_cond_broadcast(&cd_cv);
 }
 
 static int64_t cd_ler(int64_t pos, uint8_t *s, int64_t len)
@@ -316,22 +361,28 @@ static int64_t cd_ler(int64_t pos, uint8_t *s, int64_t len)
 		return 0;
 	if (pos + len > cd_tam)
 		len = cd_tam - pos;
-	int64_t feito = 0;
+	int64_t feito = 0, ult = -1;
 	pthread_mutex_lock(&cd_mx);
 	while (feito < len) {
 		int64_t lba = (pos + feito) / SETOR;
 		int64_t b0 = lba - lba % BLOCO;
-		int k, velho = 0;
-		for (k = 0; k < NCACHE; k++)
-			if (cd_cache[k].lba == b0)
-				break;
-		if (k == NCACHE) {
-			for (k = 1; k < NCACHE; k++)
-				if (cd_cache[k].uso < cd_cache[velho].uso)
-					velho = k;
-			k = velho;
-			cd_le_bloco(b0, cd_cache[k].d);
-			cd_cache[k].lba = b0;
+		int k = cd_acha(b0);
+		if (k >= 0 && cd_cache[k].lendo) {
+			pthread_cond_wait(&cd_cv, &cd_mx); /* a leitura adiante ja esta trazendo */
+			continue;
+		}
+		if (k < 0) {
+			k = cd_vaga();
+			if (k < 0) {
+				pthread_cond_wait(&cd_cv, &cd_mx);
+				continue;
+			}
+			cd_carrega(k, b0);
+			continue; /* confere de novo: a vaga pode ter mudado enquanto lia */
+		}
+		if (cd_cache[k].adiantado) {
+			cd_cache[k].adiantado = false;
+			cd_n_acertos_pf++;
 		}
 		cd_cache[k].uso = ++cd_relogio;
 		int64_t off = pos + feito - b0 * SETOR;
@@ -340,9 +391,44 @@ static int64_t cd_ler(int64_t pos, uint8_t *s, int64_t len)
 			n = len - feito;
 		memcpy(s + feito, cd_cache[k].d + off, n);
 		feito += n;
+		ult = b0;
+	}
+	if (ult >= 0 && cd_pf_base != ult + BLOCO) {
+		cd_pf_base = ult + BLOCO;
+		cd_pf_ger++;
+		pthread_cond_signal(&cd_pf_cv);
 	}
 	pthread_mutex_unlock(&cd_mx);
 	return feito;
+}
+
+/* leitura adiante: enquanto o jogo usa um bloco, os proximos ja vem para o cache */
+static void *cd_adiante_thread(void *x)
+{
+	(void)x;
+	pthread_mutex_lock(&cd_mx);
+	uint64_t ger = cd_pf_ger;
+	while (!g_sair) {
+		while (ger == cd_pf_ger && !g_sair)
+			pthread_cond_wait(&cd_pf_cv, &cd_mx);
+		ger = cd_pf_ger;
+		for (int i = 0; i < PF_BLOCOS && ger == cd_pf_ger && !g_sair; i++) {
+			int64_t b0 = cd_pf_base + i * BLOCO;
+			if (b0 < 0 || b0 * SETOR >= cd_tam)
+				break;
+			if (cd_acha(b0) >= 0)
+				continue;
+			int k = cd_vaga();
+			if (k < 0)
+				break;
+			cd_cache[k].uso = ++cd_relogio;
+			cd_cache[k].adiantado = true;
+			cd_carrega(k, b0);
+			cd_n_adiante++;
+		}
+	}
+	pthread_mutex_unlock(&cd_mx);
+	return NULL;
 }
 
 static void msf(int lba, char *o)
@@ -354,6 +440,7 @@ static bool cd_abrir(const char *dev)
 {
 	for (int k = 0; k < NCACHE; k++)
 		cd_cache[k].lba = -1;
+	cd_pf_base = -1;
 	struct stat st;
 	if (stat(dev, &st) == 0 && S_ISREG(st.st_mode)) {
 		cd_arquivo = true;
@@ -717,15 +804,39 @@ static bool vs_espera(int tipo)
 	return ioctl(fb.fd, FBIO_WAITFORVSYNC, &z) == 0;
 }
 
+static int cmp_dbl(const void *a, const void *b)
+{
+	double x = *(const double *)a, y = *(const double *)b;
+	return x < y ? -1 : x > y;
+}
+
+/* mede o vsync: mediana de 30 intervalos (uma medida so pegava um atraso e
+ * dava 60,6 Hz, o que tirava o jogo do "1 quadro por vsync") */
 static double vs_mede(int tipo)
 {
+	enum { N = 30 };
+	double iv[N];
 	if (!vs_espera(tipo))
 		return 0;
-	double t0 = agora();
-	for (int i = 0; i < 6; i++)
+	double t0 = agora(), ti = t0;
+	for (int i = 0; i < N; i++) {
 		if (!vs_espera(tipo))
 			return 0;
-	return (agora() - t0) / 6;
+		double t = agora();
+		iv[i] = t - ti;
+		ti = t;
+		if (i == 2 && t - t0 < 0.003)
+			return (t - t0) / 3; /* nao espera de verdade: sai ja */
+	}
+	qsort(iv, N, sizeof iv[0], cmp_dbl);
+	double soma = 0;
+	int n = 0;
+	for (int i = 0; i < N; i++)
+		if (fabs(iv[i] - iv[N / 2]) < 0.001) {
+			soma += iv[i];
+			n++;
+		}
+	return n ? soma / n : iv[N / 2];
 }
 
 static double vs_escolhe(void)
@@ -1775,16 +1886,22 @@ static void *cd_acorda_thread(void *x)
 {
 	(void)x;
 	uint8_t b[SETOR];
+	int n_falhas = 0;
 	while (!g_sair) {
 		sleep(2);
 		if (agora() - cd_ult_leitura < 10)
 			continue;
-		pthread_mutex_lock(&cd_mx);
-		int64_t l = (cd_fx[0].dados ? cd_fx[0].lba : 0) + 16;
-		if (!cd_read_cd(l, 1, b, 0xF8))
-			cd_raw_ioctl(l, b);
+		/* le onde o jogo parou (dados ou audio, com o comando certo para cada um):
+		 * no PC Engine a faixa 1 e audio e a leitura de dados falhava, a leitora dormia */
+		pthread_mutex_lock(&cd_io_mx);
+		int64_t l = cd_ult_lba;
+		if (l < 0 || l * SETOR >= cd_tam)
+			l = 16;
+		bool ok = cd_le_setor(l, b);
 		cd_ult_leitura = agora();
-		pthread_mutex_unlock(&cd_mx);
+		pthread_mutex_unlock(&cd_io_mx);
+		if (!ok && n_falhas++ < 5)
+			LOG("cd: leitura para manter a leitora girando falhou (lba %lld)", (long long)l);
 	}
 	return NULL;
 }
@@ -2780,6 +2897,10 @@ int main(int argc, char **argv)
 		cd_ult_leitura = agora();
 		pthread_create(&ta, NULL, cd_acorda_thread, NULL);
 	}
+	if (cd_fd >= 0) {
+		pthread_t tp;
+		pthread_create(&tp, NULL, cd_adiante_thread, NULL);
+	}
 	volume_aplica();
 	volume_ini = volume;
 	som_abrir(av.timing.sample_rate);
@@ -2893,9 +3014,9 @@ int main(int argc, char **argv)
 			static double t_ult;
 			double t = agora();
 			if (t_ult > 0)
-				LOG("ritmo: %.1f quadros/s; cd: %ld blocos, media %.0f ms, max %.0f ms, metodo %d; som: buffer %d%%, vazio %ld; ressinc %ld",
+				LOG("ritmo: %.1f quadros/s; cd: %ld blocos, media %.0f ms, max %.0f ms, metodo %d, adiante %ld/%ld usados; som: buffer %d%%, vazio %ld; ressinc %ld",
 				    300 / (t - t_ult), cd_n_blocos, cd_n_blocos ? cd_t_total / cd_n_blocos * 1e3 : 0, cd_t_max * 1e3, cd_metodo,
-				    r_cnt * 100 / RING, som_vazio, vs_ressinc);
+				    cd_n_acertos_pf, cd_n_adiante, r_cnt * 100 / RING, som_vazio, vs_ressinc);
 			LOG("picos: controles %.1f ms, nucleo %.1f ms, copia %.1f ms", pico_ctrl * 1e3, pico_run * 1e3, pico_copia * 1e3);
 			pico_ctrl = pico_run = pico_copia = 0;
 			t_ult = t;
