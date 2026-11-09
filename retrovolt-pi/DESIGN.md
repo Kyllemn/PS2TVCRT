@@ -95,3 +95,37 @@ Opcoes que ficam para a pessoa:
   "VAZIO". Salvar por cima de um slot usado pede confirmacao.
 - Arquivos: por jogo, `estado_N.state` + `estado_N.png` na pasta de dados
   (`/rv-dados/states/<sistema>/<jogo>/`).
+
+## OPCOES > CONVERGENCIA (aprovado)
+- Mesmo esquema do RetroVolt do PS2: ajuste de posicao e tamanho da imagem.
+- Durante o ajuste, barras laranja nos 4 cantos/bordas da tela mostram onde a
+  imagem comeca e termina, para a pessoa ver o que esta mudando.
+
+## OPCOES > PASTAS DE JOGOS: micro SD ou pendrive (aprovado)
+- A "base" (jogos, BIOS, saves, configuracao) pode ficar no micro SD ou no pendrive.
+- Ao escolher um dispositivo, o RetroVolt cria a estrutura de pastas nele, se
+  ainda nao existir (nunca apaga nem sobrescreve nada que ja esteja la).
+- Ao trocar de dispositivo, pergunta uma vez: "COPIAR SAVES E CONFIGURACAO PARA O
+  NOVO?" (os jogos e as BIOS nao sao copiados).
+
+## Estrutura de pastas (na raiz do dispositivo escolhido)
+```
+RETROVOLT/
+  LEIA-ME.TXT            o que vai em cada pasta
+  config/                retrovolt.cfg, controles, ajustes por nucleo e por jogo
+  bios/                  BIOS que os nucleos pedem (lista com nomes em LEIA-ME.TXT);
+                         OPCOES > INFO mostra quais faltam ou estao erradas (MD5)
+  roms/                  uma subpasta por console (nomes abaixo); jogos de varios
+                         discos podem ter um .m3u para a troca de disco
+  saves/<console>/       saves do proprio jogo (memory card, bateria do cartucho)
+  states/<console>/<jogo>/  save states (10 slots) + miniaturas
+  tv/                    grades do RetroTV (.txt com link M3U ou .m3u) e cache do guia
+  imagens/consoles/      fotos dos consoles para a aba JOGOS (enviadas pelo autor)
+  capturas/              fotos de tela (se a pessoa tirar)
+  logs/                  LOG.TXT de cada execucao
+  versoes/               versoes novas do RetroVolt para testar (so no pendrive)
+```
+Subpastas de `roms/` (uma por console, criadas so as dos nucleos instalados):
+`atari2600, nes, snes, n64, gb, gbc, gba, mastersystem, megadrive, segacd, 32x,
+saturn, dreamcast, pcengine, pcenginecd, neogeo, neogeocd, ps1, 3do, arcade`.
+A aba JOGOS mostra so as pastas que tem jogos.
