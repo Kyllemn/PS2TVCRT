@@ -593,6 +593,23 @@ def lista_jogos(b, sistema):
     return sorted(out, key=lambda p: nome_limpo(p))
 
 
+def copia_log():
+    """copia o LOG.TXT do cartao para o pendrive (o lancador so copia no inicio)"""
+    src = os.path.join(DADOS, 'logs', 'LOG.TXT')
+    dst = os.path.join(USB, 'RETROVOLT', 'LOG.TXT')
+    if not os.path.isdir(os.path.dirname(dst)) or not os.path.exists(src):
+        return
+    try:
+        sys.stdout.flush()
+        with open(src, 'rb') as a, open(dst + '.tmp', 'wb') as b:
+            b.write(a.read())
+            b.flush()
+            os.fsync(b.fileno())
+        os.replace(dst + '.tmp', dst)
+    except OSError as ex:
+        print('log: nao copiou para o pendrive:', ex, flush=True)
+
+
 # ---------------------------------------------------------------- leitora (thread)
 class Leitora(threading.Thread):
     """vigia a leitora: avisa quando entra/sai um disco (ja identificado)"""
@@ -601,7 +618,7 @@ class Leitora(threading.Thread):
         super().__init__(daemon=True)
         self.fila = fila
         self.dev = None
-        self.estado = 'sem_leitora'
+        self.estado = 'procurando'
         self.info = None
         self.pausa = threading.Event()
 
@@ -786,6 +803,7 @@ class App:
             cmd += ['--audio', self.cfg['audio_dispositivo']]
         self.carregando(nome)
         print('jogo: %s' % ' '.join(cmd), flush=True)
+        copia_log()
         self.leitora.pausa.set()
         t0 = time.monotonic()
         try:
@@ -797,6 +815,7 @@ class App:
         print('jogo: terminou (codigo %s, %.0f s)' % (r, time.monotonic() - t0), flush=True)
         self.ent.segurando.clear()
         self._pendentes()
+        copia_log()
         if r != 0:
             self.mostra_aviso('O JOGO NAO ABRIU (CODIGO %s). VEJA O LOG.TXT' % r)
 
@@ -877,7 +896,7 @@ class App:
                 ('REDE', d['ip'] or 'SEM REDE'),
                 ('WI-FI', (d['wifi'] or 'SEM WI-FI')[:18]),
                 ('JOGOS', 'PENDRIVE' if self.base.startswith(USB) else 'CARTAO'),
-                ('LEITORA', {'ok': 'COM DISCO', 'vazia': 'VAZIA', 'aberta': 'ABERTA', 'lendo': 'LENDO',
+                ('LEITORA', {'procurando': '...', 'ok': 'COM DISCO', 'vazia': 'VAZIA', 'aberta': 'ABERTA', 'lendo': 'LENDO',
                              'sem_leitora': 'NAO ENCONTRADA'}.get(self.leitora.estado, '?')),
                 ('BIOS', ('%d: ' % len(bios) + ' '.join(bios))[:34] if bios else 'NENHUMA'),
             ]
@@ -915,6 +934,10 @@ class App:
                         if (x - 88) ** 2 + (y - 128) ** 2 <= r * r:
                             c.px[y * W + x] = cor
         x, y = 160, 66
+        if st == 'procurando':
+            c.text(x, y, 'PROCURANDO A', SLATE)
+            c.text(x, y + F.ch + 4, 'LEITORA...', SLATE)
+            return
         if st == 'sem_leitora':
             c.text(x, y, 'LEITORA NAO', SLATE)
             c.text(x, y + F.ch + 4, 'ENCONTRADA', SLATE)
@@ -990,7 +1013,7 @@ class App:
                 ok = bool(cd and cd.get('sistema') == self.sistema)
                 valor = None
                 if not ok:
-                    valor = {'lendo': 'LENDO...', 'sem_leitora': 'SEM LEITORA'}.get(self.leitora.estado, 'SEM DISCO')
+                    valor = {'lendo': 'LENDO...', 'sem_leitora': 'SEM LEITORA', 'procurando': '...'}.get(self.leitora.estado, 'SEM DISCO')
                     if cd:
                         valor = NOME_SISTEMA.get(cd.get('sistema'), 'OUTRO DISCO')
                 item(c, 24, y, v, n == sel, valor)
@@ -1214,6 +1237,8 @@ class App:
                     self.aviso = None
                     mudou = True
                 if mudou or time.monotonic() - ultimo_desenho > 60:
+                    if time.monotonic() - ultimo_desenho > 60:
+                        copia_log()
                     self.fb.show(self.desenha(), self.conv)
                     ultimo_desenho = time.monotonic()
         finally:

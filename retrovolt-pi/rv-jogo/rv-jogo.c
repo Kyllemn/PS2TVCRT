@@ -151,10 +151,28 @@ static pthread_mutex_t cd_mx = PTHREAD_MUTEX_INITIALIZER;
 static struct { int64_t lba; uint64_t uso; uint8_t d[BLOCO * SETOR]; } cd_cache[NCACHE];
 static uint64_t cd_relogio;
 
+/* faixas do disco (para saber se um setor e de audio) */
+static int cd_nfx;
+static struct { int lba; bool dados; int modo; } cd_fx[100];
+/* metodo de leitura: 0 = READ CD (SG_IO), 1 = CDROMREADRAW, 2 = setor de 2048 + cabecalho montado */
+static int cd_metodo;
+static long cd_n_blocos;
+static double cd_t_total, cd_t_max;
+static int cd_n_erros;
+
+static int cd_faixa(int64_t lba)
+{
+	int k = 0;
+	for (int i = 0; i < cd_nfx; i++)
+		if (cd_fx[i].lba <= lba)
+			k = i;
+	return k;
+}
+
 static bool cd_read_cd(uint32_t lba, int n, uint8_t *buf, uint8_t flags)
 {
 	uint8_t cmd[12] = {0xBE, 0, lba >> 24, lba >> 16, lba >> 8, lba, 0, 0, n, flags, 0, 0};
-	uint8_t sense[32];
+	uint8_t sense[32] = {0};
 	sg_io_hdr_t io;
 	memset(&io, 0, sizeof io);
 	io.interface_id = 'S';
@@ -165,10 +183,80 @@ static bool cd_read_cd(uint32_t lba, int n, uint8_t *buf, uint8_t flags)
 	io.sbp = sense;
 	io.dxfer_len = n * SETOR;
 	io.dxferp = buf;
-	io.timeout = 15000;
-	if (ioctl(cd_fd, SG_IO, &io) < 0)
+	io.timeout = 5000;
+	int r = ioctl(cd_fd, SG_IO, &io);
+	bool ok = r == 0 && io.status == 0 && io.host_status == 0 && (io.driver_status & 0x7) == 0;
+	if (!ok && cd_n_erros++ < 8)
+		LOG("cd: READ CD lba %u x%d flags %02x falhou: ioctl %d (%s) status %d host %d driver %d sense %x/%02x/%02x",
+		    lba, n, flags, r, r ? strerror(errno) : "-", io.status, io.host_status, io.driver_status,
+		    sense[2] & 15, sense[12], sense[13]);
+	return ok;
+}
+
+static void bcd_msf(int64_t lba, uint8_t *o)
+{
+	int a = lba + 150, m = a / 4500, sg = a / 75 % 60, f = a % 75;
+	o[0] = (m / 10) << 4 | m % 10;
+	o[1] = (sg / 10) << 4 | sg % 10;
+	o[2] = (f / 10) << 4 | f % 10;
+}
+
+static bool cd_raw_ioctl(int64_t lba, uint8_t *b)
+{
+	int a = lba + 150;
+	b[0] = a / 4500; b[1] = a / 75 % 60; b[2] = a % 75;
+	return ioctl(cd_fd, CDROMREADRAW, b) == 0;
+}
+
+static bool cd_audio_ioctl(int64_t lba, uint8_t *b)
+{
+	struct cdrom_read_audio ra;
+	memset(&ra, 0, sizeof ra);
+	ra.addr.lba = lba;
+	ra.addr_format = CDROM_LBA;
+	ra.nframes = 1;
+	ra.buf = b;
+	return ioctl(cd_fd, CDROMREADAUDIO, &ra) == 0;
+}
+
+static bool cd_cozido(int64_t lba, uint8_t *b)
+{
+	int modo = cd_fx[cd_faixa(lba)].modo;
+	int off = modo == 1 ? 16 : 24;
+	memset(b, 0, SETOR);
+	if (pread(cd_fd, b + off, 2048, lba * 2048) != 2048)
 		return false;
-	return io.status == 0 && io.host_status == 0 && (io.driver_status & 0xf) == 0;
+	memset(b + 1, 0xff, 10);
+	bcd_msf(lba, b + 12);
+	b[15] = modo == 1 ? 1 : 2;
+	if (modo != 1) {
+		b[18] = b[22] = 0x08; /* subcabecalho: dados, forma 1 */
+	}
+	return true;
+}
+
+static bool cd_le_setor(int64_t lba, uint8_t *b)
+{
+	bool audio = !cd_fx[cd_faixa(lba)].dados;
+	if (audio)
+		return (cd_metodo == 0 && cd_read_cd(lba, 1, b, 0x10)) || cd_audio_ioctl(lba, b) || cd_read_cd(lba, 1, b, 0x10);
+	if (cd_metodo == 0 && cd_read_cd(lba, 1, b, 0xF8))
+		return true;
+	if (cd_metodo <= 1 && cd_raw_ioctl(lba, b)) {
+		if (cd_metodo != 1) {
+			cd_metodo = 1;
+			LOG("cd: passando a ler pelo CDROMREADRAW");
+		}
+		return true;
+	}
+	if (cd_cozido(lba, b)) {
+		if (cd_metodo != 2) {
+			cd_metodo = 2;
+			LOG("cd: passando a ler setores de 2048 (sem audio XA)");
+		}
+		return true;
+	}
+	return false;
 }
 
 static void cd_le_bloco(int64_t lba0, uint8_t *d)
@@ -185,16 +273,21 @@ static void cd_le_bloco(int64_t lba0, uint8_t *d)
 			LOG("cd: erro lendo %lld", (long long)lba0);
 		return;
 	}
-	for (int t = 0; t < 3; t++) {
-		if (cd_read_cd(lba0, n, d, 0xF8) || cd_read_cd(lba0, n, d, 0x10))
-			return;
-	}
-	/* bloco com defeito: tenta setor por setor */
-	for (int i = 0; i < n; i++)
-		if (!cd_read_cd(lba0 + i, 1, d + i * SETOR, 0xF8) && !cd_read_cd(lba0 + i, 1, d + i * SETOR, 0x10)) {
-			memset(d + i * SETOR, 0, SETOR);
-			LOG("cd: setor %lld ilegivel", (long long)(lba0 + i));
-		}
+	double t0 = agora();
+	bool ok = cd_metodo == 0 && cd_faixa(lba0) == cd_faixa(lba0 + n - 1) && cd_fx[cd_faixa(lba0)].dados &&
+	          cd_read_cd(lba0, n, d, 0xF8);
+	if (!ok)
+		for (int i = 0; i < n; i++)
+			if (!cd_le_setor(lba0 + i, d + i * SETOR)) {
+				memset(d + i * SETOR, 0, SETOR);
+				if (cd_n_erros++ < 30)
+					LOG("cd: setor %lld ilegivel", (long long)(lba0 + i));
+			}
+	double t = agora() - t0;
+	cd_n_blocos++;
+	cd_t_total += t;
+	if (t > cd_t_max)
+		cd_t_max = t;
 }
 
 static int64_t cd_ler(int64_t pos, uint8_t *s, int64_t len)
@@ -246,6 +339,9 @@ static bool cd_abrir(const char *dev)
 		cd_arquivo = true;
 		cd_fd = open(dev, O_RDONLY);
 		cd_tam = st.st_size / SETOR * SETOR;
+		cd_nfx = 1;
+		cd_fx[0].dados = true;
+		cd_fx[0].modo = 2;
 		snprintf(cd_cue, sizeof cd_cue, "FILE \"disco.bin\" BINARY\n  TRACK 01 MODE2/2352\n    INDEX 01 00:00:00\n");
 	} else {
 		cd_fd = open(dev, O_RDONLY | O_NONBLOCK);
@@ -276,12 +372,18 @@ static bool cd_abrir(const char *dev)
 			int lba = te.cdte_addr.lba;
 			bool dados = te.cdte_ctrl & CDROM_DATA_TRACK;
 			const char *tipo = "AUDIO";
+			int modo = 2;
 			if (dados) {
 				uint8_t s[SETOR];
-				int modo = 2;
-				if (cd_read_cd(lba, 1, s, 0xF8))
-					modo = s[15];
+				if (cd_read_cd(lba, 1, s, 0xF8) || cd_raw_ioctl(lba, s))
+					modo = s[15] == 1 ? 1 : 2;
 				tipo = modo == 1 ? "MODE1/2352" : "MODE2/2352";
+			}
+			if (cd_nfx < 100) {
+				cd_fx[cd_nfx].lba = lba;
+				cd_fx[cd_nfx].dados = dados;
+				cd_fx[cd_nfx].modo = modo;
+				cd_nfx++;
 			}
 			char m[16];
 			n += snprintf(cd_cue + n, sizeof cd_cue - n, "  TRACK %02d %s\n", t, tipo);
@@ -302,6 +404,24 @@ static bool cd_abrir(const char *dev)
 		fclose(f);
 	}
 	LOG("cd: %lld setores; cue:\n%s", (long long)(cd_tam / SETOR), cd_cue);
+	if (!cd_arquivo) {
+		uint8_t b[SETOR];
+		int64_t l = cd_fx[0].dados ? cd_fx[0].lba + 16 : 16;
+		for (int i = 0; i < cd_nfx; i++)
+			if (cd_fx[i].dados) {
+				l = cd_fx[i].lba + 16;
+				break;
+			}
+		double t0 = agora();
+		bool m0 = cd_read_cd(l, 1, b, 0xF8);
+		double t1 = agora();
+		bool m1 = cd_raw_ioctl(l, b);
+		double t2 = agora();
+		bool m2 = cd_cozido(l, b);
+		LOG("cd: teste setor %lld: READ CD %s (%.0f ms), READRAW %s (%.0f ms), 2048 %s",
+		    (long long)l, m0 ? "ok" : "FALHOU", (t1 - t0) * 1e3, m1 ? "ok" : "FALHOU", (t2 - t1) * 1e3, m2 ? "ok" : "FALHOU");
+		cd_metodo = m0 ? 0 : m1 ? 1 : 2;
+	}
 	return cd_tam > 0;
 }
 
@@ -1395,6 +1515,7 @@ int main(int argc, char **argv)
 				continue;
 			}
 		}
+		double tq = agora();
 		if (um_pra_um) {
 			core.run();
 		} else {
@@ -1404,6 +1525,11 @@ int main(int argc, char **argv)
 				acc -= 1.0;
 			}
 		}
+		static int n_lentos;
+		if (agora() - tq > 0.5 && n_lentos++ < 20)
+			LOG("quadro %ld lento: %.1f s (cd: %ld blocos, metodo %d)", quadros, agora() - tq, cd_n_blocos, cd_metodo);
+		if (quadros == 60 || quadros == 600)
+			LOG("quadro %ld ok; tela do jogo %ux%u", quadros, ult_w, ult_h);
 		if (fb.sem_vsync && !fb.fake) {
 			t_prox += 1.0 / (um_pra_um ? av.timing.fps : tela_hz);
 			double d = t_prox - agora();
@@ -1414,8 +1540,16 @@ int main(int argc, char **argv)
 				t_prox = agora();
 		}
 		fb_mostra();
-		if (++quadros % 300 == 0)
+		if (++quadros % 300 == 0) {
 			sram_grava(false);
+			static double t_ult;
+			double t = agora();
+			if (t_ult > 0)
+				LOG("ritmo: %.1f quadros/s; cd: %ld blocos, media %.0f ms, max %.0f ms, metodo %d",
+				    300 / (t - t_ult), cd_n_blocos, cd_n_blocos ? cd_t_total / cd_n_blocos * 1e3 : 0, cd_t_max * 1e3, cd_metodo);
+			t_ult = t;
+			cd_t_max = 0;
+		}
 		if (max_q && quadros >= max_q) {
 			if (getenv("RV_MENU_TESTE")) {
 				menu_fundo();
