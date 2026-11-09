@@ -149,6 +149,7 @@ A aba JOGOS mostra so as pastas que tem jogos.
 
 ## R04: leitora de CD + PlayStation (implementado)
 - Disco na leitora (menu aberto) = o jogo abre sozinho; ligar o Pi com disco tambem.
+  (vai mudar: ver PENDENTE "disco reconhecido -> popup")
   Durante um jogo, trocar o disco so mostra aviso depois.
 - JOGOS > PLAYSTATION: "INICIAR CD" e o primeiro item; 2 linhas vazias; depois os jogos.
 - rv-jogo (C) roda o nucleo: video no fb com a convergencia (largura/posicao; a altura
@@ -158,3 +159,7 @@ A aba JOGOS mostra so as pastas que tem jogos.
 - Save do memory card pelo codigo do jogo (ex.: saves/ps1/SLUS-00892.srm): o mesmo
   save vale para o disco e para a imagem do mesmo jogo.
 - EDID ganhou extensao CEA (som PCM + HDMI): precisa rodar atualizar.sh uma vez.
+
+## PENDENTE (proxima atualizacao maior): disco reconhecido -> popup
+- Ao reconhecer um disco NAO iniciar direto: popup no meio da tela com o nome do
+  jogo e a plataforma, perguntando INICIAR? (A SIM / B NAO). Nao = volta ao menu.

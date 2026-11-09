@@ -30,6 +30,7 @@
 #include <math.h>
 #include <pthread.h>
 #include <scsi/sg.h>
+#include <sched.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -893,6 +894,9 @@ static void *som_thread(void *p)
 {
 	(void)p;
 	int16_t buf[256 * 2];
+	struct sched_param sp = {.sched_priority = 20};
+	if (pthread_setschedparam(pthread_self(), SCHED_FIFO, &sp))
+		LOG("som: sem prioridade de tempo real");
 	while (!g_sair) {
 		pthread_mutex_lock(&r_mx);
 		int n = r_cnt < 256 ? r_cnt : 256;
@@ -1009,7 +1013,6 @@ static struct dev {
 static int ndevs;
 static uint32_t pad_bot[2];
 static int16_t pad_ana[2][4];
-static double prox_busca;
 
 static int mapa_tecla(int c)
 {
@@ -1045,22 +1048,40 @@ static int mapa_tecla(int c)
 }
 
 #define TEM_BIT(arr, b) ((arr)[(b) / 8] & (1 << ((b) % 8)))
+/* procura de controles numa thread separada e so quando /dev/input muda:
+ * abrir alguns aparelhos (CEC do HDMI, botoes da caixa, "mouse" do receptor)
+ * e lento e travava o jogo a cada 2 s */
+static pthread_mutex_t dv_mx = PTHREAD_MUTEX_INITIALIZER;
+static struct { char p[300]; ino_t ino; } rej[64];
+static int nrej;
+
+static bool ja_tem(const char *p, ino_t ino)
+{
+	for (int i = 0; i < nrej; i++)
+		if (rej[i].ino == ino && !strcmp(rej[i].p, p))
+			return true;
+	bool r = false;
+	pthread_mutex_lock(&dv_mx);
+	for (int i = 0; i < ndevs; i++)
+		if (!strcmp(devs[i].path, p))
+			r = true;
+	pthread_mutex_unlock(&dv_mx);
+	return r;
+}
+
 static void controles_busca(void)
 {
 	DIR *d = opendir("/dev/input");
 	if (!d)
 		return;
 	struct dirent *e;
-	while ((e = readdir(d)) && ndevs < MAXDEV) {
+	while ((e = readdir(d))) {
 		if (strncmp(e->d_name, "event", 5))
 			continue;
 		char p[300];
+		struct stat st;
 		snprintf(p, sizeof p, "/dev/input/%s", e->d_name);
-		bool ja = false;
-		for (int i = 0; i < ndevs; i++)
-			if (!strcmp(devs[i].path, p))
-				ja = true;
-		if (ja)
+		if (stat(p, &st) || ja_tem(p, st.st_ino))
 			continue;
 		int fd = open(p, O_RDONLY | O_NONBLOCK);
 		if (fd < 0)
@@ -1071,24 +1092,55 @@ static void controles_busca(void)
 		bool tecl = TEM_BIT(keys, KEY_ENTER) && TEM_BIT(keys, KEY_Z);
 		if (!pad && !tecl) {
 			close(fd);
+			int k;
+			for (k = 0; k < nrej; k++)
+				if (!strcmp(rej[k].p, p))
+					break;
+			if (k == nrej && nrej < 64)
+				nrej++;
+			if (k < 64) {
+				strcpy(rej[k].p, p);
+				rej[k].ino = st.st_ino;
+			}
 			continue;
 		}
-		struct dev *v = &devs[ndevs];
-		memset(v, 0, sizeof *v);
-		v->fd = fd;
-		v->pad = pad;
-		strcpy(v->path, p);
-		ioctl(fd, EVIOCGNAME(sizeof v->nome), v->nome);
+		static struct dev v;
+		memset(&v, 0, sizeof v);
+		v.fd = fd;
+		v.pad = pad;
+		strcpy(v.path, p);
+		ioctl(fd, EVIOCGNAME(sizeof v.nome), v.nome);
 		for (int a = 0; a < ABS_CNT; a++)
-			ioctl(fd, EVIOCGABS(a), &v->abs[a]);
-		int npads = 0;
-		for (int i = 0; i < ndevs; i++)
-			npads += devs[i].pad;
-		v->porta = pad && npads > 0 ? 1 : 0;
-		ndevs++;
-		LOG("controle: %s (%s) -> jogador %d", v->nome, p, v->porta + 1);
+			ioctl(fd, EVIOCGABS(a), &v.abs[a]);
+		pthread_mutex_lock(&dv_mx);
+		if (ndevs < MAXDEV) {
+			int npads = 0;
+			for (int i = 0; i < ndevs; i++)
+				npads += devs[i].pad;
+			v.porta = pad && npads > 0 ? 1 : 0;
+			devs[ndevs++] = v;
+			LOG("controle: %s (%s) -> jogador %d", v.nome, p, v.porta + 1);
+		} else
+			close(fd);
+		pthread_mutex_unlock(&dv_mx);
 	}
 	closedir(d);
+}
+
+static void *busca_thread(void *x)
+{
+	(void)x;
+	struct timespec ult = {0, 0};
+	while (!g_sair) {
+		struct stat st;
+		if (!stat("/dev/input", &st) && (st.st_mtim.tv_sec != ult.tv_sec || st.st_mtim.tv_nsec != ult.tv_nsec)) {
+			ult = st.st_mtim;
+			usleep(300000); /* deixa o aparelho novo terminar de aparecer */
+			controles_busca();
+		}
+		usleep(500000);
+	}
+	return NULL;
 }
 
 static double abs_norm(struct dev *v, int c, int val) /* -1..1 */
@@ -1101,11 +1153,8 @@ static double abs_norm(struct dev *v, int c, int val) /* -1..1 */
 
 static void controles_le(void)
 {
-	if (agora() >= prox_busca) {
-		controles_busca();
-		prox_busca = agora() + 2;
-	}
 	struct input_event ev[64];
+	pthread_mutex_lock(&dv_mx);
 	for (int i = 0; i < ndevs; i++) {
 		struct dev *v = &devs[i];
 		for (;;) {
@@ -1171,6 +1220,7 @@ static void controles_le(void)
 		pad_bot[p] = b;
 		memcpy(pad_ana[p], a, sizeof a);
 	}
+	pthread_mutex_unlock(&dv_mx);
 }
 
 static bool entrada_travada; /* depois do menu: espera soltar tudo */
@@ -1445,6 +1495,28 @@ static void *simbolo(const char *n)
 
 static void ao_sinal(int s) { (void)s; g_sair = 1; }
 
+/* CPU no maximo durante o jogo (o "ondemand" demora a subir o clock e o quadro atrasa) */
+static void governador(bool jogo)
+{
+	static char antes[32];
+	char p[96];
+	for (int c = 0; c < 8; c++) {
+		snprintf(p, sizeof p, "/sys/devices/system/cpu/cpufreq/policy%d/scaling_governor", c);
+		FILE *f = fopen(p, jogo ? "r+" : "w");
+		if (!f)
+			continue;
+		if (jogo) {
+			if (!antes[0] && fgets(antes, sizeof antes, f))
+				antes[strcspn(antes, "\n")] = 0;
+			rewind(f);
+			fputs("performance", f);
+			LOG("cpu: policy%d %s -> performance", c, antes);
+		} else if (antes[0])
+			fputs(antes, f);
+		fclose(f);
+	}
+}
+
 int main(int argc, char **argv)
 {
 	setvbuf(stdout, NULL, _IOLBF, 0);
@@ -1555,6 +1627,11 @@ int main(int argc, char **argv)
 	bool um_pra_um = !fb.sem_vsync && fabs(av.timing.fps - tela_hz) / tela_hz < 0.006;
 	LOG("tela %.3f Hz; %s", tela_hz, um_pra_um ? "1 quadro por vsync" : "ritmo pelo tempo");
 
+	controles_busca();
+	pthread_t tb;
+	pthread_create(&tb, NULL, busca_thread, NULL);
+	governador(true);
+
 	int max_q = getenv("RV_FRAMES") ? atoi(getenv("RV_FRAMES")) : 0;
 	long quadros = 0;
 	bool menu = false;
@@ -1562,6 +1639,7 @@ int main(int argc, char **argv)
 	double acc = 0, t_prox = agora();
 	int ret = 0;
 	while (!g_sair) {
+		double t_loop0 = agora();
 		controles_le();
 		uint32_t b = pad_bot[0] | pad_bot[1];
 		uint32_t novo = b & ~ant;
@@ -1607,6 +1685,8 @@ int main(int argc, char **argv)
 			}
 		}
 		double tq = agora();
+		static double pico_ctrl, pico_run, pico_copia;
+		if (tq - t_loop0 > pico_ctrl) pico_ctrl = tq - t_loop0;
 		if (um_pra_um) {
 			core.run();
 		} else {
@@ -1616,6 +1696,8 @@ int main(int argc, char **argv)
 				acc -= 1.0;
 			}
 		}
+		double t_run = agora() - tq;
+		if (t_run > pico_run) pico_run = t_run;
 		static int n_lentos;
 		if (agora() - tq > 0.5 && n_lentos++ < 20)
 			LOG("quadro %ld lento: %.1f s (cd: %ld blocos, metodo %d)", quadros, agora() - tq, cd_n_blocos, cd_metodo);
@@ -1630,7 +1712,10 @@ int main(int argc, char **argv)
 			} else if (d < -0.1)
 				t_prox = agora();
 		}
-		fb_mostra();
+		fb_vsync();
+		double tc = agora();
+		memcpy(fb.mem, fb.back, fb.tam);
+		if (agora() - tc > pico_copia) pico_copia = agora() - tc;
 		if (++quadros % 300 == 0) {
 			sram_grava(false);
 			static double t_ult;
@@ -1639,6 +1724,8 @@ int main(int argc, char **argv)
 				LOG("ritmo: %.1f quadros/s; cd: %ld blocos, media %.0f ms, max %.0f ms, metodo %d; som: buffer %d%%, vazio %ld; ressinc %ld",
 				    300 / (t - t_ult), cd_n_blocos, cd_n_blocos ? cd_t_total / cd_n_blocos * 1e3 : 0, cd_t_max * 1e3, cd_metodo,
 				    r_cnt * 100 / RING, som_vazio, vs_ressinc);
+			LOG("picos: controles %.1f ms, nucleo %.1f ms, copia %.1f ms", pico_ctrl * 1e3, pico_run * 1e3, pico_copia * 1e3);
+			pico_ctrl = pico_run = pico_copia = 0;
 			t_ult = t;
 			cd_t_max = 0;
 		}
@@ -1654,6 +1741,7 @@ int main(int argc, char **argv)
 	sram_grava(false);
 	fb_grava_fake();
 	g_sair = 1;
+	governador(false);
 	core.unload_game();
 	core.deinit();
 	LOG("fim (%ld quadros)", quadros);
