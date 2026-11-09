@@ -164,7 +164,7 @@ static void opcoes_ler(void)
 
 static int cd_fd = -1;
 static bool cd_arquivo; /* teste: --cd aponta para um .bin */
-static char cd_cue[4096];
+static char cd_cue[8192]; /* 99 faixas com INDEX 00 cabem (~6,5 KB) */
 static int64_t cd_tam;
 /* cd_mx protege o cache; cd_io_mx protege a leitora (so um comando por vez).
  * A leitura na leitora acontece sem cd_mx, para o jogo achar no cache o que ja
@@ -199,9 +199,10 @@ static int cd_faixa(int64_t lba)
 	return k;
 }
 
-static bool cd_read_cd(uint32_t lba, int n, uint8_t *buf, uint8_t flags)
+/* tipo esperado: 0 = qualquer; 0x04 = so audio (a leitora recusa se for dados) */
+static bool cd_read_cd_t(uint32_t lba, int n, uint8_t *buf, uint8_t flags, uint8_t tipo)
 {
-	uint8_t cmd[12] = {0xBE, 0, lba >> 24, lba >> 16, lba >> 8, lba, 0, 0, n, flags, 0, 0};
+	uint8_t cmd[12] = {0xBE, tipo, lba >> 24, lba >> 16, lba >> 8, lba, 0, 0, n, flags, 0, 0};
 	uint8_t sense[32] = {0};
 	sg_io_hdr_t io;
 	memset(&io, 0, sizeof io);
@@ -221,6 +222,11 @@ static bool cd_read_cd(uint32_t lba, int n, uint8_t *buf, uint8_t flags)
 		    lba, n, flags, r, r ? strerror(errno) : "-", io.status, io.host_status, io.driver_status,
 		    sense[2] & 15, sense[12], sense[13]);
 	return ok;
+}
+
+static bool cd_read_cd(uint32_t lba, int n, uint8_t *buf, uint8_t flags)
+{
+	return cd_read_cd_t(lba, n, buf, flags, 0);
 }
 
 static void bcd_msf(int64_t lba, uint8_t *o)
@@ -268,9 +274,16 @@ static bool cd_cozido(int64_t lba, uint8_t *b)
 static bool cd_le_setor(int64_t lba, uint8_t *b)
 {
 	bool audio = !cd_fx[cd_faixa(lba)].dados;
-	if (audio)
-		return (cd_metodo == 0 && cd_read_cd(lba, 1, b, 0x10)) || cd_audio_ioctl(lba, b) || cd_read_cd(lba, 1, b, 0x10);
+	if (audio) {
+		if ((cd_metodo == 0 && cd_read_cd(lba, 1, b, 0x10)) || cd_audio_ioctl(lba, b) || cd_read_cd(lba, 1, b, 0x10))
+			return true;
+		/* "audio" pelo TOC mas e dados (fim da faixa de dados antes da musica) */
+		return cd_read_cd(lba, 1, b, 0xF8) || cd_raw_ioctl(lba, b);
+	}
 	if (cd_metodo == 0 && cd_read_cd(lba, 1, b, 0xF8))
+		return true;
+	/* intervalo entre faixas (Sega CD, PC Engine): o TOC diz dados, o setor e audio */
+	if (cd_metodo == 0 && cd_read_cd_t(lba, 1, b, 0x10, 0x04))
 		return true;
 	if (cd_metodo <= 1 && cd_raw_ioctl(lba, b)) {
 		if (cd_metodo != 1) {
@@ -476,6 +489,7 @@ static bool cd_abrir(const char *dev)
 		cd_tam = (int64_t)fim * SETOR;
 		int n = snprintf(cd_cue, sizeof cd_cue, "FILE \"disco.bin\" BINARY\n");
 		int ant = -1;
+		bool ant_dados = false;
 		for (int t = th.cdth_trk0; t <= th.cdth_trk1 && n < (int)sizeof cd_cue - 200; t++) {
 			memset(&te, 0, sizeof te);
 			te.cdte_track = t;
@@ -500,13 +514,16 @@ static bool cd_abrir(const char *dev)
 			}
 			char m[16];
 			n += snprintf(cd_cue + n, sizeof cd_cue - n, "  TRACK %02d %s\n", t, tipo);
-			if (!dados && ant >= 0 && lba - 150 > ant) {
+			/* pausa de 2 s so existe com certeza na passagem dados -> musica; entre
+			 * musicas o TOC nao diz, e marcar a pausa cortaria 2 s do fim da musica */
+			if (!dados && ant >= 0 && ant_dados && lba - 150 > ant) {
 				msf(lba - 150, m);
 				n += snprintf(cd_cue + n, sizeof cd_cue - n, "    INDEX 00 %s\n", m);
 			}
 			msf(lba, m);
 			n += snprintf(cd_cue + n, sizeof cd_cue - n, "    INDEX 01 %s\n", m);
 			ant = lba;
+			ant_dados = dados;
 		}
 	}
 	mkdir("/run/retrovolt", 0755);
@@ -534,6 +551,20 @@ static bool cd_abrir(const char *dev)
 		LOG("cd: teste setor %lld: READ CD %s (%.0f ms), READRAW %s (%.0f ms), 2048 %s",
 		    (long long)l, m0 ? "ok" : "FALHOU", (t1 - t0) * 1e3, m1 ? "ok" : "FALHOU", (t2 - t1) * 1e3, m2 ? "ok" : "FALHOU");
 		cd_metodo = m0 ? 0 : m1 ? 1 : 2;
+		/* disco com musica (Sega CD, PC Engine CD): a 1a leitura de audio costuma
+		 * trocar a rotacao da leitora (segundos). Faz isso agora, no carregamento,
+		 * e nao no meio do jogo. */
+		for (int i = 0; i < cd_nfx; i++)
+			if (!cd_fx[i].dados) {
+				t0 = agora();
+				bool ok = cd_le_setor(cd_fx[i].lba + 16, b);
+				LOG("cd: teste audio (faixa %d): %s (%.0f ms)", i + 1, ok ? "ok" : "FALHOU", (agora() - t0) * 1e3);
+				t0 = agora();
+				ok = cd_le_setor(l, b);
+				LOG("cd: volta para dados: %s (%.0f ms)", ok ? "ok" : "FALHOU", (agora() - t0) * 1e3);
+				break;
+			}
+		cd_ult_leitura = agora();
 	}
 	return cd_tam > 0;
 }
@@ -542,6 +573,7 @@ static bool cd_abrir(const char *dev)
 enum { T_ARQ, T_CUE, T_BIN };
 struct retro_vfs_file_handle {
 	int tipo;
+	bool gravou;
 	FILE *fp;
 	char *path;
 	int64_t pos;
@@ -589,8 +621,13 @@ static struct retro_vfs_file_handle *v_open(const char *path, unsigned mode, uns
 }
 static int v_close(struct retro_vfs_file_handle *s)
 {
-	if (s->fp)
+	if (s->fp) {
+		if (s->gravou) { /* memoria do Sega CD etc.: garante no pendrive antes de desligar */
+			fflush(s->fp);
+			fsync(fileno(s->fp));
+		}
 		fclose(s->fp);
+	}
 	free(s->path);
 	free(s);
 	return 0;
@@ -635,7 +672,10 @@ static int64_t v_read(struct retro_vfs_file_handle *s, void *buf, uint64_t len)
 }
 static int64_t v_write(struct retro_vfs_file_handle *s, const void *buf, uint64_t len)
 {
-	return s->tipo == T_ARQ ? (int64_t)fwrite(buf, 1, len, s->fp) : -1;
+	if (s->tipo != T_ARQ)
+		return -1;
+	s->gravou = true;
+	return (int64_t)fwrite(buf, 1, len, s->fp);
 }
 static int v_flush(struct retro_vfs_file_handle *s) { return s->tipo == T_ARQ ? fflush(s->fp) : 0; }
 static int v_remove(const char *p) { return remove(p); }
@@ -2914,6 +2954,7 @@ int main(int argc, char **argv)
 		tela_hz = tubo ? 60.005 : 60.0;
 	bool um_pra_um = !fb.sem_vsync && fabs(av.timing.fps - tela_hz) / tela_hz < 0.006;
 	LOG("tela %.3f Hz; %s", tela_hz, um_pra_um ? "1 quadro por vsync" : "ritmo pelo tempo");
+	double fps_ult = av.timing.fps;
 
 	controles_busca();
 	if (getenv("RV_TESTE_CTL")) { /* teste: aviso de controle */
@@ -2975,6 +3016,12 @@ int main(int argc, char **argv)
 		double tq = agora();
 		static double pico_ctrl, pico_run, pico_copia;
 		if (tq - t_loop0 > pico_ctrl) pico_ctrl = tq - t_loop0;
+		if (av.timing.fps != fps_ult) { /* o nucleo mudou de Hz (regiao, modo de video) */
+			fps_ult = av.timing.fps;
+			um_pra_um = !fb.sem_vsync && fps_ult > 0 && fabs(fps_ult - tela_hz) / tela_hz < 0.006;
+			acc = 0;
+			LOG("jogo agora %.3f Hz; %s", fps_ult, um_pra_um ? "1 quadro por vsync" : "ritmo pelo tempo");
+		}
 		if (um_pra_um) {
 			core.run();
 		} else {

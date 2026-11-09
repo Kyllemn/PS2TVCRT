@@ -3,6 +3,11 @@
 Raspberry Pi 5 + leitora USB (ASUS SDRW-08D1S-U), saida HDMI (LCD ou conversor
 HDMI > componente para TV de tubo). Detalhes tecnicos e fases ficam no plano.
 
+## REGRA ABSOLUTA DO AUTOR
+- So compilar (rv-jogo, nucleos, qualquer build ou teste compilado) quando o autor
+  mandar "#compilar". Nunca antes, em nenhuma hipotese.
+- Leitora: manter a leitura a cada 10 s sem uso (nao deixar a leitora dormir).
+
 ## Tema escolhido: "Editorial" (mockups em `mockup/rv_F*.png`)
 - Base 320x240 (240p nativo no tubo); fonte 8x8 (a mesma do PS2).
 - Fundo azul-marinho (12,18,40); texto marfim (240,236,225); inativo cinza-azulado
@@ -320,3 +325,27 @@ A aba JOGOS mostra so as pastas que tem jogos.
 - vsync medido pela mediana de 30 intervalos (uma medida so dava 60,6 Hz e tirava o PC
   Engine do 1 quadro por vsync).
 - Log "ritmo" mostra "adiante usados/lidos".
+
+## R16 (codigo escrito, aguardando #compilar)
+Sega CD (e Mega Drive / Master System, mesmo nucleo) com Genesis Plus GX.
+Licoes do PS1/PCE aplicadas:
+- Nucleo le o CD pelo VFS do rv-jogo (cue/bin virtual), com cache, leitura adiante e
+  leitora acordada a cada 10 s. "CD Image Cache" do nucleo fica desligado (padrao).
+- Leitura: setor que o TOC diz "dados" mas e audio (pausa entre faixas) e lido como
+  audio, e vice-versa; antes caia em 3 metodos que falhavam.
+- Ao abrir o disco: le 1 setor de musica e volta para dados (a troca de rotacao da
+  leitora acontece no carregamento, nao no meio do jogo). Tempos no LOG.
+- cue virtual: 8 KB (99 faixas); pausa de 2 s (INDEX 00) so na passagem dados ->
+  musica (entre musicas cortaria 2 s do fim de cada musica).
+- Ritmo: se o nucleo mudar de Hz no meio do jogo (regiao/modo), recalcula
+  "1 quadro por vsync" (antes era calculado so no inicio). MD NTSC 59,92 Hz -> 1:1.
+- BIOS do Sega CD pela regiao do disco (codigo de seguranca 0x20B, igual ao nucleo):
+  bios_CD_U.bin / bios_CD_E.bin / bios_CD_J.bin em RETROVOLT/bios. Nome com outra
+  grafia no cartao: cria o nome exato (o nucleo diferencia maiusculas).
+- Memoria interna do Sega CD (saves) em saves/segacd/scd_<regiao>.brm, "por BIOS"
+  (como o console: uma memoria para todos os jogos); gravada ao sair do jogo, com
+  fsync no pendrive.
+- Nome do disco: titulo internacional do cabecalho (0x150), espacos limpos; codigo
+  "GM T-xxxx" vira nome do save so se for codigo de verdade.
+- Botoes (padrao do nucleo): Y=A, B=B, A=C, L=X, X=Y, R=Z, SELECT=MODE.
+

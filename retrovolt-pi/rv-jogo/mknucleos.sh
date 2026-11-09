@@ -15,4 +15,9 @@ git clone -q --depth 1 https://github.com/libretro/beetle-pce-fast-libretro "$T/
        HAVE_CDROM=0 -j"$(nproc)" >/dev/null )   # PC Engine e PC Engine CD (leitora pelo CD virtual)
 aarch64-linux-gnu-strip -o "$DEST/mednafen_pce_fast_libretro.so" "$T/pce/mednafen_pce_fast_libretro.so"
 echo "beetle-pce-fast $(cd "$T/pce" && git log -1 --format=%h)"
+git clone -q --depth 1 https://github.com/libretro/Genesis-Plus-GX "$T/gpgx"
+( cd "$T/gpgx" && make -f Makefile.libretro platform=unix CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++ \
+       AR=aarch64-linux-gnu-ar -j"$(nproc)" >/dev/null )   # Sega CD, Mega Drive, Master System (CD pelo VFS)
+aarch64-linux-gnu-strip -o "$DEST/genesis_plus_gx_libretro.so" "$T/gpgx/genesis_plus_gx_libretro.so"
+echo "genesis-plus-gx $(cd "$T/gpgx" && git log -1 --format=%h)"
 rm -rf "$T"
