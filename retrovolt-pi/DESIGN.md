@@ -44,3 +44,39 @@ HDMI > componente para TV de tubo). Detalhes tecnicos e fases ficam no plano.
 ## Menu dentro do jogo (a desenhar)
 Opcoes do nucleo, volume do nucleo, botoes, convergencia, salvar configuracao,
 restaurar padrao.
+
+## START+SELECT dentro do jogo (aprovado; mockup `rv_F6_popup.png`)
+- Toque simples (sem segurar). Abre o MENU PRINCIPAL como popup por cima do
+  jogo: o jogo pausa e a imagem dele fica atras, escurecida.
+- Aparece a aba JOGO (so quando ha jogo rodando): CONTINUAR, REINICIAR JOGO,
+  OPCOES DO JOGO. As outras abas (DISCO/JOGOS/TV/OPCOES) funcionam normalmente.
+  Reiniciar e sempre por aqui (combinacoes de reset dos jogos nao sao necessarias).
+- START+SELECT de novo (ou CONTINUAR) volta ao jogo.
+- Abrir outro jogo/nucleo fecha o atual NA HORA (sem save state). Antes de
+  fechar, so grava o save do proprio jogo (memory card / bateria), em milissegundos.
+
+## Sistema automatico: o minimo de configuracao (proposta)
+Principio: o RetroVolt decide sozinho tudo o que da para detectar; a pessoa so
+mexe no basico da jogatina e em filtros.
+
+Tela (detectada ao ligar e ao trocar o cabo, pela EDID):
+- TUBO (15 kHz): menu em 320x240 (240p); jogos na resolucao nativa de cada
+  console (aviso de 5 s no rodape).
+- LCD: usa a resolucao nativa e a proporcao do monitor. O menu e desenhado na
+  largura da proporcao (4:3 = 320, 16:10 = 384, 16:9 = 426 pontos logicos, sempre
+  240 de altura) e ampliado em escala inteira, nitido (mockup `rv_F7_disco_wide.png`).
+- Conversores HDMI>VGA/componente podem nao informar a EDID certa: se a deteccao
+  ficar em duvida, o primeiro boot pergunta UMA vez "TUBO ou LCD?" e lembra.
+  Modo seguro ao ligar segurando SELECT continua valendo.
+Jogos no LCD:
+- Proporcao original do console (ex.: 4:3) centralizada, laterais pretas; escala
+  inteira na vertical quando couber (sem tremido de pixels).
+- 50 Hz para jogos PAL e 60 Hz para NTSC quando o monitor aceita; senao 60 Hz.
+Escolhas feitas por nos (sem menu para isso):
+- Um nucleo por sistema, o melhor para o Pi 5.
+- Regiao/BIOS pelo proprio disco ou ROM.
+- Controles reconhecidos sozinhos (base de controles do SDL); remapear e opcional.
+Opcoes que ficam para a pessoa:
+- VIDEO: SAIDA (AUTO / TUBO / LCD); FILTRO (NENHUM / SCANLINES / CRT, so no LCD);
+  IMAGEM (ORIGINAL / TELA CHEIA).
+- Volume, convergencia (ja existente), e por jogo: OPCOES DO JOGO.

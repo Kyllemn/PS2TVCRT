@@ -91,3 +91,47 @@ for n,(k,v) in enumerate(opts):
     if on: o.rect(16,y-1,3,10,OR); o.rect(24,y+10,len(k)*8,1,OR); o.txt(24+len(k)*8+8,y,"->",OR)
     y+=15
 save(up(o),'_F4_opcoes.png')
+# ===================== POPUP (START+SELECT dentro de um jogo)
+# cena de jogo inventada (so para o mockup) em 320x240
+def fake_game():
+    g=C((40,30,80))
+    for yy in range(0,140):
+        k=yy/140; g.rect(0,yy,W,1,(int(40+60*k),int(30+40*k),int(80+40*k)))
+    g.rect(0,170,W,70,(50,40,30)); 
+    for i in range(0,W,16): g.rect(i,170,14,6,(80,70,50))
+    for bx,bw,bh in ((40,30,90),(78,20,120),(104,36,70),(220,24,110),(250,40,80)):
+        g.rect(bx,170-bh,bw,bh,(25,20,45)); g.rect(bx+bw//2-2,170-bh-10,4,10,(25,20,45))
+    g.rect(150,128,10,22,(200,60,60)); g.rect(150,150,10,20,(60,60,140)); g.rect(151,120,8,8,(230,200,170))
+    g.rect(262,64,10,10,(240,230,170))   # lua
+    return up(g)
+GAME=fake_game()
+TABS=["JOGO","DISCO","JOGOS","TV","OPCOES"]
+m=editF(0,"START+SELECT VOLTA")
+items=["CONTINUAR","REINICIAR JOGO","OPCOES DO JOGO"]
+y=64
+for n,s_ in enumerate(items):
+    on=(n==0)
+    m.txt(24,y,s_,IV if on else SL)
+    if on: m.rect(16,y-1,3,10,OR); m.rect(24,y+10,len(s_)*8,1,OR); m.txt(24+len(s_)*8+8,y,"->",OR)
+    y+=18
+m.txt(24,140,"EM JOGO",OR); m.txt(24,154,"PLAYSTATION",SL); m.txt(24,166,"CASTLEVANIA SOTN",IV)
+M=up(m)
+from PIL import ImageEnhance
+dark=ImageEnhance.Brightness(GAME.convert('RGB')).enhance(0.5)
+navy=Image.new('RGB',M.size,NAV)
+bg=Image.blend(dark,navy,0.45)
+import numpy as np
+a=np.asarray(M.convert('RGB')); isbg=np.all(a==np.array(NAV),axis=2)
+out=np.where(isbg[...,None],np.asarray(bg),a).astype('uint8')
+Image.fromarray(out).save(OUT+'_F6_popup.png')
+TABS=["DISCO","JOGOS","TV","OPCOES"]
+# ===================== WIDESCREEN (LCD 16:9): mesma arte, tela mais larga
+W=426
+w=editF(0,"LCD 16:9")
+w.txt(190,66,"DISCO NA LEITORA",OR)
+w.txt(190,82,"PLAYSTATION",IV,None,2)
+w.txt(190,104,"CASTLEVANIA",IV); w.txt(190,114,"SYMPHONY OF",IV); w.txt(190,124,"THE NIGHT",IV)
+w.txt(190,142,"SLUS-00067",SL); w.txt(190,152,"PCSX REARMED",SL)
+w.rect(190,172,120,18,OR); w.txt(198,177,"X  JOGAR  ->",NAV)
+WW=up(w); put_disc(WW,96,128,60,0.15); save(WW,'_F7_disco_wide.png')
+W=320
