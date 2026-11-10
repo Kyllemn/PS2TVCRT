@@ -532,6 +532,14 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   Correcao (compilada, testada no PC com nucleo de teste 320x240 -> 1280x480): FBO aumenta no aviso e no video_cb, mesmo objeto, estado do GL
   devolvido. "Acordar" a leitora caia no vao entre as sessoes (sense 5/64/00): agora so
   em setor que existe.
+- Tubo em 480i de verdade (R23, compilado): o boot fica em 1920x240p (fbdev). Jogo com mais
+  de 300 linhas por 20 quadros seguidos: o rv-jogo vira dono do DRM, cria um buffer
+  1920x480 (dumb) e troca o CRTC para o 1920x480i da EDID do RetroVolt (mesmos 15,7 kHz);
+  desenha as 480 linhas 1:1 (antes: so as pares em 240p, sem o tremido do entrelacado,
+  como o autor viu na BIOS do Dreamcast comparando com o ReplayOS). Jogo volta a 240p ->
+  volta ao fb do boot; ao sair, 240p; se cair, o kernel devolve o modo do fbdev ao fechar
+  o DRM (sem SIGSEGV proprio: o Flycast usa esse sinal). tubo_480i = NAO desliga.
+  LCD: 480i usa as 480 linhas (ampliacao calculada como 240: 3x no 1440x900).
 - TV sem som depois de ~5 s (efeito da troca nova): a saida de som HDMI e de um programa
   so; o mpv abria com a previa ainda tocando e ficava sem som. Agora abre com --aid=no e
   liga o som (aid auto) depois que a previa fecha. 1o build do Flycast "16 KB" nao valeu:
