@@ -507,7 +507,14 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   rv-jogo, mas nao aparecem. Padrao 5X7 (antes 6X10); fonte gravada que saiu da lista
   vira 5X7.
 
-## R23 (codigo escrito, aguardando #compilar)
+## R23 (compilada)
+- rv-jogo sem avisos. Nucleos novos: PicoDrive 1890c29, Snes9x fae2fea, Flycast 72b8e67
+  (GLES, JIT aarch64; pede libgomp1 no Pi, posto no instalar.sh). Teste no PC: nucleo de
+  teste GLES pelo caminho de GPU (Mesa sem janela): imagem certa no LCD e no tubo, fim
+  limpo. Nao testado aqui: Dreamcast de verdade (sem jogo), CD de 2 sessoes (sem
+  leitora), mpv real na troca previa->tela cheia.
+- RetroTV: IPTV com limite de conexoes responde 429 (visto na lista do autor): a abertura
+  do mpv por tras da previa falha nesses servidores e cai no jeito antigo.
 - Convergencia DENTRO do jogo sem altura: o menu mandava a altura (--conv) e o rv-jogo
   nunca usava; a tela de ajuste do jogo so tinha posicao e largura. Agora LT/RT mudam a
   altura (80% a 110%), o desenho no tubo usa (linhas do jogo esticadas/encolhidas), o
