@@ -567,3 +567,21 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   menu (.cdi .gdi .chd .cue .m3u), disco identificado por "SEGA SEGAKATANA" (IP.BIN).
   BIOS (dc_boot.bin, dc_flash.bin) em bios/dreamcast; o Flycast tambem tem BIOS embutida.
 - Sistema de CD so aparece sempre se o nucleo estiver no pacote (senao, so com jogos).
+
+## ANOTADO (autor, sem codigo ainda)
+- RetroTV: 3-4 s de tela preta da previa para a tela cheia. Causa: a previa (ffmpeg) e
+  fechada e o mpv abre o canal do zero (lista HLS, primeiros pedacos, buffer). Plano:
+  abrir o mpv ~2 s antes do fim da previa e so fechar o ffmpeg quando o mpv mostrar o 1o
+  quadro (evento pelo socket); mpv com perfil de inicio rapido (cache curto, menor
+  qualidade HLS no comeco). Esperado: troca quase sem preto.
+- RetroTV: ajuste de brilho (pedido "se der"). Da: mpv --brightness/--contrast e ao vivo
+  pelo socket ('add brightness'); previa com filtro eq do ffmpeg. Botoes na tela cheia
+  (L2/R2) e valor salvo no retrovolt.cfg (tv_brilho). So Python.
+- Nucleos "mais otimizados da atualidade" para o Pi 5 (aarch64):
+  * Super Nintendo: Snes9x (atual) - rapido e preciso; ja no mknucleos.
+  * Neo Geo MVS/AES, CPS1, CPS2 (e CPS3): FinalBurn Neo (fbneo) - um nucleo so, o mais
+    preciso e otimizado para arcade em ARM. Sistemas separados no menu (roms/neogeo,
+    roms/cps1, roms/cps2), ROMs no formato .zip do FBNeo (versao do DAT do FBNeo), BIOS
+    neogeo.zip. Compilacao pesada (~20 min).
+  * Dreamcast: Flycast (dynarec aarch64, GLES 3.1/Vulkan) - referencia no Pi; depende da
+    fase GPU do rv-jogo.
