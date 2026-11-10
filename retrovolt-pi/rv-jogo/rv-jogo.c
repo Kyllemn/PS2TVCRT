@@ -1743,6 +1743,24 @@ static struct {
 	int quer, conta; /* modo pedido pelo jogo e ha quantos quadros (evita piscar) */
 } km = {.fd = -1};
 
+/* 480i (NTSC, 525 linhas, 2 campos) com a MESMA linha horizontal do 240p que ja funciona
+ * (mesmo relogio de pontos e htotal = mesmos 15,7 kHz): so a parte vertical muda */
+static void km_monta_480i(void)
+{
+	struct drm_mode_modeinfo m = km.m240;
+	m.vdisplay = 480;
+	m.vsync_start = 480 + 6;  /* 3 linhas de frente por campo */
+	m.vsync_end = 480 + 12;   /* 3 de sincronismo por campo */
+	m.vtotal = 525;
+	m.flags |= DRM_MODE_FLAG_INTERLACE;
+	m.type = 1 << 5; /* DRM_MODE_TYPE_USERDEF */
+	m.vrefresh = (unsigned)lround(m.clock * 1000.0 * 2 / ((double)m.htotal * m.vtotal));
+	snprintf(m.name, sizeof m.name, "%ux480i", m.hdisplay);
+	km.m480 = m;
+}
+
+static double km_tela_hz; /* medido depois de trocar de modo; o laco do jogo usa */
+
 static void km_prepara(void)
 {
 	if (!tubo || fb.fake || !tubo_480i_ok)
@@ -1786,9 +1804,12 @@ static void km_prepara(void)
 				free(ms);
 				continue;
 			}
+			/* o kernel guarda o 480i da EDID como "1920x240i" (linhas por campo; ele so
+			 * dobra os modos de TV padrao): qualquer modo da tela com a largura do tubo
+			 * serve para provar que e o conector certo; o 480i e montado abaixo */
 			int a = -1;
 			for (int j = 0; j < (int)g2.count_modes && j < nm; j++)
-				if ((ms[j].flags & DRM_MODE_FLAG_INTERLACE) && ms[j].vdisplay == 480 && ms[j].hdisplay == fb.w)
+				if (ms[j].hdisplay == fb.w)
 					a = j;
 			struct drm_mode_get_encoder ge;
 			memset(&ge, 0, sizeof ge);
@@ -1803,9 +1824,11 @@ static void km_prepara(void)
 					km.conn = cons[i];
 					km.fb_boot = cr.fb_id;
 					km.m240 = cr.mode;
-					km.m480 = ms[a];
+					km_monta_480i();
 					km.pode = true;
-					LOG("tubo: 480i disponivel (%s, %s; agora %s)", p, ms[a].name, cr.mode.name);
+					LOG("tubo: 480i montado a partir de %s (%s): %ux%u total %ux%u, %u kHz de pontos",
+					    cr.mode.name, p, km.m480.hdisplay, km.m480.vdisplay, km.m480.htotal, km.m480.vtotal,
+					    km.m480.clock);
 				}
 			}
 			free(ms);
@@ -1897,7 +1920,21 @@ static bool km_modo(bool p480)
 	else
 		fb_aponta(km.mem240, km.stride240, km.h240);
 	vs_seq = 0; /* o vsync recomeca a contagem */
-	LOG("tubo: saida agora %s", p480 ? "480i (entrelacado, 480 linhas)" : "240p");
+	/* entrelacado: o driver pode avisar o vblank por quadro (30/s) e nao por campo (60/s);
+	 * mede de novo para o jogo nao rodar na metade da velocidade */
+	double hz = 0;
+	if (vs_tipo == 1) {
+		bool m0 = vs_medindo;
+		vs_medindo = true;
+		double t = vs_mede(1);
+		vs_medindo = m0;
+		vs_seq = 0;
+		if (t > 0.010 && t < 0.040)
+			hz = 1.0 / t;
+	}
+	km_tela_hz = hz > 0 ? hz : (p480 ? 59.94 : 60.0);
+	LOG("tubo: saida agora %s; tela %.3f Hz%s", p480 ? "480i (entrelacado, 480 linhas)" : "240p", km_tela_hz,
+	    hz > 0 ? "" : " (sem medida)");
 	return true;
 }
 
@@ -4408,6 +4445,11 @@ int main(int argc, char **argv)
 		double tq = agora();
 		static double pico_ctrl, pico_run, pico_copia;
 		if (tq - t_loop0 > pico_ctrl) pico_ctrl = tq - t_loop0;
+		if (km_tela_hz > 0) { /* tubo trocou 240p <-> 480i: ritmo da tela novo */
+			tela_hz = km_tela_hz;
+			km_tela_hz = 0;
+			fps_ult = -1;
+		}
 		if (av.timing.fps != fps_ult) { /* o nucleo mudou de Hz (regiao, modo de video) */
 			fps_ult = av.timing.fps;
 			um_pra_um = !fb.sem_vsync && fps_ult > 0 && fabs(fps_ult - tela_hz) / tela_hz < UM_PRA_UM_MAX;

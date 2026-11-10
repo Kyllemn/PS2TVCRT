@@ -540,6 +540,12 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   volta ao fb do boot; ao sair, 240p; se cair, o kernel devolve o modo do fbdev ao fechar
   o DRM (sem SIGSEGV proprio: o Flycast usa esse sinal). tubo_480i = NAO desliga.
   LCD: 480i usa as 480 linhas (ampliacao calculada como 240: 3x no 1440x900).
+  1o teste: nunca trocou ("SAIDA TUBO 240p"). O kernel lista o 480i da EDID como
+  "1920x240i" (DTD entrelacado = linhas por campo; ele so dobra os modos CEA padrao) e o
+  rv-jogo procurava vdisplay 480. Correcao (sem compilar): o 480i e montado a partir do
+  240p em uso (mesmo clock e htotal = mesmos 15,7 kHz; 480 visiveis, 525 total, sync
+  3+3 linhas por campo, USERDEF). Depois de trocar, mede o vblank de novo: se o driver
+  avisar 30/s no entrelacado, o laco roda 2 quadros por vblank (nao fica lento).
 - TV sem som depois de ~5 s (efeito da troca nova): a saida de som HDMI e de um programa
   so; o mpv abria com a previa ainda tocando e ficava sem som. Agora abre com --aid=no e
   liga o som (aid auto) depois que a previa fecha. 1o build do Flycast "16 KB" nao valeu:
