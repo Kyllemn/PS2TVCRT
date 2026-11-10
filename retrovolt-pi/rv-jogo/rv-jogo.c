@@ -1165,12 +1165,13 @@ static void fb_abrir(void)
 {
 	const char *fk = getenv("RV_FAKEFB");
 	if (fk) {
-		char *c = strdup(fk), *dp = strrchr(c, ':');
+		char *c = strdup(fk), *bar = strrchr(c, '/'), *dp = strchr(bar ? bar : c, ':');
 		*dp = 0;
 		fb.fake = c;
-		sscanf(dp + 1, "%dx%d", &fb.w, &fb.h);
-		fb.bpp = 16;
-		fb.stride = fb.w * 2;
+		int bits = 16; /* teste: RV_FAKEFB=arq:LxA ou arq:LxA:32 (tela de 32 bits) */
+		sscanf(dp + 1, "%dx%d:%d", &fb.w, &fb.h, &bits);
+		fb.bpp = bits == 32 ? 32 : 16;
+		fb.stride = fb.w * fb.bpp / 8;
 		fb.tam = (size_t)fb.stride * fb.h;
 		fb.mem = calloc(1, fb.tam);
 		fb.sem_vsync = true;
@@ -1329,8 +1330,14 @@ static void fb_grava_fake(void)
 		return;
 	fprintf(f, "P6\n%d %d\n255\n", fb.w, fb.h);
 	for (int i = 0; i < fb.w * fb.h; i++) {
-		uint16_t p = ((uint16_t *)fb.mem)[i];
-		uint8_t rgb[3] = {(p >> 11) << 3, ((p >> 5) & 63) << 2, (p & 31) << 3};
+		uint8_t rgb[3];
+		if (fb.bpp == 32) {
+			uint32_t p = ((uint32_t *)fb.mem)[i];
+			rgb[0] = p >> 16; rgb[1] = p >> 8; rgb[2] = p;
+		} else {
+			uint16_t p = ((uint16_t *)fb.mem)[i];
+			rgb[0] = (p >> 11) << 3; rgb[1] = ((p >> 5) & 63) << 2; rgb[2] = (p & 31) << 3;
+		}
 		fwrite(rgb, 1, 3, f);
 	}
 	fclose(f);
@@ -1725,45 +1732,87 @@ static void osd_desenha(void)
 }
 
 
-/* ------------------------------------------------------------------ tubo: 240p <-> 480i
- * O boot deixa o tubo em 1920x240p (fbdev). Jogo em 480i (BIOS/3D do Dreamcast, PS1 em
- * 480i): troca a saida do HDMI para o 1920x480i da EDID do RetroVolt (mesmos 15,7 kHz;
- * a TV so passa a entrelacar) e desenha as 480 linhas num buffer proprio (KMS). Jogo de
- * volta a 240p: volta ao framebuffer do boot. Ao sair do rv-jogo o 240p volta (e, se ele
- * cair, o kernel devolve o modo do framebuffer ao fechar o DRM). --tubo-480i 0 desliga. */
-static int tubo_480i_ok = 1;
+/* ------------------------------------------------------------------ saida do jogo (KMS)
+ * O boot deixa a tela no fbdev em 16 bits (RGB565): branco quase puro vira esverdeado e
+ * degrade vira degrau. Durante o jogo o rv-jogo usa telas proprias em 32 bits (dumb
+ * buffers) no mesmo modo de video. No tubo, jogo em 480i: troca o HDMI para 480i (montado
+ * a partir do 240p em uso: mesmo relogio e linha = mesmos 15,7 kHz; o kernel lista o 480i
+ * da EDID como "1920x240i") e desenha as 480 linhas. Ao sair: volta o fbdev do boot. Se o
+ * rv-jogo cair, o kernel devolve o modo do fbdev ao fechar o DRM.
+ * --saida-32 0 desliga tudo (fica no fbdev 16 bits, 240p fixo); --tubo-480i 0 so o 480i. */
+static int tubo_480i_ok = 1, saida32_ok = 1;
+typedef struct { uint32_t fb_id; uint8_t *map; int pitch, h; size_t tam; } KmBuf;
 static struct {
-	bool pode, em480;
+	bool pode, ativo, pode480, em480;
 	int fd;
-	uint32_t crtc, conn, fb_boot, fb480, h480;
-	struct drm_mode_modeinfo m240, m480;
-	uint8_t *mem240, *map480;
-	int stride240, pitch480, h240;
-	size_t tam240, tam480;
+	uint32_t crtc, conn, fb_boot;
+	struct drm_mode_modeinfo m_boot, m480;
+	KmBuf b, b480;
+	uint8_t *mem_boot;
+	int stride_boot, h_boot, bpp_boot;
 	int quer, conta; /* modo pedido pelo jogo e ha quantos quadros (evita piscar) */
 } km = {.fd = -1};
+static double km_tela_hz; /* Hz do modo novo depois de uma troca; o laco do jogo usa */
 
-/* 480i (NTSC, 525 linhas, 2 campos) com a MESMA linha horizontal do 240p que ja funciona
- * (mesmo relogio de pontos e htotal = mesmos 15,7 kHz): so a parte vertical muda */
+static double km_hz(const struct drm_mode_modeinfo *m)
+{
+	double hz = m->clock * 1000.0 / ((double)m->htotal * m->vtotal);
+	return m->flags & DRM_MODE_FLAG_INTERLACE ? hz * 2 : hz;
+}
+
 static void km_monta_480i(void)
 {
-	struct drm_mode_modeinfo m = km.m240;
+	struct drm_mode_modeinfo m = km.m_boot;
 	m.vdisplay = 480;
 	m.vsync_start = 480 + 6;  /* 3 linhas de frente por campo */
 	m.vsync_end = 480 + 12;   /* 3 de sincronismo por campo */
 	m.vtotal = 525;
 	m.flags |= DRM_MODE_FLAG_INTERLACE;
 	m.type = 1 << 5; /* DRM_MODE_TYPE_USERDEF */
-	m.vrefresh = (unsigned)lround(m.clock * 1000.0 * 2 / ((double)m.htotal * m.vtotal));
+	m.vrefresh = (unsigned)lround(km_hz(&m));
 	snprintf(m.name, sizeof m.name, "%ux480i", m.hdisplay);
 	km.m480 = m;
 }
 
-static double km_tela_hz; /* medido depois de trocar de modo; o laco do jogo usa */
+static bool km_buf(KmBuf *b, int w, int h)
+{
+	struct drm_mode_create_dumb cd;
+	memset(&cd, 0, sizeof cd);
+	cd.width = w;
+	cd.height = h;
+	cd.bpp = 32;
+	if (ioctl(km.fd, DRM_IOCTL_MODE_CREATE_DUMB, &cd))
+		return false;
+	struct drm_mode_fb_cmd fc;
+	memset(&fc, 0, sizeof fc);
+	fc.width = w;
+	fc.height = h;
+	fc.pitch = cd.pitch;
+	fc.bpp = 32;
+	fc.depth = 24;
+	fc.handle = cd.handle;
+	struct drm_mode_map_dumb md;
+	memset(&md, 0, sizeof md);
+	md.handle = cd.handle;
+	if (ioctl(km.fd, DRM_IOCTL_MODE_ADDFB, &fc) || ioctl(km.fd, DRM_IOCTL_MODE_MAP_DUMB, &md))
+		return false;
+	b->map = mmap(NULL, cd.size, PROT_READ | PROT_WRITE, MAP_SHARED, km.fd, md.offset);
+	if (b->map == MAP_FAILED) {
+		b->map = NULL;
+		return false;
+	}
+	memset(b->map, 0, cd.size);
+	b->fb_id = fc.fb_id;
+	b->pitch = cd.pitch;
+	b->h = h;
+	b->tam = (size_t)cd.pitch * h;
+	return true;
+}
 
+/* acha o conector/CRTC que esta mostrando o fbdev (modo com o tamanho do fb0) */
 static void km_prepara(void)
 {
-	if (!tubo || fb.fake || !tubo_480i_ok)
+	if (fb.fake || !saida32_ok)
 		return;
 	char p[32];
 	for (int c = 0; c < 4 && !km.pode; c++) {
@@ -1771,19 +1820,18 @@ static void km_prepara(void)
 		int fd = open(p, O_RDWR | O_CLOEXEC);
 		if (fd < 0)
 			continue;
+		uint32_t cons[16];
 		struct drm_mode_card_res r;
 		memset(&r, 0, sizeof r);
 		if (ioctl(fd, DRM_IOCTL_MODE_GETRESOURCES, &r) || !r.count_connectors) {
 			close(fd);
 			continue;
 		}
-		uint32_t cons[16];
 		int nc = r.count_connectors > 16 ? 16 : r.count_connectors;
-		struct drm_mode_card_res r2;
-		memset(&r2, 0, sizeof r2);
-		r2.connector_id_ptr = (uintptr_t)cons;
-		r2.count_connectors = nc;
-		if (ioctl(fd, DRM_IOCTL_MODE_GETRESOURCES, &r2)) {
+		memset(&r, 0, sizeof r);
+		r.connector_id_ptr = (uintptr_t)cons;
+		r.count_connectors = nc;
+		if (ioctl(fd, DRM_IOCTL_MODE_GETRESOURCES, &r)) {
 			close(fd);
 			continue;
 		}
@@ -1791,158 +1839,131 @@ static void km_prepara(void)
 			struct drm_mode_get_connector gc;
 			memset(&gc, 0, sizeof gc);
 			gc.connector_id = cons[i];
-			if (ioctl(fd, DRM_IOCTL_MODE_GETCONNECTOR, &gc) || gc.connection != 1 || !gc.count_modes || !gc.encoder_id)
+			if (ioctl(fd, DRM_IOCTL_MODE_GETCONNECTOR, &gc) || gc.connection != 1 || !gc.encoder_id)
 				continue;
-			int nm = gc.count_modes;
-			struct drm_mode_modeinfo *ms = calloc(nm, sizeof *ms);
-			struct drm_mode_get_connector g2;
-			memset(&g2, 0, sizeof g2);
-			g2.connector_id = cons[i];
-			g2.modes_ptr = (uintptr_t)ms;
-			g2.count_modes = nm;
-			if (ioctl(fd, DRM_IOCTL_MODE_GETCONNECTOR, &g2)) {
-				free(ms);
-				continue;
-			}
-			/* o kernel guarda o 480i da EDID como "1920x240i" (linhas por campo; ele so
-			 * dobra os modos de TV padrao): qualquer modo da tela com a largura do tubo
-			 * serve para provar que e o conector certo; o 480i e montado abaixo */
-			int a = -1;
-			for (int j = 0; j < (int)g2.count_modes && j < nm; j++)
-				if (ms[j].hdisplay == fb.w)
-					a = j;
 			struct drm_mode_get_encoder ge;
 			memset(&ge, 0, sizeof ge);
 			ge.encoder_id = gc.encoder_id;
+			if (ioctl(fd, DRM_IOCTL_MODE_GETENCODER, &ge) || !ge.crtc_id)
+				continue;
 			struct drm_mode_crtc cr;
 			memset(&cr, 0, sizeof cr);
-			if (a >= 0 && !ioctl(fd, DRM_IOCTL_MODE_GETENCODER, &ge) && ge.crtc_id) {
-				cr.crtc_id = ge.crtc_id;
-				if (!ioctl(fd, DRM_IOCTL_MODE_GETCRTC, &cr) && cr.mode_valid && cr.fb_id) {
-					km.fd = fd;
-					km.crtc = ge.crtc_id;
-					km.conn = cons[i];
-					km.fb_boot = cr.fb_id;
-					km.m240 = cr.mode;
-					km_monta_480i();
-					km.pode = true;
-					LOG("tubo: 480i montado a partir de %s (%s): %ux%u total %ux%u, %u kHz de pontos",
-					    cr.mode.name, p, km.m480.hdisplay, km.m480.vdisplay, km.m480.htotal, km.m480.vtotal,
-					    km.m480.clock);
-				}
-			}
-			free(ms);
+			cr.crtc_id = ge.crtc_id;
+			if (ioctl(fd, DRM_IOCTL_MODE_GETCRTC, &cr) || !cr.mode_valid || !cr.fb_id ||
+			    cr.mode.hdisplay != fb.w || cr.mode.vdisplay != fb.h)
+				continue;
+			km.fd = fd;
+			km.crtc = ge.crtc_id;
+			km.conn = cons[i];
+			km.fb_boot = cr.fb_id;
+			km.m_boot = cr.mode;
+			km.pode = true;
 		}
 		if (!km.pode)
 			close(fd);
 	}
 	if (!km.pode) {
-		LOG("tubo: modo 480i nao encontrado: fica sempre em 240p");
+		LOG("saida: tela do boot nao encontrada no DRM: fica no fbdev (%d bits)", fb.bpp);
 		return;
 	}
-	struct drm_mode_create_dumb cd;
-	memset(&cd, 0, sizeof cd);
-	cd.width = fb.w;
-	cd.height = 480;
-	cd.bpp = fb.bpp;
-	struct drm_mode_fb_cmd fc;
-	memset(&fc, 0, sizeof fc);
-	struct drm_mode_map_dumb md;
-	memset(&md, 0, sizeof md);
-	if (ioctl(km.fd, DRM_IOCTL_MODE_CREATE_DUMB, &cd)) {
-		LOG("tubo: sem buffer 480i (%s)", strerror(errno));
+	if (!km_buf(&km.b, fb.w, fb.h)) {
+		LOG("saida: tela de 32 bits recusada (%s): fica no fbdev", strerror(errno));
 		km.pode = false;
 		return;
 	}
-	fc.width = fb.w;
-	fc.height = 480;
-	fc.pitch = cd.pitch;
-	fc.bpp = fb.bpp;
-	fc.depth = fb.bpp == 16 ? 16 : 24;
-	fc.handle = cd.handle;
-	md.handle = cd.handle;
-	if (ioctl(km.fd, DRM_IOCTL_MODE_ADDFB, &fc) || ioctl(km.fd, DRM_IOCTL_MODE_MAP_DUMB, &md)) {
-		LOG("tubo: buffer 480i recusado (%s)", strerror(errno));
-		km.pode = false;
-		return;
+	km.mem_boot = fb.mem;
+	km.stride_boot = fb.stride;
+	km.h_boot = fb.h;
+	km.bpp_boot = fb.bpp;
+	if (tubo && tubo_480i_ok) {
+		km_monta_480i();
+		km.pode480 = km_buf(&km.b480, fb.w, 480);
+		if (km.pode480)
+			LOG("tubo: 480i pronto: %ux480 total %ux%u, %.3f Hz por campo", km.m480.hdisplay, km.m480.htotal,
+			    km.m480.vtotal, km_hz(&km.m480));
 	}
-	km.map480 = mmap(NULL, cd.size, PROT_READ | PROT_WRITE, MAP_SHARED, km.fd, md.offset);
-	if (km.map480 == MAP_FAILED) {
-		LOG("tubo: mmap do buffer 480i falhou");
-		km.pode = false;
-		return;
-	}
-	memset(km.map480, 0, cd.size);
-	km.fb480 = fc.fb_id;
-	km.pitch480 = cd.pitch;
-	km.tam480 = (size_t)cd.pitch * 480;
-	km.mem240 = fb.mem;
-	km.stride240 = fb.stride;
-	km.tam240 = fb.tam;
-	km.h240 = fb.h;
 }
 
-static void fb_aponta(uint8_t *mem, int stride, int h)
+static void fb_aponta(uint8_t *mem, int stride, int h, int bpp)
 {
 	fb.mem = mem;
 	fb.stride = stride;
 	fb.h = h;
+	fb.bpp = bpp;
 	fb.tam = (size_t)stride * h;
 	free(fb.back);
 	fb.back = calloc(1, fb.tam);
 	ult_x0 = -99999; /* geometria nova: o desenho limpa e recalcula */
 	osd_w = 0;       /* o aviso de resolucao mostra a saida nova */
+	xmap_w = -1;     /* pontos convertidos de novo para o formato novo */
 }
 
-static bool km_modo(bool p480)
+static bool km_crtc(uint32_t fb_id, const struct drm_mode_modeinfo *m)
 {
-	if (!km.pode || p480 == km.em480)
-		return true;
 	ioctl(km.fd, DRM_IOCTL_SET_MASTER, 0);
 	struct drm_mode_crtc c;
 	memset(&c, 0, sizeof c);
 	c.crtc_id = km.crtc;
-	c.fb_id = p480 ? km.fb480 : km.fb_boot;
+	c.fb_id = fb_id;
 	c.set_connectors_ptr = (uintptr_t)&km.conn;
 	c.count_connectors = 1;
-	c.mode = p480 ? km.m480 : km.m240;
+	c.mode = *m;
 	c.mode_valid = 1;
-	if (ioctl(km.fd, DRM_IOCTL_MODE_SETCRTC, &c)) {
+	return ioctl(km.fd, DRM_IOCTL_MODE_SETCRTC, &c) == 0;
+}
+
+/* comeco do jogo: tela de 32 bits no mesmo modo do boot */
+static void km_entra(void)
+{
+	if (!km.pode)
+		return;
+	if (!km_crtc(km.b.fb_id, &km.m_boot)) {
+		LOG("saida: troca para 32 bits recusada (%s): fica no fbdev", strerror(errno));
+		km.pode = false;
+		return;
+	}
+	km.ativo = true;
+	fb_aponta(km.b.map, km.b.pitch, km.b.h, 32);
+	LOG("saida: tela do jogo em 32 bits (%s)", km.m_boot.name);
+}
+
+static bool km_modo(bool p480)
+{
+	if (!km.ativo || !km.pode480 || p480 == km.em480)
+		return true;
+	const struct drm_mode_modeinfo *m = p480 ? &km.m480 : &km.m_boot;
+	KmBuf *b = p480 ? &km.b480 : &km.b;
+	if (!km_crtc(b->fb_id, m)) {
 		LOG("tubo: troca para %s recusada (%s)%s", p480 ? "480i" : "240p", strerror(errno),
 		    p480 ? ": fica em 240p" : "");
 		if (p480)
-			km.pode = false;
+			km.pode480 = false;
 		return false;
 	}
 	km.em480 = p480;
-	if (p480)
-		fb_aponta(km.map480, km.pitch480, 480);
-	else
-		fb_aponta(km.mem240, km.stride240, km.h240);
-	vs_seq = 0; /* o vsync recomeca a contagem */
-	/* entrelacado: o driver pode avisar o vblank por quadro (30/s) e nao por campo (60/s);
-	 * mede de novo para o jogo nao rodar na metade da velocidade */
-	double hz = 0;
-	if (vs_tipo == 1) {
-		bool m0 = vs_medindo;
-		vs_medindo = true;
-		double t = vs_mede(1);
-		vs_medindo = m0;
-		vs_seq = 0;
-		if (t > 0.010 && t < 0.040)
-			hz = 1.0 / t;
-	}
-	km_tela_hz = hz > 0 ? hz : (p480 ? 59.94 : 60.0);
-	LOG("tubo: saida agora %s; tela %.3f Hz%s", p480 ? "480i (entrelacado, 480 linhas)" : "240p", km_tela_hz,
-	    hz > 0 ? "" : " (sem medida)");
+	fb_aponta(b->map, b->pitch, b->h, 32);
+	vs_seq = 0;                /* o vsync recomeca a contagem */
+	km_tela_hz = km_hz(m);     /* o Pi avisa o vblank por campo: 59,9 Hz no 480i (LOG do autor) */
+	LOG("tubo: saida agora %s; tela %.3f Hz", p480 ? "480i (entrelacado, 480 linhas)" : "240p", km_tela_hz);
 	return true;
+}
+
+/* fim do jogo: devolve o fbdev do boot (o menu do RetroVolt desenha nele) */
+static void km_sai(void)
+{
+	if (!km.ativo)
+		return;
+	if (!km_crtc(km.fb_boot, &km.m_boot))
+		LOG("saida: devolver a tela do boot falhou (%s)", strerror(errno));
+	km.ativo = km.em480 = false;
+	fb_aponta(km.mem_boot, km.stride_boot, km.h_boot, km.bpp_boot);
 }
 
 /* chamado a cada quadro do jogo: 480i so depois de 20 quadros seguidos pedindo
  * (os 3D do Dreamcast alternam 640x478/1280x480 com videos em 640x238) */
 static void km_quadro(unsigned h)
 {
-	if (!km.pode)
+	if (!km.ativo || !km.pode480)
 		return;
 	int q = h > 300;
 	if (q != km.quer) {
@@ -1953,11 +1974,10 @@ static void km_quadro(unsigned h)
 		km_modo(q);
 }
 
-/* sinal fatal: devolve o 240p antes de morrer (nunca ficar sem imagem) */
+/* sinal fatal: devolve a tela do boot antes de morrer (nunca ficar sem imagem) */
 static void km_fatal(int s)
 {
-	if (km.em480)
-		km_modo(false);
+	km_sai();
 	signal(s, SIG_DFL);
 	raise(s);
 }
@@ -2403,7 +2423,31 @@ static uint8_t *ult_q;
 static unsigned ult_w, ult_h;
 static size_t ult_pitch, ult_cap;
 static int ult_fmt;
+static uint32_t px_rgb(const uint8_t *src, unsigned x, int fmt);
 
+/* diagnostico: ao abrir o menu do jogo grava o ultimo quadro EXATAMENTE como o nucleo
+ * entregou (antes da convergencia/efeitos/saida) em /run/retrovolt/gpu_menu.ppm */
+static void quadro_foto(void)
+{
+	if (!ult_q || !ult_w || !ult_h)
+		return;
+	FILE *f = fopen("/run/retrovolt/gpu_menu.ppm", "wb");
+	if (!f)
+		return;
+	fprintf(f, "P6\n%u %u\n255\n", ult_w, ult_h);
+	uint8_t *l = malloc(ult_w * 3);
+	for (unsigned y = 0; l && y < ult_h; y++) {
+		const uint8_t *src = ult_q + (size_t)y * ult_pitch;
+		for (unsigned x = 0; x < ult_w; x++) {
+			uint32_t c = px_rgb(src, x, ult_fmt);
+			l[x * 3] = c >> 16; l[x * 3 + 1] = c >> 8; l[x * 3 + 2] = c;
+		}
+		fwrite(l, 1, ult_w * 3, f);
+	}
+	free(l);
+	fclose(f);
+	LOG("quadro do jogo gravado em /run/retrovolt/gpu_menu.ppm (%ux%u)", ult_w, ult_h);
+}
 static void video_cb(const void *data, unsigned w, unsigned h, size_t pitch)
 {
 	if (!data) /* repetir quadro: o fb.back ja tem a imagem */
@@ -4238,6 +4282,7 @@ int main(int argc, char **argv)
 		else if (!strcmp(k, "--cd-vel")) cd_vel = atoi(v);
 		else if (!strcmp(k, "--cd-faixas")) cd_faixas = atoi(v) != 0;
 		else if (!strcmp(k, "--tubo-480i")) tubo_480i_ok = atoi(v) != 0;
+		else if (!strcmp(k, "--saida-32")) saida32_ok = atoi(v) != 0;
 		else if (!strcmp(k, "--cd-cache")) { /* MB */
 			int64_t n = (int64_t)atoi(v) * 1024 * 1024 / (BLOCO * SETOR);
 			ncache = n < NCACHE ? NCACHE : n > 16384 ? 16384 : (int)n;
@@ -4328,6 +4373,7 @@ int main(int argc, char **argv)
 	}
 	fb_abrir();
 	km_prepara();
+	km_entra();
 	menu_tamanho();
 	if (!core.load_game(&gi)) {
 		LOG("ERRO: o nucleo nao abriu o jogo");
@@ -4416,6 +4462,7 @@ int main(int argc, char **argv)
 			som_mudo = true;
 			menu_fundo();
 			LOG("menu aberto");
+			quadro_foto();
 			sram_grava(false);
 		} else if (menu) {
 			int escolha = menu_passo(b, novo, combo);
@@ -4533,7 +4580,7 @@ int main(int argc, char **argv)
 		}
 		LOG("volume: %d", volume);
 	}
-	km_modo(false); /* menu do RetroVolt: sempre 240p */
+	km_sai(); /* menu do RetroVolt: a tela do boot (240p no tubo) */
 	gl_fim();
 	core.unload_game();
 	core.deinit();

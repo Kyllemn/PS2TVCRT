@@ -546,6 +546,14 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   240p em uso (mesmo clock e htotal = mesmos 15,7 kHz; 480 visiveis, 525 total, sync
   3+3 linhas por campo, USERDEF). Depois de trocar, mede o vblank de novo: se o driver
   avisar 30/s no entrelacado, o laco roda 2 quadros por vblank (nao fica lento).
+- Saida do jogo em 32 bits (compilado): o fbdev do boot e 16 bits (RGB565) e cortava a cor
+  do Flycast (branco quase puro esverdeado, degrade em degraus: as "sombras" da BIOS). O
+  rv-jogo agora usa telas proprias de 32 bits (dumb buffers) no modo do boot, no tubo e no
+  LCD; o 480i usa outra de 1920x480. Ao sair devolve o fbdev. --saida-32 0 desliga.
+  Troca 240p<->480i sem medir o vblank (o LOG mostrou 60 campos/s): Hz pela conta do modo.
+  Ao abrir o menu do jogo: ultimo quadro do nucleo em /run/retrovolt/gpu_menu.ppm (para
+  ver se os pontinhos em grade do Gunbird/Psikyo ja vem da GPU).
+  Teste no PC: RV_FAKEFB=arq:LxA:32 (tela de 32 bits).
 - TV sem som depois de ~5 s (efeito da troca nova): a saida de som HDMI e de um programa
   so; o mpv abria com a previa ainda tocando e ficava sem som. Agora abre com --aid=no e
   liga o som (aid auto) depois que a previa fecha. 1o build do Flycast "16 KB" nao valeu:
