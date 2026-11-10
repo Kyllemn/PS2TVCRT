@@ -116,7 +116,8 @@ CFG_PADRAO = [
     ('JOGOS', None, None),
     ('pasta_jogos', 'pendrive', 'onde ficam jogos, BIOS e saves: pendrive ou cartao'),
     ('VIDEO', None, None),
-    ('video_saida', 'AUTO', 'AUTO detecta pela EDID; TUBO ou LCD forca'),
+    ('video_saida', 'AUTO', 'AUTO detecta pela EDID; TUBO ou LCD forca (so na tela em que foi escolhido)'),
+    ('video_saida_tela', '', 'tela onde TUBO/LCD foi escolhido (preenchido sozinho; outra tela = detecta)'),
     ('video_modo', 'AUTO', 'resolucao do LCD: AUTO (nativa do monitor) ou LARGURAXALTURA, ex.: 1280X720'),
     ('video_filtro', 'NENHUM', 'so no LCD: NENHUM, SCANLINES, SCANLINES LEVES, CRT, SUAVE, SCALE2X, SCALE3X ou XBR (padrao; cada nucleo pode ter o seu)'),
     ('MENU', None, None),
@@ -2522,8 +2523,15 @@ class App:
         if self.fb.fake:
             return
         try:
-            saida, modo, motivo = video.decide(forcado, self.modo_cfg())
+            tela = None if manual else self.cfg.get('video_saida_tela') or None
+            saida, modo, motivo = video.decide(forcado, self.modo_cfg(), tela)
             print('video: %s -> %s %s (%s)' % (video.modo_atual(), saida, modo or '', motivo), flush=True)
+            # escolha feita a mao agora: vale para ESTA tela (identidade guardada)
+            if manual:
+                novo = video.ULTIMA_TELA if forcado in ('TUBO', 'LCD') and video.ULTIMA_TELA else ''
+                if self.cfg.get('video_saida_tela', '') != novo:
+                    self.cfg['video_saida_tela'] = novo
+                    cfg_gravar(self.cfg)
             if saida and video.troca(saida, modo):
                 c = Canvas()
                 c.ctext(110, 'MUDANDO PARA %s...' % saida.upper(), ORANGE)

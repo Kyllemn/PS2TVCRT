@@ -353,17 +353,39 @@ def desfaz_teste():
     return True
 
 
-def decide(forcado='AUTO', modo_escolhido=None):
+ULTIMA_TELA = None    # identificacao da tela lida no ultimo decide (fabricante:produto:nome)
+
+
+def identidade(info):
+    return '%s:%04X:%s' % (info['fab'], info['prod'], (info['nome'] or '').strip()) if info else None
+
+
+def decide(forcado='AUTO', modo_escolhido=None, tela_da_escolha=None):
     """(saida_desejada, modo_lcd, motivo). forcado: AUTO / TUBO / LCD.
-    modo_escolhido: resolucao do LCD escolhida em OPCOES > VIDEO (senao a nativa)"""
+    modo_escolhido: resolucao do LCD escolhida em OPCOES > VIDEO (senao a nativa).
+    tela_da_escolha: identidade da tela onde TUBO/LCD foi escolhido a mao. A escolha so vale
+    para ela: ligado em OUTRA tela (ex.: estava no tubo, agora no LCD), detecta sozinho -
+    senao o LCD recebia o sinal do tubo e ficava sem imagem."""
+    global ULTIMA_TELA
     e, onde = _le_confirmada()
     info = analisa(e)
+    ULTIMA_TELA = identidade(info)
     if info:
         print('video: EDID (%s) %s %04X "%s" preferido %s; modos %s' % (
             onde, info['fab'], info['prod'], info['nome'] or '', info['pref'],
             ' '.join('%dx%d@%g' % m for m in info['modos'][:16])), flush=True)
     else:
         print('video: EDID nao lida (%s)' % onde, flush=True)
+    detectado = classifica(info)
+    if forcado in ('TUBO', 'LCD') and info and tela_da_escolha and ULTIMA_TELA != tela_da_escolha:
+        print('video: escolha %s foi feita em outra tela (%s); esta e %s: detectando' % (
+            forcado, tela_da_escolha, ULTIMA_TELA), flush=True)
+        forcado = 'AUTO'
+    elif forcado in ('TUBO', 'LCD') and not tela_da_escolha and detectado and detectado != forcado.lower():
+        # escolha antiga (sem a identidade da tela) e a tela ligada e claramente a outra
+        print('video: escolha %s, mas esta tela e %s (%s): detectando' % (forcado, detectado.upper(), ULTIMA_TELA),
+              flush=True)
+        forcado = 'AUTO'
     if forcado in ('TUBO', 'LCD'):
         saida = forcado.lower()
         motivo = 'escolhido em OPCOES > VIDEO'

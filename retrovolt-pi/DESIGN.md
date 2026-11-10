@@ -521,3 +521,9 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   (CDs primeiro, depois Sega cartucho). Extensoes que os nucleos aceitavam e o menu nao
   mostrava: PS1 .mdf .toc .cbn; PCE .toc; MD .mdx .bms. Nucleo ausente no pacote:
   "NUCLEO AINDA NAO INSTALADO" (32X ate compilar o PicoDrive).
+- Protecao de video (autor ligou no LCD com SAIDA=TUBO escolhida e ficou sem imagem): a
+  escolha a mao de TUBO/LCD vale so para a tela em que foi feita (video_saida_tela =
+  fabricante:produto:nome da EDID, gravado ao escolher). Ligado em outra tela, detecta
+  sozinho. Escolha antiga (sem tela gravada) com a tela claramente da outra classe:
+  detecta. EDID nao lida: mantem a escolha. Recuperacao manual: SELECT 5 s, ou PuTTY
+  (video_saida = AUTO + tirar drm.edid_firmware e video=HDMI-A-1 do cmdline).
