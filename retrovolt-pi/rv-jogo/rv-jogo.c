@@ -2492,7 +2492,7 @@ static bool vk_prepara(void)
 {
 	if (vk.pronto)
 		return true;
-	if (!gpu_quer_vulkan || fb.fake)
+	if (!gpu_quer_vulkan)
 		return false;
 	vk.lib = dlopen("libvulkan.so.1", RTLD_NOW | RTLD_LOCAL);
 	if (!vk.lib) {
