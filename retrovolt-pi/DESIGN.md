@@ -407,3 +407,7 @@ Licoes do PS1/PCE aplicadas:
   3028 ms - ESTAVA PARANDO" na animacao da BIOS), mesmo aceitando o pedido de 32 min.
   Intervalo agora ajustavel: leitora_acordar no retrovolt.cfg (padrao 10, a regra do
   autor; 2 a 60) -> rv-jogo --cd-acorda.
+- Autor (R18): a leitora ainda ACELERA E DESACELERA durante o jogo. Pendente.
+  Causas provaveis: (1) ela desacelera sozinha em menos de 10 s sem leitura; (2) cada
+  troca entre dados e musica muda a rotacao. Caminhos: intervalo menor do acorda
+  (leitora_acordar), e/ou rotacao fixa (leitora_velocidade=0 = maxima, constante).
