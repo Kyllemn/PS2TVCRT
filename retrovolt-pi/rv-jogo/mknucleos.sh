@@ -26,4 +26,10 @@ python3 "$(dirname "$0")/remendos/neocd_nomes_sem_caixa.py" "$T/neocd"
        AR=aarch64-linux-gnu-ar -j"$(nproc)" >/dev/null )   # Neo Geo CD (CD pelo VFS; BIOS opcional: tem HLE)
 aarch64-linux-gnu-strip -o "$DEST/neocd_libretro.so" "$T/neocd/neocd_libretro.so"
 echo "neocd $(cd "$T/neocd" && git log -1 --format=%h)"
+git clone -q --depth 1 https://github.com/libretro/picodrive "$T/pico"
+( cd "$T/pico" && git submodule update --init --depth 1 -q &&
+  make -f Makefile.libretro platform=aarch64 CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++ \
+       AR=aarch64-linux-gnu-ar -j"$(nproc)" >/dev/null )   # 32X (e MD/SMS/Sega CD, mas esses ficam no GPGX)
+aarch64-linux-gnu-strip -o "$DEST/picodrive_libretro.so" "$T/pico/picodrive_libretro.so"
+echo "picodrive $(cd "$T/pico" && git log -1 --format=%h)"
 rm -rf "$T"

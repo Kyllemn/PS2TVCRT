@@ -514,3 +514,10 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   arquivo .conv de cada nucleo guarda 4 valores (o antigo, com 3, continua valendo).
   O jogo comeca em 100% de altura ate ser ajustado (encolher pula linhas da imagem do
   jogo); SELECT copia a convergencia do menu, altura inclusive.
+- Um sistema por console (pedido do autor), mesmo quando o nucleo e o mesmo: Genesis
+  Plus GX = Mega Drive, Master System, Game Gear (novo, .gg), SG-1000 (novo, .sg) e Sega
+  CD; PicoDrive (novo, mknucleos) = 32X (.32x/.bin). Cartucho so aparece com jogos na
+  pasta; CD com nucleo aparece sempre (INICIAR CD). Ordem do menu = ordem de SISTEMAS
+  (CDs primeiro, depois Sega cartucho). Extensoes que os nucleos aceitavam e o menu nao
+  mostrava: PS1 .mdf .toc .cbn; PCE .toc; MD .mdx .bms. Nucleo ausente no pacote:
+  "NUCLEO AINDA NAO INSTALADO" (32X ate compilar o PicoDrive).
