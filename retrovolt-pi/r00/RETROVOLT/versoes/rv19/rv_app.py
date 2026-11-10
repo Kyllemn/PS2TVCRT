@@ -2075,8 +2075,10 @@ class App:
         ini = max(0, min(sel - cabem // 2, len(canais) - cabem))
         lim = (W - 40 - bw - 4) // F.cw - 3
         y = y0
+        larg = max(len(cs.get('num', '')) for cs in canais)
         for n in range(ini, min(len(canais), ini + cabem)):
-            item(c, 24, y, canais[n]['nome'].upper()[:lim], n == sel)
+            num = canais[n].get('num', str(n + 1)).rjust(larg)
+            item(c, 24, y, ('%s %s' % (num, canais[n]['nome'].upper()))[:lim], n == sel)
             y += passo
         # caixa da previa: preta com contorno; o video entra por cima (direto na tela)
         c.rect(x0 - 1, y0c - 1, bw + 2, bh + 2, (200, 205, 215))
@@ -2092,7 +2094,7 @@ class App:
             if ch.get('grupo'):
                 c.text(x0 + 6, y0c + 6, ch['grupo'].upper()[:bw // F.cw - 2], SLATE)
             c.text(x0 + 6, y0c + bh // 2 - F.ch // 2, 'A: ASSISTIR', SLATE)
-        c.text(x0, y0c + bh + 6, ch['nome'].upper()[:bw // F.cw], IVORY)
+        c.text(x0, y0c + bh + 6, ('%s %s' % (ch.get('num', ''), ch['nome'].upper())).strip()[:bw // F.cw], IVORY)
 
     def tv_para_previa(self):
         pv = getattr(self, 'tv_previa', None)
@@ -2148,7 +2150,9 @@ class App:
         self.leitora.pausa.set()
         self.tela = 'tv_cheia'
         print('tv: tela cheia %s' % ch['nome'], flush=True)
-        self.tv_cheia.abre(ch['url'], ch['nome'])
+        self.tv_cheia.volume = self.volume()
+        self.tv_cheia.abre(ch['url'], '%s  %s' % (ch.get('num', ''), ch['nome']),
+                           '%s  %s\nA: LISTA DE CANAIS   <- ->: VOLUME   B: VOLTAR' % (ch.get('num', ''), ch['nome']))
 
     def tv_sai_tela_cheia(self, aviso=None):
         if getattr(self, 'tv_cheia', None):
@@ -2215,16 +2219,67 @@ class App:
             elif len(self.tv_listas) > 1:
                 st['lista'] = None
 
+    def tv_guia_mostra(self):
+        """guia por cima do video: 9 canais em volta do cursor (o video continua)"""
+        canais = self.tv_canais()
+        g = self.tv_guia
+        linhas = []
+        for i in range(g - 4, g + 5):
+            if 0 <= i < len(canais):
+                c = canais[i]
+                marca = '>> ' if i == g else '    '
+                atual = '  (NO AR)' if i == self.tv_st['sel'] else ''
+                linhas.append('%s%s  %s%s' % (marca, c.get('num', i + 1), c['nome'], atual))
+        grupo = canais[g].get('grupo', '')
+        topo = (grupo.upper() + '\n') if grupo else ''
+        self.tv_cheia.texto(topo + '\n'.join(linhas) + '\n\nA: ASSISTIR   B: FECHAR   <- ->: VOLUME', 6000)
+        self.tv_guia_ate = time.monotonic() + 6
+
     def acao_tv_cheia(self, a):
+        """tela cheia. Sem guia: CIMA/BAIXO troca de canal, A abre o guia, B/START volta a
+        lista. Com guia: CIMA/BAIXO anda no guia (o video continua), A troca, B fecha.
+        ESQ/DIR (ou L1/R1): volume."""
         canais = self.tv_canais()
         st = self.tv_st
+        guia = time.monotonic() < getattr(self, 'tv_guia_ate', 0)
+        if a in ('ESQ', 'DIR', 'L1', 'R1'):
+            v = max(0, min(100, self.volume() + (5 if a in ('DIR', 'R1') else -5)))
+            self.cfg['volume'] = str(v)
+            self.vol_sujo = time.monotonic()            # grava no retrovolt.cfg em 1,5 s
+            self.tv_cheia.muda_volume(v)
+            return
+        if not canais:
+            self.tv_sai_tela_cheia()
+            return
+        if guia:
+            if a in ('CIMA', 'BAIXO'):
+                self.tv_guia = (self.tv_guia + (1 if a == 'BAIXO' else -1)) % len(canais)
+                self.tv_guia_mostra()
+            elif a == 'A':
+                self.tv_guia_ate = 0
+                if self.tv_guia != st['sel']:
+                    st['sel'] = self.tv_guia
+                    ch = canais[st['sel']]
+                    print('tv: canal %s (guia)' % ch['nome'], flush=True)
+                    self.tv_cheia.troca(ch['url'], '%s  %s' % (ch.get('num', ''), ch['nome']))
+                else:
+                    self.tv_cheia.texto('', 1)
+            elif a in ('B', 'SELECT'):
+                self.tv_guia_ate = 0
+                self.tv_cheia.texto('', 1)
+            elif a == 'START':
+                self.tv_sai_tela_cheia()
+            return
         if a in ('B', 'START', 'SELECT'):
             self.tv_sai_tela_cheia()
-        elif a in ('CIMA', 'BAIXO') and canais:      # troca de canal, como na TV
+        elif a == 'A':
+            self.tv_guia = st['sel']
+            self.tv_guia_mostra()
+        elif a in ('CIMA', 'BAIXO'):      # troca de canal, como na TV
             st['sel'] = (st['sel'] + (1 if a == 'CIMA' else -1)) % len(canais)
             ch = canais[st['sel']]
             print('tv: canal %s' % ch['nome'], flush=True)
-            self.tv_cheia.troca(ch['url'], '%d  %s' % (st['sel'] + 1, ch['nome']))
+            self.tv_cheia.troca(ch['url'], '%s  %s' % (ch.get('num', ''), ch['nome']))
 
     def desenha_conv(self, c):
         """teste de convergencia: borda inteira, cantos e cruz no centro (sumiu na rv04)"""

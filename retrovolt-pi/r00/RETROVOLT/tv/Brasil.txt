@@ -1,0 +1,52 @@
+# RetroTV - canais abertos do Brasil (listas publicas do iptv-org.github.io)
+# Cada linha: Nome do grupo, link da lista. Na aba TV, ESQ/DIR pula de grupo.
+# Para tirar um grupo, coloque # no comeco da linha.
+Brasil, https://iptv-org.github.io/iptv/countries/br.m3u
+Amazonas, https://iptv-org.github.io/iptv/subdivisions/br-am.m3u
+Bahia, https://iptv-org.github.io/iptv/subdivisions/br-ba.m3u
+Ceara, https://iptv-org.github.io/iptv/subdivisions/br-ce.m3u
+Fortaleza, https://iptv-org.github.io/iptv/cities/brfor.m3u
+Distrito Federal, https://iptv-org.github.io/iptv/subdivisions/br-df.m3u
+Brasilia, https://iptv-org.github.io/iptv/cities/brbsb.m3u
+Espirito Santo, https://iptv-org.github.io/iptv/subdivisions/br-es.m3u
+Cachoeiro de Itapemirim, https://iptv-org.github.io/iptv/cities/brcdi.m3u
+Sao Mateus, https://iptv-org.github.io/iptv/cities/brsms.m3u
+Maranhao, https://iptv-org.github.io/iptv/subdivisions/br-ma.m3u
+Caxias, https://iptv-org.github.io/iptv/cities/brcxs.m3u
+Mato Grosso, https://iptv-org.github.io/iptv/subdivisions/br-mt.m3u
+Cuiaba, https://iptv-org.github.io/iptv/cities/brcba.m3u
+Rondonopolis, https://iptv-org.github.io/iptv/cities/brroo.m3u
+Minas Gerais, https://iptv-org.github.io/iptv/subdivisions/br-mg.m3u
+Mutum, https://iptv-org.github.io/iptv/cities/brmuu.m3u
+Patos de Minas, https://iptv-org.github.io/iptv/cities/brpmi.m3u
+Sao Sebastiao do Paraiso, https://iptv-org.github.io/iptv/cities/brssp.m3u
+Uberlandia, https://iptv-org.github.io/iptv/cities/brudi.m3u
+Vicosa, https://iptv-org.github.io/iptv/cities/brvis.m3u
+Para, https://iptv-org.github.io/iptv/subdivisions/br-pa.m3u
+Castanhal, https://iptv-org.github.io/iptv/cities/brcas.m3u
+Paraiba, https://iptv-org.github.io/iptv/subdivisions/br-pb.m3u
+Araruna, https://iptv-org.github.io/iptv/cities/brarw.m3u
+Joao Pessoa, https://iptv-org.github.io/iptv/cities/brjpa.m3u
+Parana, https://iptv-org.github.io/iptv/subdivisions/br-pr.m3u
+Rio de Janeiro (estado), https://iptv-org.github.io/iptv/subdivisions/br-rj.m3u
+Cabo Frio, https://iptv-org.github.io/iptv/cities/brcfo.m3u
+Marica, https://iptv-org.github.io/iptv/cities/brmrc.m3u
+Nova Friburgo, https://iptv-org.github.io/iptv/cities/brnfu.m3u
+Rio de Janeiro, https://iptv-org.github.io/iptv/cities/brrio.m3u
+Rio Grande do Norte, https://iptv-org.github.io/iptv/subdivisions/br-rn.m3u
+Natal, https://iptv-org.github.io/iptv/cities/brnat.m3u
+Rio Grande do Sul, https://iptv-org.github.io/iptv/subdivisions/br-rs.m3u
+Passo Fundo, https://iptv-org.github.io/iptv/cities/brpfo.m3u
+Porto Alegre, https://iptv-org.github.io/iptv/cities/brpoa.m3u
+Santa Catarina, https://iptv-org.github.io/iptv/subdivisions/br-sc.m3u
+Balneario Camboriu, https://iptv-org.github.io/iptv/cities/brbac.m3u
+Sao Jose, https://iptv-org.github.io/iptv/cities/brsje.m3u
+Sao Paulo (estado), https://iptv-org.github.io/iptv/subdivisions/br-sp.m3u
+Aracatuba, https://iptv-org.github.io/iptv/cities/braru.m3u
+Guarulhos, https://iptv-org.github.io/iptv/cities/brgus.m3u
+Itapetininga, https://iptv-org.github.io/iptv/cities/briig.m3u
+Osasco, https://iptv-org.github.io/iptv/cities/brosa.m3u
+Sao Paulo, https://iptv-org.github.io/iptv/cities/brsao.m3u
+Sertaozinho, https://iptv-org.github.io/iptv/cities/brszo.m3u
+Tocantins, https://iptv-org.github.io/iptv/subdivisions/br-to.m3u
+Parana (TO), https://iptv-org.github.io/iptv/cities/brprx.m3u

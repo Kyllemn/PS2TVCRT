@@ -441,3 +441,12 @@ Licoes do PS1/PCE aplicadas:
   das listas em segundo plano ("LENDO AS LISTAS..."). Lista com grupos (group-title):
   ESQ/DIR pula de grupo; o grupo aparece no titulo. Testado com a lista do autor
   (Pluto TV ES: 152 canais, 17 grupos; canal abriu na previa).
+- RetroTV, tela cheia: A abre o GUIA por cima do video (9 canais, o video continua;
+  CIMA/BAIXO anda, A troca, B fecha); sem guia CIMA/BAIXO troca de canal direto;
+  ESQ/DIR ou L1/R1 = volume (salvo no retrovolt.cfg, o mesmo dos jogos); B/START volta
+  a lista. Numero antes do nome: tvg-chno da lista se existir (o iptv-org nao tem;
+  numero real de canal aberto muda por cidade), senao a posicao. Nomes limpos de
+  "(720p)" e "[Not 24/7]". "Nome, link" no .txt = grupo com esse nome; varias listas
+  baixadas juntas (49 listas em 1,7 s). Grupos espalhados sao juntados (Pluto: 122 -> 16).
+- RETROVOLT/tv/Brasil.txt: listas do autor (iptv-org, Brasil + estados + cidades),
+  495 canais em 49 grupos.

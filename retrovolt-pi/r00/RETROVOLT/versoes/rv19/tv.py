@@ -25,6 +25,13 @@ SOCK = '/run/retrovolt/mpv.sock'
 
 
 # ------------------------------------------------------------------ listas
+def limpa_nome(n):
+    """'TV Camara (288p) [Not 24/7]' -> 'TV Camara' (qualidade e avisos so atrapalham a lista)"""
+    n = re.sub(r'\s*\[[^\]]*\]', '', n)
+    n = re.sub(r'\s*\((?:\d{3,4}[pi]|\d+K|SD|HD|FHD|UHD)\)', '', n, flags=re.I)
+    return n.strip()
+
+
 def _m3u(txt):
     out, info = [], None
     for l in txt.splitlines():
@@ -34,8 +41,8 @@ def _m3u(txt):
         if l.upper().startswith('#EXTINF'):
             atr = dict(re.findall(r'([\w-]+)="([^"]*)"', l))
             nome = l.rsplit(',', 1)[1].strip() if ',' in l else ''
-            info = {'nome': nome or atr.get('tvg-name', ''), 'grupo': atr.get('group-title', ''),
-                    'logo': atr.get('tvg-logo', '')}
+            info = {'nome': limpa_nome(nome or atr.get('tvg-name', '')), 'grupo': atr.get('group-title', ''),
+                    'logo': atr.get('tvg-logo', ''), 'chno': atr.get('tvg-chno', '').strip()}
             continue
         if l.startswith('#'):
             continue
@@ -73,11 +80,13 @@ def _txt(txt):
         l = l.strip()
         if not l or l.startswith('#'):
             continue
+        dado = False
         if ',' in l and '://' in l.rsplit(',', 1)[1]:
             nome, url = (x.strip() for x in l.rsplit(',', 1))
+            dado = True
         else:
             nome, url = os.path.basename(l.split('?')[0]) or l, l
-        out.append({'nome': nome, 'url': url, 'grupo': '', 'logo': ''})
+        out.append({'nome': nome, 'url': url, 'grupo': '', 'logo': '', 'nome_dado': dado})
     return out
 
 
@@ -138,20 +147,35 @@ def le_lista(path):
     # link de LISTA dentro do arquivo (ex.: .txt com o endereco de um .m3u de IPTV):
     # baixa e troca pelo conteudo. Canal HLS (.m3u8 de um canal so) fica como esta.
     pasta = os.path.dirname(path)
+    baixar = [c for c in canais if ext == '.txt' and '://' in c['url'] and _parece_lista(c['url'])]
+    textos = {}
+    if baixar:      # varias listas no mesmo .txt (ex.: estados e cidades): baixa juntas
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(8) as ex:
+            for c, t in zip(baixar, ex.map(lambda c: baixa_lista(c['url'], os.path.join(pasta, '.cache')), baixar)):
+                textos[id(c)] = t
     expandidos = []
     for c in canais:
-        if '://' in c['url'] and _parece_lista(c['url']) and ext == '.txt' or c.get('lista'):
-            txt2 = baixa_lista(c['url'], os.path.join(pasta, '.cache'))
-            if txt2 and _e_lista_de_canais(txt2):
-                novos = _m3u(txt2)
-                print('tv: %s -> %d canais' % (c['url'][:80], len(novos)), flush=True)
-                expandidos += novos
-                continue
-            if txt2 and txt2.lstrip().lower().startswith('[playlist]'):
-                expandidos += _pls(txt2)
-                continue
+        txt2 = textos.get(id(c))
+        if txt2 and (_e_lista_de_canais(txt2) or txt2.lstrip().lower().startswith('[playlist]')):
+            novos = _m3u(txt2) if _e_lista_de_canais(txt2) else _pls(txt2)
+            if c.get('nome_dado'):          # "Bahia, link": os canais ficam no grupo BAHIA
+                for n in novos:
+                    n['grupo'] = c['nome']
+            print('tv: %s -> %d canais' % (c['url'][:80], len(novos)), flush=True)
+            expandidos += novos
+            continue
         expandidos.append(c)
     canais = expandidos
+    # grupos espalhados (ex.: Pluto): junta cada grupo, na ordem em que aparece
+    if not any(c.get('chno') for c in canais):
+        ordem = {}
+        for c in canais:
+            ordem.setdefault(c.get('grupo', ''), len(ordem))
+        canais.sort(key=lambda c: ordem[c.get('grupo', '')])     # sort estavel
+    # numero do canal: o da lista (tvg-chno), senao a posicao
+    for i, c in enumerate(canais):
+        c['num'] = c.get('chno') or str(i + 1)
     # caminho relativo (video no pendrive): relativo a pasta da lista
     for c in canais:
         if '://' not in c['url'] and not c['url'].startswith('/'):
@@ -251,7 +275,7 @@ class TelaCheia:
         self.proc = None
         self.com_mpv = bool(shutil.which('mpv'))
 
-    def abre(self, url, nome=''):
+    def abre(self, url, nome='', msg=''):
         self.fecha()
         if self.com_mpv:
             try:
@@ -263,6 +287,8 @@ class TelaCheia:
                    '--no-osc', '--input-ipc-server=' + SOCK, '--volume=%d' % self.volume,
                    '--osd-level=1', '--osd-duration=3000', '--keep-open=no', '--cache=yes',
                    '--demuxer-max-bytes=32MiB', '--force-media-title=' + (nome or url)]
+            if msg:      # aparece quando o canal comeca (o socket ainda nao existe aqui)
+                cmd += ['--osd-playing-msg=' + msg.replace('\n', '   '), '--osd-playing-msg-duration=4000']
             if self.tubo:
                 # tela larga de 240 linhas (pontos 6x mais largos): a imagem sai na proporcao
                 # certa e com as linhas do tubo (abaixo de 480i)
@@ -295,6 +321,17 @@ class TelaCheia:
                 self._comando(['show-text', nome or url, 3000])
                 return
         self.abre(url, nome)
+
+    def muda_volume(self, v):
+        self.volume = v
+        if self.com_mpv and self.rodando():
+            self._comando(['set_property', 'volume', v])
+            self._comando(['show-text', 'VOLUME %d' % v, 1500])
+
+    def texto(self, txt, ms=4000):
+        """texto por cima do video (guia de canais, avisos); so com mpv"""
+        if self.com_mpv and self.rodando():
+            self._comando(['show-text', txt, ms])
 
     def _comando(self, cmd):
         try:
