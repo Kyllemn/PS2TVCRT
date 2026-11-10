@@ -529,7 +529,7 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
 - Dreamcast, 3o LOG (diagnostico): no 3D em 480i o Flycast informa o DOBRO da largura
   (640x480 -> 1280; 800x600 -> 1600) e avisa o maximo novo por SET_SYSTEM_AV_INFO; o FBO
   ficava no tamanho do inicio (853, ou 426 se comecou em 320x240) e a imagem saia cortada.
-  Correcao (sem compilar): FBO aumenta no aviso e no video_cb, mesmo objeto, estado do GL
+  Correcao (compilada, testada no PC com nucleo de teste 320x240 -> 1280x480): FBO aumenta no aviso e no video_cb, mesmo objeto, estado do GL
   devolvido. "Acordar" a leitora caia no vao entre as sessoes (sense 5/64/00): agora so
   em setor que existe.
 - TV sem som depois de ~5 s (efeito da troca nova): a saida de som HDMI e de um programa
