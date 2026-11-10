@@ -520,6 +520,11 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   paginas de 16 KB e Flycast compilado para 4 KB: "region_set_exec: mprotect failed" e
   .chd parando com codigo 5 (SIGTRAP do die() no mprotect) -> Flycast com -DPAGE_SIZE=16384.
   Troca previa->tela cheia da TV funcionou (3,3-3,8 s, sem preto).
+- TV sem som depois de ~5 s (efeito da troca nova): a saida de som HDMI e de um programa
+  so; o mpv abria com a previa ainda tocando e ficava sem som. Agora abre com --aid=no e
+  liga o som (aid auto) depois que a previa fecha. 1o build do Flycast "16 KB" nao valeu:
+  o CMake dele poe -DPAGE_SIZE=$(getconf PAGESIZE) da maquina que compila (4096) depois do
+  nosso -> remendo remendos/flycast_page_size.py (so usa o getconf se nao vier de fora).
 - RetroTV: IPTV com limite de conexoes responde 429 (visto na lista do autor): a abertura
   do mpv por tras da previa falha nesses servidores e cai no jeito antigo.
 - Convergencia DENTRO do jogo sem altura: o menu mandava a altura (--conv) e o rv-jogo

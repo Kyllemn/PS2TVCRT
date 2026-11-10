@@ -2362,7 +2362,7 @@ class App:
         self.tv_cheia.brilho = self.tv_brilho()
         self.tv_cheia.abre(ch['url'], '%s  %s' % (ch.get('num', ''), ch['nome']),
                            '%s  %s\nA: LISTA DE CANAIS   <- ->: VOLUME   LT/RT: BRILHO   B: VOLTAR'
-                           % (ch.get('num', ''), ch['nome']))
+                           % (ch.get('num', ''), ch['nome']), sem_audio=cedo)
 
     def tv_sai_tela_cheia(self, aviso=None):
         if getattr(self, 'tv_cheia', None):
@@ -2384,6 +2384,7 @@ class App:
                     pv.fecha()
                     self.tv_previa = None
                 self.tela = 'tv_cheia'
+                tc.liga_audio()                     # a previa soltou a saida de som
                 print('tv: tela cheia no ar (%.1f s depois de abrir)' % (time.monotonic() - pre), flush=True)
                 return False
             if not tc.rodando() or time.monotonic() - pre > 8:

@@ -312,7 +312,9 @@ class TelaCheia:
         self.proc = None
         self.com_mpv = bool(shutil.which('mpv'))
 
-    def abre(self, url, nome='', msg=''):
+    def abre(self, url, nome='', msg='', sem_audio=False):
+        """sem_audio: abre sem som (a previa ainda segura a saida de som, que so aceita um
+        programa por vez); liga_audio() quando a previa fechar"""
         self.fecha()
         if self.com_mpv:
             try:
@@ -337,6 +339,8 @@ class TelaCheia:
                 cmd += ['--monitorpixelaspect=%.5f' % ((4.0 / 3.0) / (self.fb_w / float(self.fb_h)))]
             if self.audio_dev:
                 cmd += ['--audio-device=alsa/' + self.audio_dev]
+            if sem_audio:
+                cmd += ['--aid=no']
             cmd += [url]
         else:
             # sem mpv: ffmpeg direto no framebuffer (tela inteira; no tubo, esticada)
@@ -372,6 +376,10 @@ class TelaCheia:
         if self.com_mpv and self.rodando():
             self._comando(['set_property', 'volume', v])
             self._comando(['show-text', 'VOLUME %d' % v, 1500])
+
+    def liga_audio(self):
+        if self.com_mpv and self.rodando():
+            self._comando(['set_property', 'aid', 'auto'])
 
     def muda_brilho(self, b):
         self.brilho = b

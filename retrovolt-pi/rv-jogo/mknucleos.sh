@@ -2,6 +2,7 @@
 # compila os nucleos para o Pi 5 (aarch64) e copia para versoes/rvNN/nucleos/
 # uso: mknucleos.sh pasta_da_versao   (precisa de gcc-aarch64-linux-gnu)
 set -e
+AQUI="$(cd "$(dirname "$0")" && pwd)"
 DEST="$1/nucleos"; mkdir -p "$DEST"
 T=$(mktemp -d)
 git clone -q --depth 1 https://github.com/libretro/pcsx_rearmed "$T/pcsx"
@@ -21,7 +22,7 @@ git clone -q --depth 1 https://github.com/libretro/Genesis-Plus-GX "$T/gpgx"
 aarch64-linux-gnu-strip -o "$DEST/genesis_plus_gx_libretro.so" "$T/gpgx/genesis_plus_gx_libretro.so"
 echo "genesis-plus-gx $(cd "$T/gpgx" && git log -1 --format=%h)"
 git clone -q --depth 1 https://github.com/libretro/neocd_libretro "$T/neocd"
-python3 "$(dirname "$0")/remendos/neocd_nomes_sem_caixa.py" "$T/neocd"
+python3 "$AQUI/remendos/neocd_nomes_sem_caixa.py" "$T/neocd"
 ( cd "$T/neocd" && make platform=unix CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++ \
        AR=aarch64-linux-gnu-ar -j"$(nproc)" >/dev/null )   # Neo Geo CD (CD pelo VFS; BIOS opcional: tem HLE)
 aarch64-linux-gnu-strip -o "$DEST/neocd_libretro.so" "$T/neocd/neocd_libretro.so"
@@ -43,6 +44,7 @@ echo "snes9x $(cd "$T/snes9x" && git log -1 --format=%h)"
 # da memoria emulada falha e o Flycast para (SIGTRAP, "codigo 5"). 16 KB vale tambem em 4 KB.
 git clone -q --depth 1 https://github.com/flyinghead/flycast "$T/flycast"
 ( cd "$T/flycast" && git submodule update --init --recursive --depth 1 -q &&
+  python3 "$AQUI/remendos/flycast_page_size.py" . &&
   cat > "$T/aarch64.cmake" <<'TC'
 set(CMAKE_SYSTEM_NAME Linux)
 set(CMAKE_SYSTEM_PROCESSOR aarch64)
@@ -55,8 +57,7 @@ set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE BOTH)
 TC
   cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE="$T/aarch64.cmake" -DCMAKE_BUILD_TYPE=Release \
         -DLIBRETRO=ON -DUSE_GLES=ON -DUSE_OPENGL=ON -DUSE_VULKAN=OFF -DUSE_LUA=OFF -DUSE_BREAKPAD=OFF \
-        -DCMAKE_C_FLAGS="-mcpu=cortex-a76 -DPAGE_SIZE=16384" \
-        -DCMAKE_CXX_FLAGS="-mcpu=cortex-a76 -DPAGE_SIZE=16384" >/dev/null &&
+        -DPAGE_SIZE=16384 -DCMAKE_C_FLAGS="-mcpu=cortex-a76" -DCMAKE_CXX_FLAGS="-mcpu=cortex-a76" >/dev/null &&
   cmake --build build -j"$(nproc)" >/dev/null )
 aarch64-linux-gnu-strip -o "$DEST/flycast_libretro.so" "$T/flycast/build/flycast_libretro.so"
 echo "flycast $(cd "$T/flycast" && git log -1 --format=%h)"
