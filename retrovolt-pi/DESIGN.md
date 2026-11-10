@@ -526,6 +526,12 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   acorda a cada 3 s (autor escolheu a opcao 3); jogando continua a regra dos 10 s.
   Imagem cortada so com resolucao interna 480 (o 3D informa 853x480/640x480; em 320x240
   fica certo): diagnostico gpu_WxH.ppm + linha "gpu: diagnostico" no LOG.
+- Dreamcast, 3o LOG (diagnostico): no 3D em 480i o Flycast informa o DOBRO da largura
+  (640x480 -> 1280; 800x600 -> 1600) e avisa o maximo novo por SET_SYSTEM_AV_INFO; o FBO
+  ficava no tamanho do inicio (853, ou 426 se comecou em 320x240) e a imagem saia cortada.
+  Correcao (sem compilar): FBO aumenta no aviso e no video_cb, mesmo objeto, estado do GL
+  devolvido. "Acordar" a leitora caia no vao entre as sessoes (sense 5/64/00): agora so
+  em setor que existe.
 - TV sem som depois de ~5 s (efeito da troca nova): a saida de som HDMI e de um programa
   so; o mpv abria com a previa ainda tocando e ficava sem som. Agora abre com --aid=no e
   liga o som (aid auto) depois que a previa fecha. 1o build do Flycast "16 KB" nao valeu:

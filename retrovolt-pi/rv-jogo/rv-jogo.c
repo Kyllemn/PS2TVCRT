@@ -1968,6 +1968,36 @@ static bool gl_cria_fbo(unsigned w, unsigned h)
 	return true;
 }
 
+#define GL_TEXTURE_BINDING_2D 0x8069
+#define GL_RENDERBUFFER_BINDING 0x8CA7
+/* o nucleo passou a desenhar maior que o FBO (Flycast: 3D em 480i sai com o dobro da
+ * largura, 1280 ou 1600, e avisa por SET_SYSTEM_AV_INFO): aumenta o FBO SEM trocar o
+ * objeto (o nucleo guarda o numero dele) e devolve o estado do GL como estava, porque
+ * o Flycast guarda em cache o que esta ligado */
+static void gl_aumenta(unsigned w, unsigned h)
+{
+	if (!gl.ativo || (w <= gl.w && h <= gl.h))
+		return;
+	if (w < gl.w) w = gl.w;
+	if (h < gl.h) h = gl.h;
+	if (w > 4096) w = 4096;
+	if (h > 4096) h = 4096;
+	int tex = 0, rbo = 0;
+	gl.GetIntegerv(GL_TEXTURE_BINDING_2D, &tex);
+	gl.GetIntegerv(GL_RENDERBUFFER_BINDING, &rbo);
+	gl.BindTexture(GL_TEXTURE_2D, gl.tex);
+	gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+	gl.BindTexture(GL_TEXTURE_2D, tex);
+	if (gl.rb) {
+		gl.BindRenderbuffer(GL_RENDERBUFFER, gl.rb);
+		gl.RenderbufferStorage(GL_RENDERBUFFER, gl.cb.stencil ? GL_DEPTH24_STENCIL8 : GL_DEPTH_COMPONENT24, w, h);
+		gl.BindRenderbuffer(GL_RENDERBUFFER, rbo);
+	}
+	LOG("gpu: FBO aumentado de %ux%u para %ux%u", gl.w, gl.h, w, h);
+	gl.w = w;
+	gl.h = h;
+}
+
 /* depois do retro_load_game: cria tudo e chama o context_reset do nucleo */
 static bool gl_inicia(void)
 {
@@ -2140,6 +2170,8 @@ static void video_cb(const void *data, unsigned w, unsigned h, size_t pitch)
 	if (data == RETRO_HW_FRAME_BUFFER_VALID) {
 		if (!gl.ativo)
 			return;
+		if (w > gl.w || h > gl.h)
+			gl_aumenta(w, h);
 		gl_foto(w, h);
 		data = gl_le_quadro(w, h);
 		if (w > gl.w) w = gl.w;
@@ -2766,10 +2798,12 @@ static bool environment(unsigned cmd, void *data)
 		return true;
 	case RETRO_ENVIRONMENT_SET_GEOMETRY:
 		av.geometry = *(const struct retro_game_geometry *)data;
+		gl_aumenta(av.geometry.max_width, av.geometry.max_height);
 		return true;
 	case RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO:
 		av = *(const struct retro_system_av_info *)data;
 		LOG("nucleo mudou: %.3f Hz, som %.0f Hz", av.timing.fps, av.timing.sample_rate);
+		gl_aumenta(av.geometry.max_width, av.geometry.max_height);
 		if (som_ok)
 			rs_passo_base = av.timing.sample_rate / SAIDA_HZ;
 		return true;
@@ -2939,6 +2973,20 @@ static void menu_fundo(void)
 /* ------------------------------------------------------------------ leitora acordada */
 /* parada num menu a leitora "dorme" e o jogo trava ao voltar. A cada 10 s sem
  * leitura, le 1 setor direto da leitora (fora do cache) para ela continuar girando. */
+/* setor que existe no disco: no CD em faixas (2 sessoes) o vao entre as sessoes (lead-out
+ * + lead-in, ~11400 setores) nao tem dados e a leitora recusa (sense 5/64/00) */
+static bool cd_lba_existe(int64_t l)
+{
+	if (l < 0 || l >= cd_tam / SETOR)
+		return false;
+	if (!cd_faixas)
+		return true;
+	for (int i = 0; i < cd_nfx; i++)
+		if (l >= cd_fx[i].lba && l < cd_fx_fim[i])
+			return true;
+	return false;
+}
+
 static void *cd_acorda_thread(void *x)
 {
 	(void)x;
@@ -2961,6 +3009,10 @@ static void *cd_acorda_thread(void *x)
 			l = cd_ult_lba + 600 + (int64_t)(volta % 8) * 75; /* inicio do disco: le a frente, longe */
 		if (l >= total)
 			l = total > 32 ? total / 2 : 0;
+		if (!cd_lba_existe(l)) /* caiu no vao entre sessoes: tenta a frente, depois o proprio lugar */
+			l = cd_ult_lba + 600 + (int64_t)(volta % 8) * 75;
+		if (!cd_lba_existe(l))
+			l = cd_ult_lba;
 		pthread_mutex_lock(&cd_io_mx);
 		double t0 = agora();
 		bool ok = cd_le_setor(l, b);
