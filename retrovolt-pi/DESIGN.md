@@ -395,7 +395,7 @@ Licoes do PS1/PCE aplicadas:
   CONVERGENCIA > A, os 8 botoes, A salva, SELECT padrao, B volta). Na rv16 reproduz o
   erro do LOG; na rv18 passa. Rodar antes de toda versao.
 
-## R19 (codigo escrito, aguardando #compilar; rv19/rv-jogo ainda e o binario da R18)
+## R19 (compilada)
 - Picote ao comecar cada musica (Sega CD/PC Engine): LOG da R18 mostrou
   "bloco lento: lba 89616 (musica, faixa 16) 1439 ms; anterior lba 6368" = troca
   dados -> musica na leitora + salto. Agora, ao abrir o disco, o comeco de cada faixa
@@ -450,3 +450,8 @@ Licoes do PS1/PCE aplicadas:
   baixadas juntas (49 listas em 1,7 s). Grupos espalhados sao juntados (Pluto: 122 -> 16).
 - RETROVOLT/tv/Brasil.txt: listas do autor (iptv-org, Brasil + estados + cidades),
   495 canais em 49 grupos.
+- R19 compilada: rv-jogo sem avisos; NeoCD b1e04c7 (aarch64). Testes no PC: PS1 com
+  imagem igual a R14; auto-teste da musica guardada (RV_TESTE_FAIXAS) 23/23 e 7/7
+  blocos iguais ao disco; disco Neo Geo CD sintetico (IPL.TXT + PRG) lido pelo CD
+  virtual, BIOS HLE carregou e entrou no jogo; Neo Geo = 59,60 Hz (0,67%: precisava do
+  limite de 2%); convergencia PASSOU. Nucleos PS1/PCE/GPGX iguais aos da R18.

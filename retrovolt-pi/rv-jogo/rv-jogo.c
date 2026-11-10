@@ -612,6 +612,33 @@ static bool cd_abrir(const char *dev)
 			cd_fx[0].modo = 2;
 		snprintf(cd_cue, sizeof cd_cue, "FILE \"disco.bin\" BINARY\n  TRACK 01 MODE%d/2352\n    INDEX 01 00:00:00\n",
 		         cd_fx[0].modo);
+		/* teste no PC (sem leitora): RV_TESTE_FAIXAS="lba:a,lba:a" marca faixas de musica no
+		 * .bin, roda a pre-carga e confere cada bloco guardado contra o arquivo */
+		const char *tf = getenv("RV_TESTE_FAIXAS");
+		if (tf) {
+			for (const char *q = tf; *q && cd_nfx < 99; ) {
+				int lba = atoi(q);
+				cd_fx[cd_nfx].lba = lba;
+				cd_fx[cd_nfx].dados = false;
+				cd_fx[cd_nfx].modo = 0;
+				cd_nfx++;
+				q = strchr(q, ',');
+				if (!q) break;
+				q++;
+			}
+			cd_pre_musicas();
+			int iguais = 0, difs = 0;
+			uint8_t *a = malloc(BLOCO * SETOR), *b = malloc(BLOCO * SETOR);
+			for (int i = 0; i < cd_nfixos; i++) {
+				int64_t n = cd_ler(cd_fixos[i].lba * SETOR, a, BLOCO * SETOR);
+				memset(b, 0, BLOCO * SETOR);
+				if (pread(cd_fd, b, n, cd_fixos[i].lba * SETOR) < 0)
+					n = -1;
+				if (n > 0 && !memcmp(a, b, n)) iguais++; else difs++;
+			}
+			free(a); free(b);
+			LOG("cd: auto-teste da musica guardada: %d blocos iguais ao disco, %d diferentes", iguais, difs);
+		}
 	} else {
 		cd_fd = open(dev, O_RDONLY | O_NONBLOCK);
 		if (cd_fd < 0) {
