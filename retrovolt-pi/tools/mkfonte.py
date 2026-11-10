@@ -56,4 +56,5 @@ def main():
     linhas.append('}')
     open(saida, 'w').write('\n'.join(linhas) + '\n')
 
-main()
+if __name__ == '__main__':
+    main()

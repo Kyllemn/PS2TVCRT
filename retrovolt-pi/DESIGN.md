@@ -480,3 +480,9 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   abrir o jogo o menu monta /run/retrovolt/bios/<sistema> com atalhos (nome exato que o
   nucleo procura; NeoCD: subpasta neocd/) e passa isso como pasta de sistema.
 - rv19 voltou a ser a entregue; as mudancas novas estao em rv20.
+- Fontes (R20): 21 + 8X8. Novas: 5X8/6X10/6X13 NEGRITO, TAMZEN 5X9, 6X12, 7X13 (+NEGRITO),
+  8X15 (+NEGRITO), SPLEEN 8X16 e GG 8X15 (Ithaca do autor, GGBotNet, OFL 1.1: pixel de
+  16/em, cada glifo centralizado em 8x15; nome reservado "Ithaca" nao usado na versao
+  convertida). SPLEEN 5X8 ganhou os acentos (vinham vazios) da 5X8. Fontes de origem e
+  licencas em tools/fontes_src; gerador unico: tools/fontes_rv.py; licencas vao no
+  pacote (versoes/rvNN/licencas/). fonte.h do rv-jogo regenerado (vale apos #compilar).
