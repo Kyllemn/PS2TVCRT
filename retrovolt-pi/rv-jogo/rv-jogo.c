@@ -1526,6 +1526,11 @@ static int16_t ring[RING * 2];
 static int r_rd, r_wr, r_cnt;
 static pthread_mutex_t r_mx = PTHREAD_MUTEX_INITIALIZER;
 static double rs_pos, rs_passo_base = 1.0;
+/* jogo em "1 quadro por vsync" com Hz um pouco diferente da tela (Neo Geo 59,19; PC Engine
+ * 59,82...): o jogo anda tela/jogo mais rapido, e o som acompanha na mesma proporcao
+ * (como o RetroArch). Ate 2% (~1/3 de semitom; ninguem percebe). */
+static volatile double rs_esticar = 1.0;
+#define UM_PRA_UM_MAX 0.02
 static int16_t rs_ant[2];
 static bool som_ok, som_mudo;
 static long som_vazio;
@@ -1613,7 +1618,7 @@ static size_t audio_batch(const int16_t *d, size_t frames)
 	pthread_mutex_lock(&r_mx);
 	/* controle de ritmo: mantem o buffer pela metade (+-0,5% de velocidade) */
 	double cheio = (double)r_cnt / RING;
-	double passo = rs_passo_base * (1.0 + (cheio - 0.5) * 0.01);
+	double passo = rs_passo_base * rs_esticar * (1.0 + (cheio - 0.5) * 0.01);
 	for (size_t i = 0; i < frames; i++) {
 		int16_t l = (int16_t)((d[i * 2] * ganho) >> 15), r = (int16_t)((d[i * 2 + 1] * ganho) >> 15);
 		while (rs_pos <= 1.0) {
@@ -3369,8 +3374,10 @@ int main(int argc, char **argv)
 	fb.sem_vsync = vs_tipo == 0;
 	if (tela_hz <= 0)
 		tela_hz = tubo ? 60.005 : 60.0;
-	bool um_pra_um = !fb.sem_vsync && fabs(av.timing.fps - tela_hz) / tela_hz < 0.006;
-	LOG("tela %.3f Hz; %s", tela_hz, um_pra_um ? "1 quadro por vsync" : "ritmo pelo tempo");
+	bool um_pra_um = !fb.sem_vsync && fabs(av.timing.fps - tela_hz) / tela_hz < UM_PRA_UM_MAX;
+	rs_esticar = um_pra_um && av.timing.fps > 0 ? tela_hz / av.timing.fps : 1.0;
+	LOG("tela %.3f Hz; %s (jogo %.3f Hz, som x%.4f)", tela_hz, um_pra_um ? "1 quadro por vsync" : "ritmo pelo tempo",
+	    av.timing.fps, rs_esticar);
 	double fps_ult = av.timing.fps;
 
 	controles_busca();
@@ -3435,7 +3442,8 @@ int main(int argc, char **argv)
 		if (tq - t_loop0 > pico_ctrl) pico_ctrl = tq - t_loop0;
 		if (av.timing.fps != fps_ult) { /* o nucleo mudou de Hz (regiao, modo de video) */
 			fps_ult = av.timing.fps;
-			um_pra_um = !fb.sem_vsync && fps_ult > 0 && fabs(fps_ult - tela_hz) / tela_hz < 0.006;
+			um_pra_um = !fb.sem_vsync && fps_ult > 0 && fabs(fps_ult - tela_hz) / tela_hz < UM_PRA_UM_MAX;
+			rs_esticar = um_pra_um ? tela_hz / fps_ult : 1.0;
 			acc = 0;
 			LOG("jogo agora %.3f Hz; %s", fps_ult, um_pra_um ? "1 quadro por vsync" : "ritmo pelo tempo");
 		}

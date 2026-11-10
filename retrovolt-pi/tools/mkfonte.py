@@ -4,7 +4,7 @@
 Saida: fontes.py com FONTES = {nome: (largura, altura, hex)}; cada glifo (codigos
 32..255, Latin-1) e uma sequencia de 'altura' linhas, 1 byte por linha, bit 0 =
 pixel da esquerda (mesmo formato da font8x8 antiga).
-uso: mkfonte.py saida.py nome=arquivo.pcf.gz[:LxA] ...
+uso: mkfonte.py saida.py nome=arquivo.pcf.gz:LxA[:negrito] ...
 """
 import gzip, io, sys
 from PIL import BdfFontFile, PcfFontFile, Image, ImageDraw
@@ -43,9 +43,15 @@ def main():
               'FONTES = {']
     for arg in sys.argv[2:]:
         nome, resto = arg.split('=', 1)
+        negrito = resto.endswith(':negrito')       # nome=arquivo:LxA:negrito -> L+1 de largura
+        if negrito:
+            resto = resto[:-len(':negrito')]
         path, tam = resto.rsplit(':', 1)
         cw, chh = map(int, tam.split('x'))
         b = glifos(path, cw, chh)
+        if negrito:                                 # cada ponto ganha o vizinho da direita
+            b = bytes((v | (v << 1)) & 0xff for v in b)
+            cw += 1
         linhas.append("    '%s': (%d, %d, '%s')," % (nome, cw, chh, b.hex()))
     linhas.append('}')
     open(saida, 'w').write('\n'.join(linhas) + '\n')

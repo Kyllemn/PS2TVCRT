@@ -411,3 +411,16 @@ Licoes do PS1/PCE aplicadas:
   Causas provaveis: (1) ela desacelera sozinha em menos de 10 s sem leitura; (2) cada
   troca entre dados e musica muda a rotacao. Caminhos: intervalo menor do acorda
   (leitora_acordar), e/ou rotacao fixa (leitora_velocidade=0 = maxima, constante).
+- Tarjas laranja laterais: tiradas (MOSTRA_TARJAS = False em rv_app.py; True volta).
+- Menu desce: menu_desce no retrovolt.cfg (padrao 20 pontos, ~3 cm; 0 a 60). O desenho
+  usa W x H e a tela W x H_TELA; as linhas de cima mostram so o fundo; rodape no lugar.
+  Convergencia usa a tela inteira (sem descer, sem fundo).
+- Fontes novas: 5X7 NEGRITO (gerada), 4X6, SPLEEN 5X8, 6X12, SPLEEN 6X12, 6X13
+  (X11 misc-fixed dominio publico; Spleen BSD-2). tools/mkfonte.py aceita :negrito;
+  mkfonteh.py aceita nomes com espaco. Lista de OPCOES rola quando a fonte nao cabe.
+- Neo Geo CD: nucleo NeoCD (VFS v3, cue com faixa unica). BIOS opcional em
+  RETROVOLT/bios/neocd/ (sem ela usa a BIOS embutida HLE). Jogos em roms/neogeocd.
+- 1 quadro por vsync ate 2% de diferenca (antes 0,6%): Neo Geo e 59,19 Hz e caia no
+  "ritmo pelo tempo" (tranco a cada ~1,2 s). O som acompanha (som x tela/jogo), como o
+  RetroArch.
+- RetroTV: aguardando a lista de canais do autor.

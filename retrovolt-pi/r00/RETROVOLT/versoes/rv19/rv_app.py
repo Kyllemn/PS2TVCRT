@@ -117,6 +117,7 @@ CFG_PADRAO = [
     ('video_filtro', 'NENHUM', 'so no LCD: NENHUM, SCANLINES, SCANLINES LEVES, CRT, SUAVE, SCALE2X, SCALE3X ou XBR (padrao; cada nucleo pode ter o seu)'),
     ('MENU', None, None),
     ('fonte', '6X10', 'fonte do menu: ' + ', '.join(f[0] for f in FONTES_LISTA)),
+    ('menu_desce', '20', 'quanto o menu (nome RETROVOLT, relogio, abas) desce, em pontos do menu (0 a 60)'),
     ('menu_fundo_brilho', '45', 'brilho da imagem de fundo do menu, 0 a 100 (imagens em imagens/wallpapers)'),
 ]
 
@@ -180,12 +181,24 @@ def num(c, k, tipo, lo, hi):
 
 
 # ---------------------------------------------------------------- desenho
-FUNDO = None   # imagem de fundo do menu (lista de W*H cores), sorteada no inicio
+FUNDO = None   # imagem de fundo do menu (lista de W*H_TELA cores), sorteada no inicio
+MOSTRA_TARJAS = False   # tarjas laranja nas laterais: tiradas a pedido do autor (True volta)
+# o menu desce TOPO pontos (menu_desce no retrovolt.cfg): o desenho usa W x H e a tela tem
+# W x H_TELA; as TOPO linhas de cima mostram so o fundo. O rodape fica no mesmo lugar.
+TOPO = 0
+H_TELA = 240
 
 
 class Canvas:
     def __init__(self, liso=False):
-        self.px = list(FUNDO) if FUNDO and not liso and len(FUNDO) == W * H else [NAV] * (W * H)
+        self.topo = 0 if H + TOPO > H_TELA else TOPO    # tela inteira (convergencia): sem descer
+        self.ht = H + self.topo                          # linhas da tela de verdade
+        if FUNDO and not liso and len(FUNDO) == W * self.ht:
+            self.acima = FUNDO[:self.topo * W]
+            self.px = FUNDO[self.topo * W:]
+        else:
+            self.acima = [NAV] * (self.topo * W)
+            self.px = [NAV] * (W * H)
         self.extras = []    # imagens desenhadas na resolucao do monitor (LCD), por cima
 
     def rect(self, x, y, w, h, c):
@@ -282,8 +295,9 @@ def topo_direita(c, wifi):
 
 
 def moldura(c, titulo, rodape_d):
-    c.rect(0, 0, 6, H, ORANGE)
-    c.rect(W - 6, 0, 6, H, ORANGE)
+    if MOSTRA_TARJAS:
+        c.rect(0, 0, 6, H, ORANGE)
+        c.rect(W - 6, 0, 6, H, ORANGE)
     logo(c, 16, 3)
     topo_direita(c, False)
     c.text(16, 30, titulo, IVORY)
@@ -337,15 +351,16 @@ class FB:
         A tela inteira e montada fora do framebuffer e copiada de uma vez (sem piscar)."""
         bpp = self.bpp // 8
         preto = self.pixel((0, 0, 0))
+        HT, topo = canvas.ht, canvas.topo                 # linhas da tela (com o topo que desce)
         if self.tubo:
-            linhas_por = max(1, self.h // H)              # 480i: 2 linhas por linha logica
+            linhas_por = max(1, self.h // HT)             # 480i: 2 linhas por linha logica
             cw = max(W, min(self.w, round(self.w * conv[2])))
-            ch = max(H // 2, round(H * linhas_por * conv[3]))
+            ch = max(HT // 2, round(HT * linhas_por * conv[3]))
             x0 = (self.w - cw) // 2 + conv[0]
             y0 = (self.h - ch) // 2 + conv[1] * linhas_por
         else:
-            s = max(1, min(self.w // W, self.h // H))
-            cw, ch = W * s, H * s
+            s = max(1, min(self.w // W, self.h // HT))
+            cw, ch = W * s, HT * s
             x0, y0 = (self.w - cw) // 2, (self.h - ch) // 2
         cont = [((i + 1) * cw) // W - (i * cw) // W for i in range(W)]
         cache = {}
@@ -359,13 +374,13 @@ class FB:
             yy = y0 + j
             if not 0 <= yy < self.h:
                 continue
-            y = (2 * j + 1) * H // (2 * ch)                 # linha logica (centro): 1a e ultima sempre aparecem
+            y = (2 * j + 1) * HT // (2 * ch)                # linha logica (centro): 1a e ultima sempre aparecem
             row = por_y.get(y)
             if row is not None:
                 off = yy * self.stride + dest_x * bpp
                 frame[off:off + len(row)] = row
                 continue
-            chave = tuple(canvas.px[y * W:(y + 1) * W])
+            chave = tuple(canvas.acima[y * W:(y + 1) * W] if y < topo else canvas.px[(y - topo) * W:(y - topo + 1) * W])
             row = linhas.get(chave)
             if row is None:
                 parts = []
@@ -383,7 +398,7 @@ class FB:
             frame[off:off + len(row)] = row
         if not self.tubo:
             for e in canvas.extras:
-                self._imagem(frame, e, x0, y0, s)
+                self._imagem(frame, e, x0, y0 + topo * s, s)
         self.espera_vsync()
         self.mem[0:len(frame)] = frame
         if self.fake:
@@ -763,7 +778,7 @@ SISTEMAS = {
     'segacd': ('SEGA CD', 'genesis_plus_gx_libretro.so', True),
     'saturn': ('SATURN', None, True),
     'pcenginecd': ('PC ENGINE CD', 'mednafen_pce_fast_libretro.so', True),
-    'neogeocd': ('NEO GEO CD', None, True),
+    'neogeocd': ('NEO GEO CD', 'neocd_libretro.so', True),
     '3do': ('3DO', None, True),
     'atari2600': ('ATARI 2600', None, False), 'nes': ('NES', None, False),
     'snes': ('SUPER NINTENDO', None, False), 'n64': ('NINTENDO 64', None, False),
@@ -777,6 +792,7 @@ EXT_JOGO = {
     'ps1': ('.cue', '.chd', '.pbp', '.m3u', '.iso', '.img', '.bin', '.exe'),
     'pcengine': ('.pce', '.cue', '.chd', '.ccd', '.m3u'),
     'segacd': ('.cue', '.chd', '.iso', '.m3u'),
+    'neogeocd': ('.cue', '.chd'),
     'megadrive': ('.md', '.gen', '.smd', '.bin', '.68k', '.sgd'),
     'mastersystem': ('.sms', '.sg'),
 }
@@ -846,7 +862,7 @@ def base(onde='pendrive'):
     b = os.environ.get('RV_BASE')
     if not b:
         b = os.path.join(USB, 'RETROVOLT') if onde != 'cartao' and tem_pendrive() else BASE_CARTAO
-    for p in ('config', 'bios', 'roms', 'saves', 'states', 'tv', 'imagens/consoles', 'imagens/wallpapers',
+    for p in ('config', 'bios', 'bios/neocd', 'roms', 'saves', 'states', 'tv', 'imagens/consoles', 'imagens/wallpapers',
               'capturas', 'logs'):
         os.makedirs(os.path.join(b, p), exist_ok=True)
     for s, (_, nucleo, _) in SISTEMAS.items():
@@ -1134,8 +1150,9 @@ TECLAS_FIM = ['ABC', 'ESPACO', 'APAGAR', 'OK']
 
 
 def cabecalho(c, aba, wifi, rodape_d):
-    c.rect(0, 0, 6, H, ORANGE)
-    c.rect(W - 6, 0, 6, H, ORANGE)
+    if MOSTRA_TARJAS:
+        c.rect(0, 0, 6, H, ORANGE)
+        c.rect(W - 6, 0, 6, H, ORANGE)
     logo(c, 16, 3)
     topo_direita(c, wifi)
     x = 16
@@ -1215,6 +1232,10 @@ class App:
                      num(self.cfg, 'video_largura', float, 0.70, 1.10),
                      num(self.cfg, 'video_altura', float, 0.80, 1.10)]
         F.usa(self.cfg.get('fonte', '6X10'))
+        global TOPO, H_TELA
+        H_TELA = H
+        TOPO = num(self.cfg, 'menu_desce', int, 0, 60)
+        H = H_TELA - TOPO
         self.video_modo_ok = self.cfg.get('video_modo', 'AUTO').upper()   # ultima confirmada
         self.fila = queue.Queue()
         self.ent = Entrada(self.fila)
@@ -1223,7 +1244,7 @@ class App:
         self.base = base(self.cfg.get('pasta_jogos', 'pendrive'))
         global FUNDO
         t0 = time.monotonic()
-        FUNDO, qual = imagens.fundo_menu(self.base, W, H, exe_rv_jogo(), os.path.join(self.base, 'imagens', '.cache'),
+        FUNDO, qual = imagens.fundo_menu(self.base, W, H_TELA, exe_rv_jogo(), os.path.join(self.base, 'imagens', '.cache'),
                                          num(self.cfg, 'menu_fundo_brilho', int, 0, 100))
         print('fundo: %s (%.1f s)' % (os.path.basename(qual) if qual else 'nenhum (cor lisa)',
                                       time.monotonic() - t0), flush=True)
@@ -1383,8 +1404,18 @@ class App:
 
     # ---------------------------------------------------------- desenho
     def desenha(self):
-        c = Canvas()
         t = self.tela
+        if t == 'conv':     # teste de convergencia: a tela inteira, sem descer e sem fundo
+            global H
+            h_menu = H
+            H = H_TELA
+            try:
+                c = Canvas(liso=True)
+                self.desenha_conv(c)
+            finally:
+                H = h_menu
+            return c
+        c = Canvas()
         if t == 'menu':
             if self.aba == 'DISCO':
                 self.desenha_disco(c)
@@ -1396,9 +1427,21 @@ class App:
                 c.text(24, 70 + F.ch + 8, 'EM BREVE.', SLATE)
             else:
                 cabecalho(c, 'OPCOES', self.wifi, 'A ENTRA')
-                y = 56
-                passo_op = min(F.ch + 9, (H - 14 - F.ch - y) // len(self.opcoes()))
-                for n, s in enumerate(self.opcoes()):
+                y = max(56, 30 + F.ch + 14)
+                lista = self.opcoes()
+                espaco = H - 14 - F.ch - y
+                passo_op = max(F.ch + 3, min(F.ch + 9, espaco // len(lista)))
+                cabem = max(1, espaco // passo_op)
+                ini = 0                       # fonte alta no tubo: a lista rola com a selecao
+                if cabem < len(lista):
+                    ini = max(0, min(len(lista) - cabem, self.sel['OPCOES'] - cabem // 2))
+                    if ini > 0:
+                        c.rtext(W - 14, y - F.ch - 2, '^', SLATE)
+                    if ini + cabem < len(lista):
+                        c.rtext(W - 14, y + cabem * passo_op - 4, 'v', SLATE)
+                for n, s in enumerate(lista):
+                    if not ini <= n < ini + cabem:
+                        continue
                     on = n == self.sel['OPCOES']
                     if s == 'VOLUME':
                         v = self.volume()
@@ -1424,9 +1467,6 @@ class App:
                 self.desenha_contagem(c)
             if self.pergunta_disco:
                 self.desenha_pergunta_disco(c)
-        elif t == 'conv':
-            c.px = [NAV] * (W * H)          # teste de convergencia: sem imagem de fundo
-            self.desenha_conv(c)
         elif t == 'video':
             self.desenha_video(c)
         elif t == 'teste_video':
