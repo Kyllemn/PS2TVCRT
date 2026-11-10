@@ -383,3 +383,14 @@ Licoes do PS1/PCE aplicadas:
 - LOG: "cd: bloco lento" diz onde (lba, musica/dados, faixa) e de onde veio cada travada.
 - Tarja laranja esquerda sumida no LCD: o desenho esta certo (conferido em 1280x960);
   e posicao da imagem no monitor (VGA): botao AUTO do monitor.
+
+## R18 — CONVERGENCIA (prioridade do autor)
+- Causa do "entrar em convergencia e ele procurar a leitora": a tela de ajuste nao
+  existia no codigo desde a rv04 (desenha_conv sumiu). Ao entrar, o menu dava erro e
+  caia; o sistema reabria o menu na aba DISCO ("PROCURANDO A LEITORA...").
+- Corrigido: a tela voltou (R17); a leitora fica quieta enquanto a convergencia esta
+  aberta; erro em qualquer tela agora volta ao menu com aviso e registra no LOG, sem
+  derrubar o menu.
+- Teste automatico: tools/teste_conv.py (caminho real do controle: OPCOES >
+  CONVERGENCIA > A, os 8 botoes, A salva, SELECT padrao, B volta). Na rv16 reproduz o
+  erro do LOG; na rv18 passa. Rodar antes de toda versao.
