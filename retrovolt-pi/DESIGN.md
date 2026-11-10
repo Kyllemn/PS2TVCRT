@@ -520,6 +520,12 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   paginas de 16 KB e Flycast compilado para 4 KB: "region_set_exec: mprotect failed" e
   .chd parando com codigo 5 (SIGTRAP do die() no mprotect) -> Flycast com -DPAGE_SIZE=16384.
   Troca previa->tela cheia da TV funcionou (3,3-3,8 s, sem preto).
+- Dreamcast, 2o LOG: picotes = buscas da leitora (~100 ms, nucleo parado) em 10-20% das
+  leituras (cache de 1,8 MB pequeno demais). Cache por --cd-cache MB (Dreamcast: 256,
+  leitora_cache_dreamcast); vagas alocadas no 1o uso. Leitora com o menu do jogo aberto:
+  acorda a cada 3 s (autor escolheu a opcao 3); jogando continua a regra dos 10 s.
+  Imagem cortada so com resolucao interna 480 (o 3D informa 853x480/640x480; em 320x240
+  fica certo): diagnostico gpu_WxH.ppm + linha "gpu: diagnostico" no LOG.
 - TV sem som depois de ~5 s (efeito da troca nova): a saida de som HDMI e de um programa
   so; o mpv abria com a previa ainda tocando e ficava sem som. Agora abre com --aid=no e
   liga o som (aid auto) depois que a previa fecha. 1o build do Flycast "16 KB" nao valeu:

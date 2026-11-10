@@ -183,6 +183,8 @@ static struct cd_vaga_s { int64_t lba; uint64_t uso; bool lendo, adiantado; uint
 static int ncache = NCACHE;
 static uint64_t cd_relogio;
 static volatile double cd_ult_leitura;
+static volatile bool cd_em_menu; /* menu do jogo aberto: jogo parado, ninguem le o disco */
+#define CD_ACORDA_MENU_S 3        /* com o menu aberto: a leitora desacelera em 3-4 s (LOG do autor) */
 static int cd_acorda_s = 10; /* --cd-acorda: segundos sem leitura ate acordar a leitora (regra do autor: 10) */
 static volatile int64_t cd_ult_lba;
 static int64_t cd_pf_base = -1; /* primeiro bloco a ler adiante */
@@ -2945,7 +2947,10 @@ static void *cd_acorda_thread(void *x)
 	unsigned volta = 0;
 	while (!g_sair) {
 		sleep(1);
-		if (agora() - cd_ult_leitura < cd_acorda_s)
+		/* jogando: a regra do autor (--cd-acorda, 10 s). Menu aberto: 3 s (pedido do autor),
+		 * para nao voltar do menu com a leitora parada (travadinha de 1-2 s) */
+		int lim = cd_em_menu && cd_acorda_s > CD_ACORDA_MENU_S ? CD_ACORDA_MENU_S : cd_acorda_s;
+		if (agora() - cd_ult_leitura < lim)
 			continue;
 		/* Le um setor PERTO de onde o jogo parou, mas ATRAS dele e cada vez num lugar
 		 * diferente. Ler o mesmo setor do jogo nao adianta: ele ja esta na memoria
@@ -4105,6 +4110,7 @@ int main(int argc, char **argv)
 			entrada_travada = false;
 		if (!menu && combo) {
 			menu = true;
+			cd_em_menu = true;
 			menu_sel = 0;
 			sub = 0;
 			som_mudo = true;
@@ -4115,6 +4121,7 @@ int main(int argc, char **argv)
 			int escolha = menu_passo(b, novo, combo);
 			if (escolha >= 0) {
 				menu = false;
+				cd_em_menu = false;
 				som_mudo = false;
 				entrada_travada = true;
 				ult_x0 = -99999;
