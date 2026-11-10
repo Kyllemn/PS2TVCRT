@@ -560,7 +560,7 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   Races) nao sofre. Remendo remendos/flycast_canto_pixel.py: todos os vertices deslocados
   ~1/60 px no vertex shader (gles.cpp e naomi2.cpp). Compilado e testado pelo autor: NAO
   resolveu (remendo retirado). Autor escolheu Vulkan.
-- Dreamcast em Vulkan (codigo escrito, aguardando #compilar): rv-jogo oferece
+- Dreamcast em Vulkan (compilado; testado no PC com lavapipe e nucleo de teste Vulkan): rv-jogo oferece
   RETRO_HW_CONTEXT_VULKAN (GET_PREFERRED) se a libvulkan.so.1 abre e ha GPU; instancia
   sem janela; o Flycast cria o dispositivo pela negociacao (create_device); interface
   libretro Vulkan v5 com 1 indice de sincronia (wait_sync_index = fila parada); a cada
