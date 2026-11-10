@@ -40,7 +40,7 @@ echo "snes9x $(cd "$T/snes9x" && git log -1 --format=%h)"
 # Dreamcast: Flycast com GLES 3 (a GPU V3D do Pi 5) e JIT aarch64. Precisa das bibliotecas
 # GLES do arm64 para ligar (dpkg --add-architecture arm64; apt-get install libgles-dev:arm64)
 git clone -q --depth 1 https://github.com/flyinghead/flycast "$T/flycast"
-( cd "$T/flycast" && git submodule update --init --depth 1 -q &&
+( cd "$T/flycast" && git submodule update --init --recursive --depth 1 -q &&
   cat > "$T/aarch64.cmake" <<'TC'
 set(CMAKE_SYSTEM_NAME Linux)
 set(CMAKE_SYSTEM_PROCESSOR aarch64)
