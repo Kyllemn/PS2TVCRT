@@ -569,6 +569,12 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   desenho de sempre. Sem Vulkan no Pi: GLES como antes. dreamcast_gpu = GLES no cfg volta
   ao GLES. Flycast com -DUSE_VULKAN=ON. Pi: libvulkan1 + mesa-vulkan-drivers (instalar.sh).
   Cabecalhos Vulkan baixados pelo build.sh (rv-jogo/terceiros, fora do git).
+- Vulkan no Pi (LOG): V3D 7.1.10.2, Vulkan 1.3.354, Flycast desenhando por Vulkan; corrigiu
+  defeitos de textura 3D (fica padrao). Pontinhos do Gunbird continuam em 1x (GLES e
+  Vulkan = vem do Flycast); somem com resolucao interna 1280x960 (2x; 960x720 nao basta),
+  mas ficou lento. Sem compilar ainda: copia sem espera (2 vagas + 2 imagens do Flycast:
+  indice de sincronia 0/1, copia do quadro N enquanto o N-1 vai para a tela, +1 quadro de
+  atraso) e Hz da tela pela conta do modo de video (a medida deu 61,6 Hz uma vez).
 - TV sem som depois de ~5 s (efeito da troca nova): a saida de som HDMI e de um programa
   so; o mpv abria com a previa ainda tocando e ficava sem som. Agora abre com --aid=no e
   liga o som (aid auto) depois que a previa fecha. 1o build do Flycast "16 KB" nao valeu:

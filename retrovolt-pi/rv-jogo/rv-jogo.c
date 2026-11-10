@@ -2441,12 +2441,17 @@ static struct {
 	struct retro_hw_render_callback cb;
 	pthread_mutex_t qmx;
 	VkCommandPool pool;
-	VkCommandBuffer cmd;
-	VkFence fence;
-	VkBuffer buf;
-	VkDeviceMemory mem;
-	uint8_t *map;
-	size_t cap;
+	/* 2 vagas que se revezam: o quadro N e copiado enquanto o N-1 (ja copiado) vai
+	 * para a tela; o Flycast tambem alterna 2 imagens (indice de sincronia 0/1) */
+	VkCommandBuffer cmd[2];
+	VkFence fence[2];
+	VkBuffer buf[2];
+	VkDeviceMemory mem[2];
+	uint8_t *map[2];
+	size_t cap[2];
+	bool pend[2], bgra[2];
+	unsigned pw[2], ph[2];
+	uint32_t quadro;
 	struct retro_vulkan_image img;
 	bool tem_img;
 	VkSemaphore sem[8], sinal;
@@ -2540,8 +2545,8 @@ static void vk_set_image(void *h, const struct retro_vulkan_image *img, uint32_t
 	for (uint32_t i = 0; i < vk.nsem; i++)
 		vk.sem[i] = sem[i];
 }
-static uint32_t vk_sync_index(void *h) { (void)h; return 0; }
-static uint32_t vk_sync_mask(void *h) { (void)h; return 1; }
+static uint32_t vk_sync_index(void *h) { (void)h; return vk.quadro & 1; }
+static uint32_t vk_sync_mask(void *h) { (void)h; return 3; }
 static void vk_set_cmds(void *h, uint32_t n, const VkCommandBuffer *c)
 {
 	(void)h;
@@ -2551,13 +2556,13 @@ static void vk_set_cmds(void *h, uint32_t n, const VkCommandBuffer *c)
 }
 static void vk_lock(void *h) { (void)h; pthread_mutex_lock(&vk.qmx); }
 static void vk_unlock(void *h) { (void)h; pthread_mutex_unlock(&vk.qmx); }
-/* um quadro por vez: a copia ja espera a GPU, entao "esperar o indice" = fila parada */
+/* espera o trabalho do indice atual (a copia que usou esta vaga 2 quadros atras) */
 static void vk_wait_sync(void *h)
 {
 	(void)h;
-	pthread_mutex_lock(&vk.qmx);
-	vk.QueueWaitIdle(vk.q);
-	pthread_mutex_unlock(&vk.qmx);
+	int i = vk.quadro & 1;
+	if (vk.pend[i])
+		vk.WaitForFences(vk.dev, 1, &vk.fence[i], VK_TRUE, 1000000000ull);
 }
 static void vk_set_sinal(void *h, VkSemaphore s) { (void)h; vk.sinal = s; }
 
@@ -2619,7 +2624,9 @@ static bool vk_inicia(void)
 	if (vk.CreateCommandPool(vk.dev, &pci, NULL, &vk.pool) != VK_SUCCESS)
 		return false;
 	cai.commandPool = vk.pool;
-	if (vk.AllocateCommandBuffers(vk.dev, &cai, &vk.cmd) != VK_SUCCESS || vk.CreateFence(vk.dev, &fci, NULL, &vk.fence) != VK_SUCCESS)
+	cai.commandBufferCount = 2;
+	if (vk.AllocateCommandBuffers(vk.dev, &cai, vk.cmd) != VK_SUCCESS ||
+	    vk.CreateFence(vk.dev, &fci, NULL, &vk.fence[0]) != VK_SUCCESS || vk.CreateFence(vk.dev, &fci, NULL, &vk.fence[1]) != VK_SUCCESS)
 		return false;
 	struct retro_hw_render_interface_vulkan *f = &vk.iface;
 	f->interface_type = RETRO_HW_RENDER_INTERFACE_VULKAN;
@@ -2646,23 +2653,24 @@ static bool vk_inicia(void)
 	return true;
 }
 
-static bool vk_buf(size_t tam)
+static bool vk_buf(int k, size_t tam)
 {
-	if (tam <= vk.cap)
+	if (tam <= vk.cap[k])
 		return true;
-	if (vk.buf) {
+	if (vk.buf[k]) {
 		vk.DeviceWaitIdle(vk.dev);
-		vk.DestroyBuffer(vk.dev, vk.buf, NULL);
-		vk.FreeMemory(vk.dev, vk.mem, NULL);
-		vk.buf = VK_NULL_HANDLE;
-		vk.cap = 0;
+		vk.pend[k] = false;
+		vk.DestroyBuffer(vk.dev, vk.buf[k], NULL);
+		vk.FreeMemory(vk.dev, vk.mem[k], NULL);
+		vk.buf[k] = VK_NULL_HANDLE;
+		vk.cap[k] = 0;
 	}
 	VkBufferCreateInfo bci = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, NULL, 0, tam, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 	                          VK_SHARING_MODE_EXCLUSIVE};
-	if (vk.CreateBuffer(vk.dev, &bci, NULL, &vk.buf) != VK_SUCCESS)
+	if (vk.CreateBuffer(vk.dev, &bci, NULL, &vk.buf[k]) != VK_SUCCESS)
 		return false;
 	VkMemoryRequirements mr;
-	vk.GetBufferMemoryRequirements(vk.dev, vk.buf, &mr);
+	vk.GetBufferMemoryRequirements(vk.dev, vk.buf[k], &mr);
 	VkPhysicalDeviceMemoryProperties mp;
 	vk.GetPhysicalDeviceMemoryProperties(vk.gpu, &mp);
 	uint32_t ti = UINT32_MAX;
@@ -2678,27 +2686,60 @@ static bool vk_buf(size_t tam)
 			}
 		}
 	VkMemoryAllocateInfo mai = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, NULL, mr.size, ti};
-	if (ti == UINT32_MAX || vk.AllocateMemory(vk.dev, &mai, NULL, &vk.mem) != VK_SUCCESS ||
-	    vk.BindBufferMemory(vk.dev, vk.buf, vk.mem, 0) != VK_SUCCESS ||
-	    vk.MapMemory(vk.dev, vk.mem, 0, VK_WHOLE_SIZE, 0, (void **)&vk.map) != VK_SUCCESS)
+	if (ti == UINT32_MAX || vk.AllocateMemory(vk.dev, &mai, NULL, &vk.mem[k]) != VK_SUCCESS ||
+	    vk.BindBufferMemory(vk.dev, vk.buf[k], vk.mem[k], 0) != VK_SUCCESS ||
+	    vk.MapMemory(vk.dev, vk.mem[k], 0, VK_WHOLE_SIZE, 0, (void **)&vk.map[k]) != VK_SUCCESS)
 		return false;
-	vk.cap = tam;
+	vk.cap[k] = tam;
 	return true;
 }
 
-/* quadro pronto na imagem do nucleo -> memoria (XRGB8888, linha 0 = topo) */
-static const uint32_t *vk_le_quadro(unsigned w, unsigned h)
+/* converte a vaga k (copia ja terminada) para XRGB8888 (linha 0 = topo) */
+static const uint32_t *vk_converte(int k)
 {
-	if (!vk.tem_img || !w || !h || !vk_buf((size_t)w * h * 4))
+	VkMappedMemoryRange mrg = {VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE, NULL, vk.mem[k], 0, VK_WHOLE_SIZE};
+	vk.InvalidateMappedMemoryRanges(vk.dev, 1, &mrg);
+	size_t n = (size_t)vk.pw[k] * vk.ph[k];
+	if (n > vk.q32_cap) {
+		free(vk.q32);
+		vk.q32 = malloc(n * 4);
+		vk.q32_cap = n;
+	}
+	const uint32_t *o = (const uint32_t *)vk.map[k];
+	if (vk.bgra[k])
+		for (size_t i = 0; i < n; i++)
+			vk.q32[i] = o[i] & 0xffffff;
+	else /* R8G8B8A8 (o do Flycast): bytes R,G,B,A -> XRGB */
+		for (size_t i = 0; i < n; i++) {
+			uint32_t p = o[i];
+			vk.q32[i] = (p & 0xff) << 16 | (p & 0xff00) | (p >> 16 & 0xff);
+		}
+	return vk.q32;
+}
+
+/* quadro pronto na imagem do nucleo: pede a copia dele (sem esperar) e devolve o
+ * quadro ANTERIOR, cuja copia ja terminou -> a GPU e o processador nao se esperam.
+ * 1 quadro (16 ms) a mais de atraso. *w/*h: tamanho do quadro devolvido. */
+static const uint32_t *vk_le_quadro(unsigned *wp, unsigned *hp)
+{
+	unsigned w = *wp, h = *hp;
+	int k = vk.quadro & 1;
+	if (!vk.tem_img || !w || !h)
+		return NULL;
+	if (vk.pend[k]) /* a vaga ainda guarda a copia de 2 quadros atras: espera ela */
+		vk.WaitForFences(vk.dev, 1, &vk.fence[k], VK_TRUE, 1000000000ull);
+	vk.pend[k] = false;
+	if (!vk_buf(k, (size_t)w * h * 4))
 		return NULL;
 	VkImage im = vk.img.create_info.image;
 	VkImageSubresourceRange sr = vk.img.create_info.subresourceRange;
 	sr.levelCount = 1;
 	sr.layerCount = 1;
+	VkCommandBuffer cmd = vk.cmd[k];
 	VkCommandBufferBeginInfo bi = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, NULL,
 	                               VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT};
-	vk.ResetCommandBuffer(vk.cmd, 0);
-	vk.BeginCommandBuffer(vk.cmd, &bi);
+	vk.ResetCommandBuffer(cmd, 0);
+	vk.BeginCommandBuffer(cmd, &bi);
 	VkImageMemoryBarrier b = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
 	b.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 	b.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
@@ -2707,7 +2748,7 @@ static const uint32_t *vk_le_quadro(unsigned w, unsigned h)
 	b.srcQueueFamilyIndex = b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	b.image = im;
 	b.subresourceRange = sr;
-	vk.CmdPipelineBarrier(vk.cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0,
+	vk.CmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0,
 	                      NULL, 1, &b);
 	VkBufferImageCopy rg;
 	memset(&rg, 0, sizeof rg);
@@ -2716,19 +2757,22 @@ static const uint32_t *vk_le_quadro(unsigned w, unsigned h)
 	rg.imageExtent.width = w;
 	rg.imageExtent.height = h;
 	rg.imageExtent.depth = 1;
-	vk.CmdCopyImageToBuffer(vk.cmd, im, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, vk.buf, 1, &rg);
+	vk.CmdCopyImageToBuffer(cmd, im, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, vk.buf[k], 1, &rg);
 	b.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
 	b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 	b.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
 	b.newLayout = vk.img.image_layout;
-	vk.CmdPipelineBarrier(vk.cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, NULL, 0,
+	vk.CmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, NULL, 0,
 	                      NULL, 1, &b);
-	vk.EndCommandBuffer(vk.cmd);
+	/* o buffer sera lido pelo processador */
+	VkMemoryBarrier hb = {VK_STRUCTURE_TYPE_MEMORY_BARRIER, NULL, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT};
+	vk.CmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 1, &hb, 0, NULL, 0, NULL);
+	vk.EndCommandBuffer(cmd);
 	VkCommandBuffer cbs[9];
 	uint32_t ncb = 0;
 	for (uint32_t i = 0; i < vk.nextra; i++)
 		cbs[ncb++] = vk.extra[i];
-	cbs[ncb++] = vk.cmd;
+	cbs[ncb++] = cmd;
 	VkPipelineStageFlags st[8];
 	for (uint32_t i = 0; i < vk.nsem; i++)
 		st[i] = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
@@ -2743,32 +2787,27 @@ static const uint32_t *vk_le_quadro(unsigned w, unsigned h)
 		si.pSignalSemaphores = &vk.sinal;
 	}
 	pthread_mutex_lock(&vk.qmx);
-	vk.ResetFences(vk.dev, 1, &vk.fence);
-	VkResult r = vk.QueueSubmit(vk.q, 1, &si, vk.fence);
+	vk.ResetFences(vk.dev, 1, &vk.fence[k]);
+	VkResult r = vk.QueueSubmit(vk.q, 1, &si, vk.fence[k]);
 	pthread_mutex_unlock(&vk.qmx);
 	vk.nextra = 0;
 	vk.nsem = 0;
-	if (r != VK_SUCCESS || vk.WaitForFences(vk.dev, 1, &vk.fence, VK_TRUE, 1000000000ull) != VK_SUCCESS)
+	if (r != VK_SUCCESS)
 		return NULL;
-	VkMappedMemoryRange mrg = {VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE, NULL, vk.mem, 0, VK_WHOLE_SIZE};
-	vk.InvalidateMappedMemoryRanges(vk.dev, 1, &mrg);
-	size_t n = (size_t)w * h;
-	if (n > vk.q32_cap) {
-		free(vk.q32);
-		vk.q32 = malloc(n * 4);
-		vk.q32_cap = n;
-	}
-	const uint32_t *o = (const uint32_t *)vk.map;
-	bool bgra = vk.img.create_info.format == VK_FORMAT_B8G8R8A8_UNORM || vk.img.create_info.format == VK_FORMAT_B8G8R8A8_SRGB;
-	if (bgra)
-		for (size_t i = 0; i < n; i++)
-			vk.q32[i] = o[i] & 0xffffff;
-	else /* R8G8B8A8 (o do Flycast): bytes R,G,B,A -> XRGB */
-		for (size_t i = 0; i < n; i++) {
-			uint32_t p = o[i];
-			vk.q32[i] = (p & 0xff) << 16 | (p & 0xff00) | (p >> 16 & 0xff);
-		}
-	return vk.q32;
+	vk.pend[k] = true;
+	vk.pw[k] = w;
+	vk.ph[k] = h;
+	vk.bgra[k] = vk.img.create_info.format == VK_FORMAT_B8G8R8A8_UNORM || vk.img.create_info.format == VK_FORMAT_B8G8R8A8_SRGB;
+	vk.quadro++;
+	/* devolve o anterior (vaga do outro indice); no 1o quadro, espera este mesmo */
+	int a = k ^ 1;
+	if (!vk.pend[a] || !vk.pw[a])
+		a = k;
+	if (vk.WaitForFences(vk.dev, 1, &vk.fence[a], VK_TRUE, 1000000000ull) != VK_SUCCESS)
+		return NULL;
+	*wp = vk.pw[a];
+	*hp = vk.ph[a];
+	return vk_converte(a);
 }
 
 static void vk_fim(void)
@@ -2817,7 +2856,7 @@ static void video_cb(const void *data, unsigned w, unsigned h, size_t pitch)
 		return;
 	int fmt = pixfmt;
 	if (data == RETRO_HW_FRAME_BUFFER_VALID && vk.ativo) {
-		data = vk_le_quadro(w, h);
+		data = vk_le_quadro(&w, &h);
 		if (!data)
 			return;
 		pitch = (size_t)w * 4;
@@ -4820,6 +4859,14 @@ int main(int argc, char **argv)
 	fb.sem_vsync = vs_tipo == 0;
 	if (tela_hz <= 0)
 		tela_hz = tubo ? 60.005 : 60.0;
+	/* o rv-jogo controla a saida: o Hz exato e a conta do modo de video (a medida as vezes
+	 * erra no comeco, com a GPU ocupada: 61,6 Hz num LOG -> "ritmo pelo tempo" a toa) */
+	if (km.ativo && vs_tipo) {
+		double hz = km_hz(&km.m_boot);
+		if (fabs(hz - tela_hz) > 0.05)
+			LOG("tela: medida %.3f Hz, modo de video %.3f Hz: vale o modo", tela_hz, hz);
+		tela_hz = hz;
+	}
 	bool um_pra_um = !fb.sem_vsync && fabs(av.timing.fps - tela_hz) / tela_hz < UM_PRA_UM_MAX;
 	rs_esticar = um_pra_um && av.timing.fps > 0 ? tela_hz / av.timing.fps : 1.0;
 	LOG("tela %.3f Hz; %s (jogo %.3f Hz, som x%.4f)", tela_hz, um_pra_um ? "1 quadro por vsync" : "ritmo pelo tempo",
