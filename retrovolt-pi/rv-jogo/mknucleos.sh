@@ -45,6 +45,7 @@ echo "snes9x $(cd "$T/snes9x" && git log -1 --format=%h)"
 git clone -q --depth 1 https://github.com/flyinghead/flycast "$T/flycast"
 ( cd "$T/flycast" && git submodule update --init --recursive --depth 1 -q &&
   python3 "$AQUI/remendos/flycast_page_size.py" . &&
+  python3 "$AQUI/remendos/flycast_canto_pixel.py" . &&
   cat > "$T/aarch64.cmake" <<'TC'
 set(CMAKE_SYSTEM_NAME Linux)
 set(CMAKE_SYSTEM_PROCESSOR aarch64)

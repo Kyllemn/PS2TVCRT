@@ -554,6 +554,11 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   Ao abrir o menu do jogo: ultimo quadro do nucleo em /run/retrovolt/gpu_menu.ppm (para
   ver se os pontinhos em grade do Gunbird/Psikyo ja vem da GPU).
   Teste no PC: RV_FAKEFB=arq:LxA:32 (tela de 32 bits).
+- Pontinhos em grade no Gunbird 2 (2D, 320x240): o gpu_menu.ppm (quadro cru do Flycast)
+  mostrou pontos mais escuros a cada 16 px exatos (x 15+16k, y 16k) = pixel do canto de 4
+  blocos pintado 2 vezes (desempate de vertice no centro do pixel na V3D). 3D (Wacky
+  Races) nao sofre. Remendo remendos/flycast_canto_pixel.py: todos os vertices deslocados
+  ~1/60 px no vertex shader (gles.cpp e naomi2.cpp). Compilado; falta o teste do autor.
 - TV sem som depois de ~5 s (efeito da troca nova): a saida de som HDMI e de um programa
   so; o mpv abria com a previa ainda tocando e ficava sem som. Agora abre com --aid=no e
   liga o som (aid auto) depois que a previa fecha. 1o build do Flycast "16 KB" nao valeu:
