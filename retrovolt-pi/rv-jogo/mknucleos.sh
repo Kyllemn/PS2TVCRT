@@ -38,7 +38,9 @@ git clone -q --depth 1 https://github.com/libretro/snes9x "$T/snes9x"
 aarch64-linux-gnu-strip -o "$DEST/snes9x_libretro.so" "$T/snes9x/libretro/snes9x_libretro.so"
 echo "snes9x $(cd "$T/snes9x" && git log -1 --format=%h)"
 # Dreamcast: Flycast com GLES 3 (a GPU V3D do Pi 5) e JIT aarch64. Precisa das bibliotecas
-# GLES do arm64 para ligar (dpkg --add-architecture arm64; apt-get install libgles-dev:arm64)
+# GLES do arm64 para ligar (dpkg --add-architecture arm64; apt-get install libgles-dev:arm64).
+# PAGE_SIZE 16384: o kernel do Pi 5 usa paginas de 16 KB; com o padrao (4 KB) o mprotect
+# da memoria emulada falha e o Flycast para (SIGTRAP, "codigo 5"). 16 KB vale tambem em 4 KB.
 git clone -q --depth 1 https://github.com/flyinghead/flycast "$T/flycast"
 ( cd "$T/flycast" && git submodule update --init --recursive --depth 1 -q &&
   cat > "$T/aarch64.cmake" <<'TC'
@@ -53,7 +55,8 @@ set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE BOTH)
 TC
   cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE="$T/aarch64.cmake" -DCMAKE_BUILD_TYPE=Release \
         -DLIBRETRO=ON -DUSE_GLES=ON -DUSE_OPENGL=ON -DUSE_VULKAN=OFF -DUSE_LUA=OFF -DUSE_BREAKPAD=OFF \
-        -DCMAKE_C_FLAGS="-mcpu=cortex-a76" -DCMAKE_CXX_FLAGS="-mcpu=cortex-a76" >/dev/null &&
+        -DCMAKE_C_FLAGS="-mcpu=cortex-a76 -DPAGE_SIZE=16384" \
+        -DCMAKE_CXX_FLAGS="-mcpu=cortex-a76 -DPAGE_SIZE=16384" >/dev/null &&
   cmake --build build -j"$(nproc)" >/dev/null )
 aarch64-linux-gnu-strip -o "$DEST/flycast_libretro.so" "$T/flycast/build/flycast_libretro.so"
 echo "flycast $(cd "$T/flycast" && git log -1 --format=%h)"

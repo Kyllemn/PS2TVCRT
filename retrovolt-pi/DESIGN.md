@@ -513,6 +513,13 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   teste GLES pelo caminho de GPU (Mesa sem janela): imagem certa no LCD e no tubo, fim
   limpo. Nao testado aqui: Dreamcast de verdade (sem jogo), CD de 2 sessoes (sem
   leitora), mpv real na troca previa->tela cheia.
+- 1o teste no Pi (LOG): disco Wacky Races reconhecido (dados+dados, corrigido no disco.py),
+  GPU ok (V3D 7.1, GLES 3.1), cue com 2 sessoes certo. Falhas, corrigidas no codigo e
+  esperando #compilar: (1) o Flycast abre "/run/retrovolt/cd//faixa01.bin" (barra dupla)
+  e o VFS nao reconhecia -> caminho limpo antes de comparar; (2) kernel do Pi 5 com
+  paginas de 16 KB e Flycast compilado para 4 KB: "region_set_exec: mprotect failed" e
+  .chd parando com codigo 5 (SIGTRAP do die() no mprotect) -> Flycast com -DPAGE_SIZE=16384.
+  Troca previa->tela cheia da TV funcionou (3,3-3,8 s, sem preto).
 - RetroTV: IPTV com limite de conexoes responde 429 (visto na lista do autor): a abertura
   do mpv por tras da previa falha nesses servidores e cai no jeito antigo.
 - Convergencia DENTRO do jogo sem altura: o menu mandava a altura (--conv) e o rv-jogo

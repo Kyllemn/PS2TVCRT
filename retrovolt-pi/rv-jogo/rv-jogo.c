@@ -922,9 +922,22 @@ struct retro_vfs_dir_handle {
 	char *path;
 };
 
-/* faixaNN.bin do --cd-faixas: devolve o indice (0..) ou -1 */
-static int vfs_faixa(const char *p)
+/* caminho sem barras repetidas (o Flycast pede "/run/retrovolt/cd//faixa01.bin") */
+static const char *vfs_limpo(const char *p, char *b, size_t n)
 {
+	size_t k = 0;
+	for (; *p && k + 1 < n; p++)
+		if (!(*p == '/' && k && b[k - 1] == '/'))
+			b[k++] = *p;
+	b[k] = 0;
+	return b;
+}
+
+/* faixaNN.bin do --cd-faixas: devolve o indice (0..) ou -1 */
+static int vfs_faixa(const char *p0)
+{
+	char b[512];
+	const char *p = vfs_limpo(p0, b, sizeof b);
 	const char *pre = CD_DIR "/faixa";
 	size_t lp = strlen(pre);
 	if (cd_fd < 0 || !cd_faixas || strncmp(p, pre, lp))
@@ -934,8 +947,10 @@ static int vfs_faixa(const char *p)
 }
 static int64_t faixa_tam(int i) { return (int64_t)(cd_fx_fim[i] - cd_fx[i].lba) * SETOR; }
 
-static int vfs_tipo(const char *p)
+static int vfs_tipo(const char *p0)
 {
+	char b[512];
+	const char *p = vfs_limpo(p0, b, sizeof b);
 	if (vfs_faixa(p) >= 0)
 		return T_FAIXA;
 	if (cd_fd >= 0 && !strcmp(p, CD_CUE))
