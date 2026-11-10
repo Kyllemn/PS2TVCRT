@@ -394,3 +394,16 @@ Licoes do PS1/PCE aplicadas:
 - Teste automatico: tools/teste_conv.py (caminho real do controle: OPCOES >
   CONVERGENCIA > A, os 8 botoes, A salva, SELECT padrao, B volta). Na rv16 reproduz o
   erro do LOG; na rv18 passa. Rodar antes de toda versao.
+
+## R19 (codigo escrito, aguardando #compilar; rv19/rv-jogo ainda e o binario da R18)
+- Picote ao comecar cada musica (Sega CD/PC Engine): LOG da R18 mostrou
+  "bloco lento: lba 89616 (musica, faixa 16) 1439 ms; anterior lba 6368" = troca
+  dados -> musica na leitora + salto. Agora, ao abrir o disco, o comeco de cada faixa
+  de musica (8 blocos = 1,7 s) e lido e guardado na memoria (fixo, nunca descartado;
+  limite de 25 s de leitura; ~10 MB num disco de 27 musicas). O jogo toca o comeco da
+  memoria e a leitura adiante pula o que ja esta guardado e busca logo o resto.
+  LOG: "comeco de N de M musicas guardado (... MB) em X s" e "musica guardada N" no ritmo.
+- LOG da R18 tambem mostrou a leitora PARANDO antes de 10 s ("leitora acordada ...
+  3028 ms - ESTAVA PARANDO" na animacao da BIOS), mesmo aceitando o pedido de 32 min.
+  Intervalo agora ajustavel: leitora_acordar no retrovolt.cfg (padrao 10, a regra do
+  autor; 2 a 60) -> rv-jogo --cd-acorda.

@@ -162,6 +162,8 @@ static void opcoes_ler(void)
 #define BLOCO 16 /* setores por leitura */
 #define NCACHE 48
 #define PF_BLOCOS 6 /* blocos lidos adiante, em segundo plano */
+#define PRE_BLOCOS 8 /* comeco de cada musica guardado ao abrir o disco: 8 x 16 setores = 1,7 s */
+#define PRE_LIMITE_S 25.0 /* tempo maximo gasto nisso ao abrir o disco */
 
 static int cd_fd = -1;
 static bool cd_arquivo; /* teste: --cd aponta para um .bin */
@@ -177,10 +179,17 @@ static pthread_cond_t cd_pf_cv = PTHREAD_COND_INITIALIZER; /* pedido de leitura 
 static struct { int64_t lba; uint64_t uso; bool lendo, adiantado; uint8_t d[BLOCO * SETOR]; } cd_cache[NCACHE];
 static uint64_t cd_relogio;
 static volatile double cd_ult_leitura;
+static int cd_acorda_s = 10; /* --cd-acorda: segundos sem leitura ate acordar a leitora (regra do autor: 10) */
 static volatile int64_t cd_ult_lba;
 static int64_t cd_pf_base = -1; /* primeiro bloco a ler adiante */
 static uint64_t cd_pf_ger;      /* muda a cada pedido novo */
 static long cd_n_adiante, cd_n_acertos_pf;
+/* comeco das musicas, lido ao abrir o disco e nunca descartado: a troca dados -> musica
+ * na leitora leva ~1,5 s e o jogo travava toda vez que uma musica comecava. Ordenado por
+ * lba; so muda antes do jogo comecar (depois e so leitura, sem trava). */
+static struct cd_fixo { int64_t lba; uint8_t *d; } *cd_fixos;
+static int cd_nfixos;
+static long cd_n_fixos_usados;
 
 /* faixas do disco (para saber se um setor e de audio) */
 static int cd_nfx;
@@ -424,6 +433,21 @@ static void cd_carrega(int k, int64_t b0)
 	pthread_cond_broadcast(&cd_cv);
 }
 
+static const uint8_t *cd_fixo_acha(int64_t b0)
+{
+	int a = 0, b = cd_nfixos - 1;
+	while (a <= b) {
+		int m = (a + b) / 2;
+		if (cd_fixos[m].lba == b0)
+			return cd_fixos[m].d;
+		if (cd_fixos[m].lba < b0)
+			a = m + 1;
+		else
+			b = m - 1;
+	}
+	return NULL;
+}
+
 static int64_t cd_ler(int64_t pos, uint8_t *s, int64_t len)
 {
 	if (pos >= cd_tam)
@@ -435,6 +459,19 @@ static int64_t cd_ler(int64_t pos, uint8_t *s, int64_t len)
 	while (feito < len) {
 		int64_t lba = (pos + feito) / SETOR;
 		int64_t b0 = lba - lba % BLOCO;
+		const uint8_t *fixo = cd_fixo_acha(b0);
+		if (fixo) { /* comeco de musica guardado: sai da memoria, sem esperar a leitora */
+			int64_t off = pos + feito - b0 * SETOR;
+			int64_t n = BLOCO * SETOR - off;
+			if (n > len - feito)
+				n = len - feito;
+			memcpy(s + feito, fixo + off, n);
+			feito += n;
+			if (ult != b0)
+				cd_n_fixos_usados++;
+			ult = b0;
+			continue;
+		}
 		int k = cd_acha(b0);
 		if (k >= 0 && cd_cache[k].lendo) {
 			pthread_cond_wait(&cd_cv, &cd_mx); /* a leitura adiante ja esta trazendo */
@@ -481,10 +518,13 @@ static void *cd_adiante_thread(void *x)
 		while (ger == cd_pf_ger && !g_sair)
 			pthread_cond_wait(&cd_pf_cv, &cd_mx);
 		ger = cd_pf_ger;
-		for (int i = 0; i < PF_BLOCOS && ger == cd_pf_ger && !g_sair; i++) {
+		for (int i = 0, lidos = 0; lidos < PF_BLOCOS && i < PF_BLOCOS + PRE_BLOCOS && ger == cd_pf_ger && !g_sair; i++) {
 			int64_t b0 = cd_pf_base + i * BLOCO;
 			if (b0 < 0 || b0 * SETOR >= cd_tam)
 				break;
+			if (cd_fixo_acha(b0))
+				continue; /* ja guardado: nao conta, busca o que vem depois */
+			lidos++;
 			if (cd_acha(b0) >= 0)
 				continue;
 			int k = cd_vaga();
@@ -503,6 +543,54 @@ static void *cd_adiante_thread(void *x)
 static void msf(int lba, char *o)
 {
 	sprintf(o, "%02d:%02d:%02d", lba / 4500, lba / 75 % 60, lba % 75);
+}
+
+static int cmp_fixo(const void *a, const void *b)
+{
+	int64_t x = ((const struct cd_fixo *)a)->lba, y = ((const struct cd_fixo *)b)->lba;
+	return x < y ? -1 : x > y;
+}
+
+/* guarda o comeco de cada faixa de musica (so musica: dados o jogo le em sequencia,
+ * e a leitura adiante cobre). Le faixa por faixa, todas de musica, sem trocar de modo. */
+static void cd_pre_musicas(void)
+{
+	int naudio = 0;
+	for (int i = 0; i < cd_nfx; i++)
+		naudio += !cd_fx[i].dados;
+	if (!naudio)
+		return;
+	int64_t total = cd_tam / SETOR;
+	cd_fixos = calloc((size_t)naudio * (PRE_BLOCOS + 1), sizeof *cd_fixos);
+	double t0 = agora();
+	int faixas = 0;
+	for (int i = 0; i < cd_nfx && agora() - t0 < PRE_LIMITE_S; i++) {
+		if (cd_fx[i].dados)
+			continue;
+		int64_t ini = cd_fx[i].lba, fim = i + 1 < cd_nfx ? cd_fx[i + 1].lba : total;
+		for (int64_t b0 = ini - ini % BLOCO; b0 < ini + PRE_BLOCOS * BLOCO && b0 < fim; b0 += BLOCO) {
+			uint8_t *d = malloc(BLOCO * SETOR);
+			if (!d)
+				break;
+			cd_le_bloco(b0, d);
+			cd_fixos[cd_nfixos].lba = b0;
+			cd_fixos[cd_nfixos].d = d;
+			cd_nfixos++;
+		}
+		faixas++;
+	}
+	qsort(cd_fixos, cd_nfixos, sizeof *cd_fixos, cmp_fixo);
+	int u = 0; /* blocos repetidos (faixa curta, dois comecos no mesmo bloco): fica um */
+	for (int i = 0; i < cd_nfixos; i++) {
+		if (u && cd_fixos[u - 1].lba == cd_fixos[i].lba) {
+			free(cd_fixos[i].d);
+			continue;
+		}
+		cd_fixos[u++] = cd_fixos[i];
+	}
+	cd_nfixos = u;
+	LOG("cd: comeco de %d de %d musicas guardado (%d blocos, %d MB) em %.1f s",
+	    faixas, naudio, cd_nfixos, (int)((int64_t)cd_nfixos * BLOCO * SETOR >> 20), agora() - t0);
 }
 
 static bool cd_abrir(const char *dev)
@@ -626,6 +714,7 @@ static bool cd_abrir(const char *dev)
 				LOG("cd: volta para dados: %s (%.0f ms)", ok ? "ok" : "FALHOU", (agora() - t0) * 1e3);
 				break;
 			}
+		cd_pre_musicas();
 		cd_ult_leitura = agora();
 	}
 	return cd_tam > 0;
@@ -2180,7 +2269,7 @@ static void *cd_acorda_thread(void *x)
 	unsigned volta = 0;
 	while (!g_sair) {
 		sleep(1);
-		if (agora() - cd_ult_leitura < 10)
+		if (agora() - cd_ult_leitura < cd_acorda_s)
 			continue;
 		/* Le um setor PERTO de onde o jogo parou, mas ATRAS dele e cada vez num lugar
 		 * diferente. Ler o mesmo setor do jogo nao adianta: ele ja esta na memoria
@@ -3161,6 +3250,7 @@ int main(int argc, char **argv)
 		else if (!strcmp(k, "--filtro-arq")) a_filtro_arq = v;
 		else if (!strcmp(k, "--imagem-arq")) a_imagem_arq = v;
 		else if (!strcmp(k, "--cd-vel")) cd_vel = atoi(v);
+		else if (!strcmp(k, "--cd-acorda")) cd_acorda_s = atoi(v) < 2 ? 2 : atoi(v) > 60 ? 60 : atoi(v);
 		else if (!strcmp(k, "--volume")) volume = atoi(v) < 0 ? 0 : atoi(v) > 100 ? 100 : atoi(v);
 		else if (!strcmp(k, "--audio")) a_audio = v;
 		else if (!strcmp(k, "--opcoes")) a_opcoes = v;
@@ -3388,9 +3478,9 @@ int main(int argc, char **argv)
 			static double t_ult;
 			double t = agora();
 			if (t_ult > 0)
-				LOG("ritmo: %.1f quadros/s; cd: %ld blocos, media %.0f ms, max %.0f ms, metodo %d, adiante %ld/%ld usados; som: buffer %d%%, vazio %ld; ressinc %ld",
+				LOG("ritmo: %.1f quadros/s; cd: %ld blocos, media %.0f ms, max %.0f ms, metodo %d, adiante %ld/%ld usados, musica guardada %ld; som: buffer %d%%, vazio %ld; ressinc %ld",
 				    300 / (t - t_ult), cd_n_blocos, cd_n_blocos ? cd_t_total / cd_n_blocos * 1e3 : 0, cd_t_max * 1e3, cd_metodo,
-				    cd_n_acertos_pf, cd_n_adiante, r_cnt * 100 / RING, som_vazio, vs_ressinc);
+				    cd_n_acertos_pf, cd_n_adiante, cd_n_fixos_usados, r_cnt * 100 / RING, som_vazio, vs_ressinc);
 			LOG("picos: controles %.1f ms, nucleo %.1f ms, copia %.1f ms", pico_ctrl * 1e3, pico_run * 1e3, pico_copia * 1e3);
 			pico_ctrl = pico_run = pico_copia = 0;
 			t_ult = t;
