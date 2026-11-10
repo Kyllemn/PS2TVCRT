@@ -118,7 +118,7 @@ CFG_PADRAO = [
     ('video_filtro', 'NENHUM', 'so no LCD: NENHUM, SCANLINES, SCANLINES LEVES, CRT, SUAVE, SCALE2X, SCALE3X ou XBR (padrao; cada nucleo pode ter o seu)'),
     ('MENU', None, None),
     ('fonte', '6X10', 'fonte do menu: ' + ', '.join(f[0] for f in FONTES_LISTA)),
-    ('menu_desce', '18', 'quanto o menu (nome RETROVOLT, relogio, abas) desce, em pontos do menu (0 a 60)'),
+    ('menu_desce', '20', 'quanto o menu (nome RETROVOLT, relogio, abas) desce, em pontos do menu (0 a 60)'),
     ('menu_fundo_brilho', '45', 'brilho da imagem de fundo do menu, 0 a 100 (imagens em imagens/wallpapers)'),
 ]
 

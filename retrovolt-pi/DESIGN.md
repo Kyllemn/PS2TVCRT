@@ -473,3 +473,10 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   compativel.
 - menu_desce padrao 18 (autor: 20 ficou baixo; quem ja tem o cfg muda la).
 - RetroTV funcionou no Pi (LOG: previas, tela cheia, troca de canal, volume salvo).
+- BIOS por sistema (pedido do autor): RETROVOLT/bios/<sistema>/ com o mesmo nome da
+  pasta em roms/ (ps1, pcengine, segacd, megadrive, mastersystem, neogeocd, neogeo,
+  saturn, 3do, dreamcast, n64, nes, snes, gb, gbc, gba, 32x, atari2600, arcade). Arquivo
+  solto em bios/ e a pasta antiga bios/neocd continuam valendo; a subpasta ganha. Ao
+  abrir o jogo o menu monta /run/retrovolt/bios/<sistema> com atalhos (nome exato que o
+  nucleo procura; NeoCD: subpasta neocd/) e passa isso como pasta de sistema.
+- rv19 voltou a ser a entregue; as mudancas novas estao em rv20.
