@@ -542,7 +542,7 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   LCD: 480i usa as 480 linhas (ampliacao calculada como 240: 3x no 1440x900).
   1o teste: nunca trocou ("SAIDA TUBO 240p"). O kernel lista o 480i da EDID como
   "1920x240i" (DTD entrelacado = linhas por campo; ele so dobra os modos CEA padrao) e o
-  rv-jogo procurava vdisplay 480. Correcao (sem compilar): o 480i e montado a partir do
+  rv-jogo procurava vdisplay 480. Correcao (compilada): o 480i e montado a partir do
   240p em uso (mesmo clock e htotal = mesmos 15,7 kHz; 480 visiveis, 525 total, sync
   3+3 linhas por campo, USERDEF). Depois de trocar, mede o vblank de novo: se o driver
   avisar 30/s no entrelacado, o laco roda 2 quadros por vblank (nao fica lento).
