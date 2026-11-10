@@ -991,6 +991,64 @@ def nome_limpo(arq):
     return n.upper().replace('_', ' ')
 
 
+GUARDA_DIR = '/usr/local/lib/retrovolt'
+GUARDA_UNIDADE = '/etc/systemd/system/retrovolt-video.service'
+GUARDA_TEXTO_UNIDADE = """[Unit]
+Description=RETROVOLT: confere a tela (tubo/LCD) antes do menu
+After=local-fs.target systemd-modules-load.service
+Before=retrovolt.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/lib/retrovolt/rv_video_guarda.py
+TimeoutStartSec=45
+
+[Install]
+WantedBy=multi-user.target
+"""
+
+
+def instala_guarda_video():
+    """instala/atualiza no cartao a guarda de video do boot (independe do pendrive e da
+    versao do menu: roda antes do menu e corrige tubo/LCD). So grava o que mudou."""
+    try:
+        reg = '/var/lib/retrovolt/logs/video_guarda.txt'
+        if os.path.exists(reg):
+            for l in open(reg).read().splitlines()[-3:]:
+                print(l, flush=True)
+        mudou = False
+        os.makedirs(GUARDA_DIR, exist_ok=True)
+        for nome in ('video.py', 'rv_video_guarda.py'):
+            novo = open(os.path.join(PASTA, nome), 'rb').read()
+            dest = os.path.join(GUARDA_DIR, nome)
+            try:
+                if open(dest, 'rb').read() == novo:
+                    continue
+            except OSError:
+                pass
+            with open(dest + '.tmp', 'wb') as f:
+                f.write(novo)
+            os.replace(dest + '.tmp', dest)
+            mudou = True
+        try:
+            unidade_ok = open(GUARDA_UNIDADE).read() == GUARDA_TEXTO_UNIDADE
+        except OSError:
+            unidade_ok = False
+        if not unidade_ok:
+            with open(GUARDA_UNIDADE, 'w') as f:
+                f.write(GUARDA_TEXTO_UNIDADE)
+            mudou = True
+        habilitada = subprocess.run(['systemctl', 'is-enabled', 'retrovolt-video.service'],
+                                    capture_output=True, text=True).stdout.strip() == 'enabled'
+        if mudou or not habilitada:
+            subprocess.run(['systemctl', 'daemon-reload'], capture_output=True)
+            subprocess.run(['systemctl', 'enable', 'retrovolt-video.service'], capture_output=True)
+            os.sync()
+            print('video: guarda de video do boot instalada/atualizada no cartao', flush=True)
+    except Exception as ex:
+        print('video: nao instalou a guarda do boot: %s' % ex, flush=True)
+
+
 def exe_rv_jogo():
     """caminho do rv-jogo pronto para rodar (pendrive sem permissao de execucao: copia)"""
     exe = os.path.join(PASTA, 'rv-jogo')
@@ -2546,6 +2604,35 @@ class App:
         except Exception as ex:
             print('video: erro', ex, flush=True)
 
+    def _vigia_tela(self):
+        """tela trocada com o Pi ligado (ex.: tirou o cabo da TV e ligou no LCD): percebe pela
+        EDID (2 leituras iguais) e chama a mesma decisao do boot (troca e reinicia se precisar).
+        So no menu; em jogo e durante teste de resolucao nao mexe."""
+        time.sleep(20)                       # o boot ja decidiu; comeca depois
+        ultima = None
+        while True:
+            time.sleep(5)
+            if self.tela != 'menu' or self.leitora.pausa.is_set() or os.path.exists(video.TESTE):
+                continue
+            try:
+                ident = video.identidade(video.analisa(video.edid_verdadeira()[0]))
+            except Exception:
+                continue
+            if not ident:
+                continue
+            if ultima is None or ident == ultima:
+                ultima = ident
+                continue
+            time.sleep(1)
+            try:
+                if video.identidade(video.analisa(video.edid_verdadeira()[0])) != ident:
+                    continue
+            except Exception:
+                continue
+            print('video: tela trocada com o Pi ligado: %s -> %s' % (ultima, ident), flush=True)
+            ultima = ident
+            self.fila.put('_tela_trocou')
+
     def troca_cega(self):
         """SELECT segurado 5 s: inverte TUBO/LCD (para quando a tela nao mostra nada)"""
         novo = 'LCD' if self.fb.tubo else 'TUBO'
@@ -2941,6 +3028,8 @@ class App:
                                  daemon=True).start()
             threading.Thread(target=self._info_fundo, daemon=True).start()
             threading.Thread(target=reativa_dongle_8bitdo, daemon=True).start()
+            threading.Thread(target=instala_guarda_video, daemon=True).start()
+            threading.Thread(target=self._vigia_tela, daemon=True).start()
             ultimo_desenho = time.monotonic()
             while True:
                 try:
@@ -2968,6 +3057,9 @@ class App:
                         if self.tela == 'teclado':
                             self.acao_teclado(b)
                         mudou = True
+                    elif b == '_tela_trocou':        # cabo trocado com o Pi ligado
+                        threading.Thread(target=self.aplica_video, args=(self.cfg.get('video_saida', 'AUTO').upper(),),
+                                         daemon=True).start()
                     elif b == '_disco_novo':
                         self.disco_novo()
                         mudou = True

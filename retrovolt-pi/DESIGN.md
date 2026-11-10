@@ -527,3 +527,15 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   sozinho. Escolha antiga (sem tela gravada) com a tela claramente da outra classe:
   detecta. EDID nao lida: mantem a escolha. Recuperacao manual: SELECT 5 s, ou PuTTY
   (video_saida = AUTO + tirar drm.edid_firmware e video=HDMI-A-1 do cmdline).
+- NUNCA SEM VIDEO (autor): 3 camadas, todas em AUTO por padrao.
+  1) Guarda do boot: retrovolt-video.service (Before=retrovolt.service) roda
+     /usr/local/lib/retrovolt/rv_video_guarda.py com uma copia do video.py: le a EDID
+     real (DDC), decide igual ao menu e, se o boot estiver no modo errado, corrige o
+     cmdline e reinicia antes do menu. Independe do pendrive e da versao do menu; erro
+     na guarda nunca impede o menu. Registro em logs/video_guarda.txt (o menu copia as
+     ultimas linhas para o LOG.TXT). O menu instala/atualiza a guarda sozinho a cada
+     versao (so grava o que mudou).
+  2) Menu: a mesma decisao no inicio (como antes) + vigia a cada 5 s no menu: tela
+     trocada com o Pi ligado (EDID diferente, 2 leituras) -> decide e troca.
+  3) Manual: SELECT 5 s; escolha TUBO/LCD so vale na tela em que foi feita.
+  Limite de 2 trocas em 10 min continua (evita ficar reiniciando sem parar).
