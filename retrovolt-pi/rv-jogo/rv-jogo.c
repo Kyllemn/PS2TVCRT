@@ -200,6 +200,7 @@ static int cd_faixa(int64_t lba)
 }
 
 /* tipo esperado: 0 = qualquer; 0x04 = so audio (a leitora recusa se for dados) */
+static bool cd_timeout; /* a ultima leitura falhou por tempo (leitora ocupada/girando), nao por erro */
 static bool cd_read_cd_t(uint32_t lba, int n, uint8_t *buf, uint8_t flags, uint8_t tipo)
 {
 	uint8_t cmd[12] = {0xBE, tipo, lba >> 24, lba >> 16, lba >> 8, lba, 0, 0, n, flags, 0, 0};
@@ -217,6 +218,7 @@ static bool cd_read_cd_t(uint32_t lba, int n, uint8_t *buf, uint8_t flags, uint8
 	io.timeout = 5000;
 	int r = ioctl(cd_fd, SG_IO, &io);
 	bool ok = r == 0 && io.status == 0 && io.host_status == 0 && (io.driver_status & 0x7) == 0;
+	cd_timeout = !ok && r == 0 && io.host_status == 3; /* DID_TIME_OUT */
 	if (!ok && cd_n_erros++ < 8)
 		LOG("cd: READ CD lba %u x%d flags %02x falhou: ioctl %d (%s) status %d host %d driver %d sense %x/%02x/%02x",
 		    lba, n, flags, r, r ? strerror(errno) : "-", io.status, io.host_status, io.driver_status,
@@ -227,6 +229,44 @@ static bool cd_read_cd_t(uint32_t lba, int n, uint8_t *buf, uint8_t flags, uint8
 static bool cd_read_cd(uint32_t lba, int n, uint8_t *buf, uint8_t flags)
 {
 	return cd_read_cd_t(lba, n, buf, flags, 0);
+}
+
+/* comando SCSI simples (MODE SENSE/SELECT); dir: SG_DXFER_FROM_DEV ou TO_DEV */
+static bool cd_scsi(uint8_t *cmd, int cl, uint8_t *buf, int n, int dir)
+{
+	uint8_t sense[32] = {0};
+	sg_io_hdr_t io;
+	memset(&io, 0, sizeof io);
+	io.interface_id = 'S';
+	io.dxfer_direction = dir;
+	io.cmd_len = cl;
+	io.cmdp = cmd;
+	io.mx_sb_len = sizeof sense;
+	io.sbp = sense;
+	io.dxfer_len = n;
+	io.dxferp = buf;
+	io.timeout = 3000;
+	return ioctl(cd_fd, SG_IO, &io) == 0 && io.status == 0 && io.host_status == 0 && (io.driver_status & 0x7) == 0;
+}
+
+/* temporizador de descanso da leitora (pagina 0x0D do padrao MMC, "inactivity
+ * timer"): pede o maximo (32 min). Nao grava na leitora (vale ate desligar). */
+static void cd_descanso_maximo(void)
+{
+	uint8_t b[64] = {0};
+	uint8_t sen[10] = {0x5A, 0x08, 0x0D, 0, 0, 0, 0, 0, sizeof b, 0}; /* MODE SENSE(10), sem blocos */
+	if (!cd_scsi(sen, 10, b, sizeof b, SG_DXFER_FROM_DEV) || (b[8] & 0x3F) != 0x0D) {
+		LOG("cd: leitora nao informou o tempo de descanso (pagina 0x0D)");
+		return;
+	}
+	int antes = b[11] & 0x0F;
+	int tam = 8 + 2 + b[9];
+	b[0] = b[1] = 0;           /* tamanho: reservado no MODE SELECT */
+	b[8] &= 0x3F;              /* tira o bit PS */
+	b[11] = (b[11] & 0xF0) | 0x0F;
+	uint8_t sel[10] = {0x55, 0x10, 0, 0, 0, 0, 0, tam >> 8, tam & 0xff, 0}; /* MODE SELECT(10), PF */
+	bool ok = cd_scsi(sel, 10, b, tam, SG_DXFER_TO_DEV);
+	LOG("cd: tempo de descanso da leitora: codigo %X -> F (32 min): %s", antes, ok ? "aceito" : "RECUSADO");
 }
 
 static void bcd_msf(int64_t lba, uint8_t *o)
@@ -282,18 +322,24 @@ static bool cd_le_setor(int64_t lba, uint8_t *b)
 	}
 	if (cd_metodo == 0 && cd_read_cd(lba, 1, b, 0xF8))
 		return true;
+	/* passou do tempo (leitora acordando): tenta de novo do mesmo jeito; um atraso
+	 * nao e motivo para trocar de metodo pelo resto do jogo (antes: 22,7 s e depois
+	 * tudo pelo metodo lento) */
+	bool demorou = cd_metodo == 0 && cd_timeout;
+	if (demorou && cd_read_cd(lba, 1, b, 0xF8))
+		return true;
 	/* intervalo entre faixas (Sega CD, PC Engine): o TOC diz dados, o setor e audio */
 	if (cd_metodo == 0 && cd_read_cd_t(lba, 1, b, 0x10, 0x04))
 		return true;
 	if (cd_metodo <= 1 && cd_raw_ioctl(lba, b)) {
-		if (cd_metodo != 1) {
+		if (cd_metodo != 1 && !demorou) {
 			cd_metodo = 1;
 			LOG("cd: passando a ler pelo CDROMREADRAW");
 		}
 		return true;
 	}
 	if (cd_cozido(lba, b)) {
-		if (cd_metodo != 2) {
+		if (cd_metodo != 2 && !demorou) {
 			cd_metodo = 2;
 			LOG("cd: passando a ler setores de 2048 (sem audio XA)");
 		}
@@ -318,7 +364,12 @@ static void cd_le_bloco(int64_t lba0, uint8_t *d)
 	}
 	double t0 = agora();
 	bool mesma = cd_metodo == 0 && cd_faixa(lba0) == cd_faixa(lba0 + n - 1);
-	bool ok = mesma && cd_read_cd(lba0, n, d, cd_fx[cd_faixa(lba0)].dados ? 0xF8 : 0x10);
+	uint8_t fl = cd_fx[cd_faixa(lba0)].dados ? 0xF8 : 0x10;
+	bool ok = mesma && cd_read_cd(lba0, n, d, fl);
+	if (!ok && mesma && cd_timeout) {
+		LOG("cd: leitora demorou mais de 5 s (lba %lld): tentando de novo", (long long)lba0);
+		ok = cd_read_cd(lba0, n, d, fl);
+	}
 	if (!ok)
 		for (int i = 0; i < n; i++)
 			if (!cd_le_setor(lba0 + i, d + i * SETOR)) {
@@ -475,6 +526,7 @@ static bool cd_abrir(const char *dev)
 			LOG("cd: leitora nao aceitou velocidade %dx (%s): segue no padrao", cd_vel, strerror(errno));
 		else
 			LOG("cd: velocidade da leitora %dx", cd_vel);
+		cd_descanso_maximo();
 		struct cdrom_tochdr th;
 		if (ioctl(cd_fd, CDROMREADTOCHDR, &th) < 0) {
 			LOG("cd: sem TOC (sem disco?): %s", strerror(errno));
@@ -1926,22 +1978,33 @@ static void *cd_acorda_thread(void *x)
 {
 	(void)x;
 	uint8_t b[SETOR];
-	int n_falhas = 0;
+	int n_falhas = 0, n_log = 0;
+	unsigned volta = 0;
 	while (!g_sair) {
-		sleep(2);
+		sleep(1);
 		if (agora() - cd_ult_leitura < 10)
 			continue;
-		/* le onde o jogo parou (dados ou audio, com o comando certo para cada um):
-		 * no PC Engine a faixa 1 e audio e a leitura de dados falhava, a leitora dormia */
+		/* Le um setor PERTO de onde o jogo parou, mas ATRAS dele e cada vez num lugar
+		 * diferente. Ler o mesmo setor do jogo nao adianta: ele ja esta na memoria
+		 * interna da leitora, que responde sem girar o disco e dorme mesmo assim. */
+		int64_t total = cd_tam / SETOR;
+		int64_t l = cd_ult_lba - 300 - (int64_t)(volta++ % 8) * 75;
+		if (l < 16)
+			l = cd_ult_lba + 600 + (int64_t)(volta % 8) * 75; /* inicio do disco: le a frente, longe */
+		if (l >= total)
+			l = total > 32 ? total / 2 : 0;
 		pthread_mutex_lock(&cd_io_mx);
-		int64_t l = cd_ult_lba;
-		if (l < 0 || l * SETOR >= cd_tam)
-			l = 16;
+		double t0 = agora();
 		bool ok = cd_le_setor(l, b);
+		double t = agora() - t0;
 		cd_ult_leitura = agora();
 		pthread_mutex_unlock(&cd_io_mx);
 		if (!ok && n_falhas++ < 5)
 			LOG("cd: leitura para manter a leitora girando falhou (lba %lld)", (long long)l);
+		/* leitura lenta = o disco estava parando (prova de que o "acorda" falhou) */
+		if (ok && (n_log < 3 || t > 0.3) && n_log++ < 40)
+			LOG("cd: leitora acordada (lba %lld, %.0f ms)%s", (long long)l, t * 1e3,
+			    t > 0.3 ? " - ESTAVA PARANDO" : "");
 	}
 	return NULL;
 }

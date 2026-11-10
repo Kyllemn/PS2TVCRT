@@ -349,3 +349,12 @@ Licoes do PS1/PCE aplicadas:
   "GM T-xxxx" vira nome do save so se for codigo de verdade.
 - Botoes (padrao do nucleo): Y=A, B=B, A=C, L=X, X=Y, R=Z, SELECT=MODE.
 
+- Leitora dormia mesmo com a leitura de 10 s (visto pelo autor no PC Engine): o
+  "acorda" lia o ultimo setor do jogo, que ja estava na memoria interna da leitora;
+  ela respondia sem girar. Agora le perto, ATRAS da posicao, cada vez num lugar
+  diferente (fora da memoria dela). LOG: "leitora acordada (... ms)"; acima de
+  300 ms marca "ESTAVA PARANDO".
+- Pede a leitora o tempo de descanso maximo (MMC pagina 0x0D, 32 min, sem gravar).
+- Leitura que passa de 5 s (leitora acordando) tenta de novo do mesmo jeito e nao
+  troca mais o metodo de leitura pelo resto do jogo (antes: 22,7 s e tudo lento).
+- Copiar o disco para o cartao: RECUSADO pelo autor (tira a sensacao da midia real).
