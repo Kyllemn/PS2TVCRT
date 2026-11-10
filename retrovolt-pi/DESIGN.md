@@ -495,3 +495,14 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
 - menu_logo_sobe (padrao 16 pontos, ~2 cm): so a linha RETROVOLT + Wi-Fi + relogio sobe;
   abas e conteudo ficam em menu_desce. A linha e desenhada numa camada da tela inteira
   (CamadaTopo, transparente) misturada no FB.show.
+
+## R22 (so Python; rv-jogo e nucleos iguais aos da R20)
+- Nomes cortados no tubo ("SEGA CD" virava "SFGA CN"): com altura da convergencia
+  0,975 o menu de 240 linhas era espremido em 234 do tubo, pulando 6 linhas do desenho
+  (19, 59, 99, 139, 179, 219); letra em cima dessas linhas perdia um traco. Agora, com
+  altura < 100%, o menu e desenhado ja com essas linhas (H_TELA = 240 x altura): uma linha
+  do desenho = uma linha do tubo. Muda ao sair da convergencia (e o fundo e refeito).
+- Fontes para escolher: no maximo 5x8 (o autor; negritos de 5 tem 6 de largura): 5X7,
+  5X7 NEGRITO, 4X6, 5X8, SPLEEN 5X8, 5X8 NEGRITO. As maiores continuam no fontes.py e no
+  rv-jogo, mas nao aparecem. Padrao 5X7 (antes 6X10); fonte gravada que saiu da lista
+  vira 5X7.
