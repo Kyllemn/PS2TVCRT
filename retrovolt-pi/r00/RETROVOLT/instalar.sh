@@ -33,7 +33,7 @@ apt-get update >> "$LOG" 2>&1 || falha "sem internet (apt-get update falhou)"
 # base de hoje + o que as proximas versoes vao usar (video, som, controles, FFmpeg 7 do RetroTV)
 PACOTES="python3 edid-decode exfatprogs dosfstools alsa-utils i2c-tools wireless-tools
  libsdl2-2.0-0 libdrm2 libgbm1 libegl1 libgles2 libasound2t64 libevdev2 libudev1 python3-evdev
- libavcodec61 libavformat61 libavutil59 libswscale8 libswresample5"
+ libavcodec61 libavformat61 libavutil59 libswscale8 libswresample5 ffmpeg mpv"
 faltaram=""
 for p in $PACOTES; do
 	say "instalando $p"

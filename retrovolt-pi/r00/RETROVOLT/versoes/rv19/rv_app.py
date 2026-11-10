@@ -33,6 +33,7 @@ def tempo(etapa):
 import disco
 import shutil
 import imagens
+import tv
 import video
 import wifi
 
@@ -319,6 +320,9 @@ def item(c, x, y, s, on, valor=None):
 
 # ---------------------------------------------------------------- framebuffer
 class FB:
+    trava = threading.Lock()
+    geo = None
+
     def __init__(self):
         fake = os.environ.get('RV_FAKEFB')
         if fake:
@@ -399,8 +403,14 @@ class FB:
         if not self.tubo:
             for e in canvas.extras:
                 self._imagem(frame, e, x0, y0 + topo * s, s)
+        # geometria desta tela (a previa da TV desenha direto na caixa, no lugar certo)
+        if self.tubo:
+            self.geo = (x0, y0, cw / float(W), ch / float(HT), topo)
+        else:
+            self.geo = (x0, y0, float(s), float(s), topo)
         self.espera_vsync()
-        self.mem[0:len(frame)] = frame
+        with self.trava:
+            self.mem[0:len(frame)] = frame
         if self.fake:
             from PIL import Image
             Image.frombuffer('RGBX', (self.w, self.h), bytes(self.mem), 'raw', 'BGRX', self.stride, 1).convert('RGB').save(self.fake)
@@ -803,6 +813,13 @@ PASTAS_EXTRAS = {'pcengine': ['pcenginecd']}
 EXT_CD = ('.cue', '.chd', '.ccd', '.m3u', '.iso', '.img', '.bin', '.pbp')
 # BIOS que o sistema precisa (sem ela o jogo nem abre): nome do arquivo em RETROVOLT/bios/
 BIOS_OBRIGATORIA = {'pcengine': 'syscard3.pce'}   # so para jogos de CD
+# opcoes de nucleo que valem desde o primeiro jogo (so se o arquivo .opt ainda nao existe;
+# depois manda o que a pessoa escolher em OPCOES DO NUCLEO)
+OPCOES_PADRAO = {
+    # Neo Geo CD: regiao USA (textos em ingles; Japan e o padrao do nucleo) e o atalho da
+    # BIOS que encurta a espera de leitura
+    'neocd_libretro.so': {'neocd_region': 'USA', 'neocd_cdspeedhack': 'On'},
+}
 # Sega CD: uma BIOS por regiao do disco (o nucleo escolhe pela regiao gravada no disco)
 BIOS_SEGACD = {'U': ('bios_CD_U.bin', 'AMERICANO'), 'E': ('bios_CD_E.bin', 'EUROPEU'),
                'J': ('bios_CD_J.bin', 'JAPONES')}
@@ -850,6 +867,7 @@ NOME_SISTEMA['audio'] = 'CD DE AUDIO'
 
 
 BASE_CARTAO = os.path.join(DADOS, 'RETROVOLT')
+AUDIO_PADRAO = 'hdmi:CARD=vc4hdmi0,DEV=0'      # o mesmo do rv-jogo
 
 
 def tem_pendrive():
@@ -1331,6 +1349,16 @@ class App:
         save = ''.join(ch if ch.isalnum() or ch in '-_ ' else '_' for ch in save).strip() or 'jogo'
         saves = os.path.join(self.base, 'saves', sistema)
         os.makedirs(saves, exist_ok=True)
+        opt = os.path.join(self.base, 'config', 'nucleos', nucleo.replace('_libretro.so', '.opt'))
+        if nucleo in OPCOES_PADRAO and not os.path.exists(opt):
+            try:
+                os.makedirs(os.path.dirname(opt), exist_ok=True)
+                with open(opt, 'w') as f:
+                    f.write('# RETROVOLT: opcoes iniciais deste nucleo (mude no jogo: START+SELECT > OPCOES DO NUCLEO)\n')
+                    for k, v in OPCOES_PADRAO[nucleo].items():
+                        f.write('%s = "%s"\n' % (k, v))
+            except OSError as ex:
+                print('jogo: nao gravou %s: %s' % (opt, ex), flush=True)
         cmd = [exe, '--nucleo', so, '--bios', os.path.join(self.base, 'bios'), '--saves', saves,
                '--nome', nome[:60], '--save', save, '--fonte', F.nome, '--volume', str(self.volume()),
                '--conv', '%d,%d,%.3f,%.3f' % tuple(self.conv),
@@ -1422,9 +1450,7 @@ class App:
             elif self.aba == 'JOGOS':
                 self.desenha_jogos(c)
             elif self.aba == 'TV':
-                cabecalho(c, 'TV', self.wifi, '')
-                c.text(24, 70, 'RETROTV', IVORY)
-                c.text(24, 70 + F.ch + 8, 'EM BREVE.', SLATE)
+                self.desenha_tv(c)
             else:
                 cabecalho(c, 'OPCOES', self.wifi, 'A ENTRA')
                 y = max(56, 30 + F.ch + 14)
@@ -1865,6 +1891,12 @@ class App:
         if a in ('L1', 'R1'):
             i = ABAS.index(self.aba)
             self.aba = ABAS[(i + (1 if a == 'R1' else -1)) % len(ABAS)]
+            self.tv_para_previa()
+            if self.aba == 'TV':
+                self.tv_carrega()
+            return
+        if self.aba == 'TV':
+            self.acao_tv(a)
             return
         if self.aba == 'DISCO':
             i = self.leitora.info if self.leitora.estado == 'ok' else None
@@ -1957,6 +1989,205 @@ class App:
         if not self.fb.tubo:                      # no tubo nao ha efeitos
             itens.append(('filtro', 'FILTRO', self.cfg.get('video_filtro', 'NENHUM').upper()))
         return itens
+
+    # ---------------------------------------------------------- RetroTV
+    def tv_carrega(self):
+        self.tv_listas = tv.listas(self.base)
+        self.tv_progs = tv.tem_programas()
+        st = self.__dict__.setdefault('tv_st', {'lista': None, 'sel_lista': 0, 'sel': 0})
+        if st['lista'] is not None and st['lista'] >= len(self.tv_listas):
+            st['lista'] = None
+        if len(self.tv_listas) == 1:          # uma lista so: vai direto aos canais
+            st['lista'] = 0
+        print('tv: %d listas (%s)' % (len(self.tv_listas), ', '.join(
+            '%s: %d canais' % (n, len(cs)) for n, _, cs in self.tv_listas)), flush=True)
+
+    def tv_canais(self):
+        st = self.tv_st
+        if st['lista'] is None:
+            return []
+        return self.tv_listas[st['lista']][2]
+
+    def tv_caixa(self):
+        """caixa da previa (pontos do menu), do tamanho da previa do save state (4:3)"""
+        bw = max(120, min((W - 40) // 2, (H - 110) * 4 // 3))
+        bh = bw * 3 // 4
+        x0 = W - 14 - bw
+        y0 = 50 + F.ch + 8 + max(0, (H - (50 + F.ch + 8) - 24 - bh) // 2)
+        return x0, y0, bw, bh
+
+    def desenha_tv(self, c):
+        if not hasattr(self, 'tv_listas'):
+            self.tv_carrega()
+        st = self.tv_st
+        cabecalho(c, 'TV', self.wifi, 'A ASSISTE  B VOLTA' if st['lista'] is not None else 'A ENTRA')
+        if not self.tv_progs['ffmpeg']:
+            c.text(24, 64, 'FALTA O FFMPEG NO SISTEMA. NO PUTTY:', ORANGE)
+            c.text(24, 64 + F.ch + 6, 'SUDO APT INSTALL -Y FFMPEG MPV', IVORY)
+            return
+        if not self.tv_listas:
+            c.text(24, 64, 'NENHUMA LISTA DE CANAIS.', SLATE)
+            c.text(24, 64 + F.ch + 6, 'COLOQUE A LISTA (.M3U .M3U8 .PLS', SLATE)
+            c.text(24, 64 + 2 * (F.ch + 6), '.XSPF .TXT) EM RETROVOLT/TV/', IVORY)
+            return
+        if st['lista'] is None:               # varias listas: escolhe uma
+            st['sel_lista'] = min(st['sel_lista'], len(self.tv_listas) - 1)
+            y = 58
+            for n, (nome, _, cs) in enumerate(self.tv_listas):
+                item(c, 24, y, nome.upper()[:30], n == st['sel_lista'], '%d' % len(cs))
+                y += F.ch + 9
+            return
+        nome_l, _, canais = self.tv_listas[st['lista']]
+        sel = st['sel'] = min(st['sel'], len(canais) - 1)
+        c.text(16, 50, nome_l.upper()[:30], ORANGE)
+        c.rtext(W - 12, 50, '%d/%d' % (sel + 1, len(canais)), SLATE)
+        x0, y0c, bw, bh = self.tv_caixa()
+        passo = F.ch + 7
+        y0 = 50 + F.ch + 10
+        cabem = max(1, (H - 8 - F.ch - y0) // passo)
+        ini = max(0, min(sel - cabem // 2, len(canais) - cabem))
+        lim = (W - 40 - bw - 4) // F.cw - 3
+        y = y0
+        for n in range(ini, min(len(canais), ini + cabem)):
+            item(c, 24, y, canais[n]['nome'].upper()[:lim], n == sel)
+            y += passo
+        # caixa da previa: preta com contorno; o video entra por cima (direto na tela)
+        c.rect(x0 - 1, y0c - 1, bw + 2, bh + 2, (200, 205, 215))
+        c.rect(x0, y0c, bw, bh, (0, 0, 0))
+        pv = getattr(self, 'tv_previa', None)
+        ch = canais[sel]
+        if pv and pv.erro:
+            c.text(x0 + 6, y0c + bh // 2 - F.ch, 'CANAL FORA DO AR', RED)
+        elif pv:
+            if pv.quadros == 0:
+                c.text(x0 + 6, y0c + bh // 2 - F.ch // 2, 'SINTONIZANDO...', SLATE)
+        else:
+            if ch.get('grupo'):
+                c.text(x0 + 6, y0c + 6, ch['grupo'].upper()[:bw // F.cw - 2], SLATE)
+            c.text(x0 + 6, y0c + bh // 2 - F.ch // 2, 'A: ASSISTIR', SLATE)
+        c.text(x0, y0c + bh + 6, ch['nome'].upper()[:bw // F.cw], IVORY)
+
+    def tv_para_previa(self):
+        pv = getattr(self, 'tv_previa', None)
+        if pv:
+            pv.fecha()
+            self.tv_previa = None
+
+    def tv_inicia_previa(self):
+        self.tv_para_previa()
+        canais = self.tv_canais()
+        if not canais or self.fb.fake:
+            return
+        ch = canais[self.tv_st['sel']]
+        self.fb.show(self.desenha(), self.conv)     # caixa preta e geometria atual
+        x0, y0, sx, sy, topo = self.fb.geo
+        bx, by, bw, bh = self.tv_caixa()
+        px, py = int(x0 + bx * sx), int(y0 + (by + topo) * sy)
+        pw, ph = int(bw * sx) // 2 * 2, int(bh * sy) // 2 * 2
+        if self.fb.tubo:     # encaixa em pontos quadrados (bw x bh) e estica para a tela larga
+            aw, ah = bw // 2 * 2, bh // 2 * 2
+        else:
+            aw, ah = pw, ph
+        bpp = self.fb.bpp // 8
+        fb = self.fb
+
+        def desenha(q):
+            if self.tela != 'menu' or self.aba != 'TV':
+                return
+            linha = pw * bpp
+            with fb.trava:
+                for y in range(ph):
+                    o = (py + y) * fb.stride + px * bpp
+                    fb.mem[o:o + linha] = q[y * linha:(y + 1) * linha]
+            if pv.quadros == 1:
+                self.fila.put('_tv')                # tira o "SINTONIZANDO..."
+
+        pv = tv.Previa(ch['url'], pw, ph, self.fb.bpp, desenha, self.cfg.get('audio_dispositivo') or AUDIO_PADRAO,
+                       self.volume(), aw, ah)
+        self.tv_previa = pv
+        self.tv_previa_ini = time.monotonic()
+        print('tv: previa %s (%s)' % (ch['nome'], ch['url']), flush=True)
+        pv.start()
+
+    def tv_tela_cheia(self):
+        canais = self.tv_canais()
+        if not canais:
+            return
+        ch = canais[self.tv_st['sel']]
+        self.tv_para_previa()
+        if not getattr(self, 'tv_cheia', None):
+            self.tv_cheia = tv.TelaCheia(self.fb.tubo, self.fb.w, self.fb.h, self.fb.bpp,
+                                         self.cfg.get('audio_dispositivo') or AUDIO_PADRAO, self.volume())
+        self.leitora.pausa.set()
+        self.tela = 'tv_cheia'
+        print('tv: tela cheia %s' % ch['nome'], flush=True)
+        self.tv_cheia.abre(ch['url'], ch['nome'])
+
+    def tv_sai_tela_cheia(self, aviso=None):
+        if getattr(self, 'tv_cheia', None):
+            self.tv_cheia.fecha()
+        self.leitora.pausa.clear()
+        self.tela = 'menu'
+        if aviso:
+            self.mostra_aviso(aviso)
+
+    def tv_vigia(self):
+        """chamado pelo laco do menu: previa -> tela cheia em 5 s; mpv fechou sozinho"""
+        pv = getattr(self, 'tv_previa', None)
+        if pv and self.tela == 'menu':
+            if pv.erro:
+                print('tv: canal fora do ar: %s' % pv.erro[:200], flush=True)
+                self.tv_previa = None
+                return True
+            if pv.quadros and time.monotonic() - self.tv_previa_ini >= 5:
+                self.tv_tela_cheia()
+                return False
+        if self.tela == 'tv_cheia' and not self.tv_cheia.rodando():
+            err = self.tv_cheia.erro()
+            print('tv: reproducao terminou %s' % err[:200], flush=True)
+            self.tv_sai_tela_cheia('CANAL ENCERROU OU SAIU DO AR')
+            return True
+        return False
+
+    def acao_tv(self, a):
+        if not hasattr(self, 'tv_listas'):
+            self.tv_carrega()
+        st = self.tv_st
+        if st['lista'] is None:
+            n = len(self.tv_listas)
+            if not n:
+                return
+            if a in ('CIMA', 'BAIXO'):
+                st['sel_lista'] = (st['sel_lista'] + (1 if a == 'BAIXO' else -1)) % n
+            elif a == 'A':
+                st['lista'], st['sel'] = st['sel_lista'], 0
+            return
+        canais = self.tv_canais()
+        if a in ('CIMA', 'BAIXO', 'ESQ', 'DIR'):
+            self.tv_para_previa()
+            d = (1 if a in ('BAIXO', 'DIR') else -1) * (10 if a in ('ESQ', 'DIR') else 1)
+            st['sel'] = max(0, min(len(canais) - 1, st['sel'] + d))
+        elif a == 'A':
+            if getattr(self, 'tv_previa', None) and self.tv_previa.quadros:
+                self.tv_tela_cheia()                 # A de novo: tela cheia na hora
+            else:
+                self.tv_inicia_previa()
+        elif a == 'B':
+            if getattr(self, 'tv_previa', None):
+                self.tv_para_previa()
+            elif len(self.tv_listas) > 1:
+                st['lista'] = None
+
+    def acao_tv_cheia(self, a):
+        canais = self.tv_canais()
+        st = self.tv_st
+        if a in ('B', 'START', 'SELECT'):
+            self.tv_sai_tela_cheia()
+        elif a in ('CIMA', 'BAIXO') and canais:      # troca de canal, como na TV
+            st['sel'] = (st['sel'] + (1 if a == 'CIMA' else -1)) % len(canais)
+            ch = canais[st['sel']]
+            print('tv: canal %s' % ch['nome'], flush=True)
+            self.tv_cheia.troca(ch['url'], '%d  %s' % (st['sel'] + 1, ch['nome']))
 
     def desenha_conv(self, c):
         """teste de convergencia: borda inteira, cantos e cruz no centro (sumiu na rv04)"""
@@ -2264,6 +2495,13 @@ class App:
         import traceback
         print('ERRO na tela %s (%s):\n%s' % (self.tela, onde, traceback.format_exc()), flush=True)
         nome = self.tela.upper()
+        try:                                  # TV: fecha previa/tela cheia
+            self.tv_para_previa()
+            if getattr(self, 'tv_cheia', None):
+                self.tv_cheia.fecha()
+            self.leitora.pausa.clear()
+        except Exception:
+            pass
         self.tela = 'menu'
         self.confirma = None
         self.mostra_aviso('ERRO NA TELA %s: VOLTEI AO MENU (VEJA O LOG)' % nome)
@@ -2283,6 +2521,9 @@ class App:
 
     def acao(self, a):
         t = self.tela
+        if t == 'tv_cheia':
+            self.acao_tv_cheia(a)
+            return
         if t == 'menu':
             self.acao_menu(a)
         elif t == 'conv':
@@ -2485,7 +2726,8 @@ class App:
             while True:
                 try:
                     rolando = self.aviso and len(self.aviso[0]) > (W - 44) // F.cw
-                    a = self.fila.get(timeout=0.25 if (self.contagem or self.tela == 'teste_video') else 0.1 if rolando else 1.0)
+                    curto = self.contagem or self.tela in ('teste_video', 'tv_cheia') or getattr(self, 'tv_previa', None)
+                    a = self.fila.get(timeout=0.25 if curto else 0.1 if rolando else 1.0)
                 except queue.Empty:
                     a = None
                 mudou = bool(self.contagem) or bool(self.aviso and len(self.aviso[0]) > (W - 44) // F.cw)
@@ -2498,7 +2740,7 @@ class App:
                         if self.leitora.estado != 'ok':
                             self.pergunta_disco = None
                         mudou = True
-                    elif b == '_wifi' or b == '_img':
+                    elif b in ('_wifi', '_img', '_tv'):
                         mudou = True
                     elif b.startswith('_controle:'):
                         self.mostra_aviso('CONTROLE CONECTADO: ' + b[10:].upper())
@@ -2514,6 +2756,10 @@ class App:
                         self.acao_segura(b)
                         mudou = True
                 self.leitora.quieta = self.tela == 'conv'     # convergencia: nada de leitora
+                try:
+                    mudou = self.tv_vigia() or mudou
+                except Exception:
+                    self.falha_tela('tv')
                 if self.tela == 'teste_video':
                     mudou = True
                     if time.monotonic() > self.teste_ate:
@@ -2533,6 +2779,8 @@ class App:
                 if self.aviso and time.monotonic() > self.aviso[1]:
                     self.aviso = None
                     mudou = True
+                if self.tela == 'tv_cheia':               # o mpv e dono da tela
+                    continue
                 if mudou or time.monotonic() - ultimo_desenho > 60:
                     if time.monotonic() - ultimo_desenho > 60:
                         copia_log()

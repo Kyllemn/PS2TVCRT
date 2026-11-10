@@ -424,3 +424,15 @@ Licoes do PS1/PCE aplicadas:
   "ritmo pelo tempo" (tranco a cada ~1,2 s). O som acompanha (som x tela/jogo), como o
   RetroArch.
 - RetroTV: aguardando a lista de canais do autor.
+- RetroTV (aba TV): listas em RETROVOLT/tv/ (.m3u/.m3u8 IPTV com group-title e
+  tvg-logo, .pls, .xspf, .txt "nome, url"; caminho relativo = video no pendrive).
+  Varias listas = pastas (como os sistemas em JOGOS); uma so = direto nos canais.
+  A: previa de 5 s na caixa 4:3 (tamanho da previa do save state) -> tela cheia (A de novo
+  vai na hora). Tela cheia: mpv --vo=drm (LCD: resolucao do monitor; tubo: 240 linhas
+  com --monitorpixelaspect, abaixo do limite de 480i). CIMA/BAIXO troca de canal sem
+  fechar (socket do mpv); B/START/SELECT volta. Canal fora do ar: aviso.
+  Previa: ffmpeg -> quadros no formato do framebuffer -> copiados direto na caixa
+  (trava com o desenho do menu). Precisa no Pi: sudo apt install -y ffmpeg mpv
+  (instalar.sh ja inclui). Media player separado: outra fase.
+- Neo Geo CD: opcoes iniciais neocd_region=USA e neocd_cdspeedhack=On (so se o .opt
+  nao existe). NeoCD NAO roda MVS/AES (cartucho): isso e FinalBurn Neo (neogeo.zip).
