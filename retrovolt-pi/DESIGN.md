@@ -558,7 +558,17 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   mostrou pontos mais escuros a cada 16 px exatos (x 15+16k, y 16k) = pixel do canto de 4
   blocos pintado 2 vezes (desempate de vertice no centro do pixel na V3D). 3D (Wacky
   Races) nao sofre. Remendo remendos/flycast_canto_pixel.py: todos os vertices deslocados
-  ~1/60 px no vertex shader (gles.cpp e naomi2.cpp). Compilado; falta o teste do autor.
+  ~1/60 px no vertex shader (gles.cpp e naomi2.cpp). Compilado e testado pelo autor: NAO
+  resolveu (remendo retirado). Autor escolheu Vulkan.
+- Dreamcast em Vulkan (codigo escrito, aguardando #compilar): rv-jogo oferece
+  RETRO_HW_CONTEXT_VULKAN (GET_PREFERRED) se a libvulkan.so.1 abre e ha GPU; instancia
+  sem janela; o Flycast cria o dispositivo pela negociacao (create_device); interface
+  libretro Vulkan v5 com 1 indice de sincronia (wait_sync_index = fila parada); a cada
+  quadro: barreira + vkCmdCopyImageToBuffer da imagem do set_image para um buffer na
+  memoria (de preferencia com cache), espera a fence e converte RGBA -> XRGB para o
+  desenho de sempre. Sem Vulkan no Pi: GLES como antes. dreamcast_gpu = GLES no cfg volta
+  ao GLES. Flycast com -DUSE_VULKAN=ON. Pi: libvulkan1 + mesa-vulkan-drivers (instalar.sh).
+  Cabecalhos Vulkan baixados pelo build.sh (rv-jogo/terceiros, fora do git).
 - TV sem som depois de ~5 s (efeito da troca nova): a saida de som HDMI e de um programa
   so; o mpv abria com a previa ainda tocando e ficava sem som. Agora abre com --aid=no e
   liga o som (aid auto) depois que a previa fecha. 1o build do Flycast "16 KB" nao valeu:

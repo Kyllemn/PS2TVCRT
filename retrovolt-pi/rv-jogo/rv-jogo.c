@@ -45,6 +45,8 @@
 #include <unistd.h>
 
 #include "libretro.h"
+#define VK_NO_PROTOTYPES
+#include "libretro_vulkan.h"
 #include "fonte.h"
 
 #define LOG(...) do { printf("rv-jogo: " __VA_ARGS__); putchar('\n'); fflush(stdout); } while (0)
@@ -2418,6 +2420,367 @@ static bool gl_pedido(struct retro_hw_render_callback *cb)
 	return true;
 }
 
+
+/* ------------------------------------------------------------------ GPU por Vulkan (Flycast)
+ * Na GPU do Pi (V3D) o caminho GLES do Flycast pinta 2 vezes o pixel do canto de blocos 2D
+ * (pontinhos em grade no Gunbird 2). Com --gpu vulkan o rv-jogo oferece Vulkan: cria a
+ * instancia (sem janela), o nucleo cria o dispositivo (negociacao libretro), desenha numa
+ * imagem dele e entrega por set_image; o rv-jogo copia a imagem para a memoria e segue o
+ * caminho de sempre. libvulkan carregada na hora (dlopen). Sem Vulkan no Pi: fica no GLES. */
+static int gpu_quer_vulkan = 1; /* --gpu vulkan|gles */
+static struct {
+	void *lib;
+	bool pronto, pedido, ativo;
+	VkInstance inst;
+	VkPhysicalDevice gpu;
+	VkDevice dev;
+	VkQueue q;
+	uint32_t qfi;
+	const struct retro_hw_render_context_negotiation_interface_vulkan *neg;
+	struct retro_hw_render_interface_vulkan iface;
+	struct retro_hw_render_callback cb;
+	pthread_mutex_t qmx;
+	VkCommandPool pool;
+	VkCommandBuffer cmd;
+	VkFence fence;
+	VkBuffer buf;
+	VkDeviceMemory mem;
+	uint8_t *map;
+	size_t cap;
+	struct retro_vulkan_image img;
+	bool tem_img;
+	VkSemaphore sem[8], sinal;
+	uint32_t nsem;
+	VkCommandBuffer extra[8];
+	uint32_t nextra;
+	uint32_t *q32;
+	size_t q32_cap;
+	PFN_vkGetInstanceProcAddr gipa;
+	PFN_vkGetDeviceProcAddr gdpa;
+	PFN_vkCreateInstance CreateInstance;
+	PFN_vkEnumeratePhysicalDevices EnumeratePhysicalDevices;
+	PFN_vkGetPhysicalDeviceProperties GetPhysicalDeviceProperties;
+	PFN_vkGetPhysicalDeviceMemoryProperties GetPhysicalDeviceMemoryProperties;
+	PFN_vkGetPhysicalDeviceQueueFamilyProperties GetPhysicalDeviceQueueFamilyProperties;
+	PFN_vkCreateDevice CreateDevice;
+	PFN_vkGetDeviceQueue GetDeviceQueue;
+	PFN_vkCreateCommandPool CreateCommandPool;
+	PFN_vkAllocateCommandBuffers AllocateCommandBuffers;
+	PFN_vkCreateFence CreateFence;
+	PFN_vkCreateBuffer CreateBuffer;
+	PFN_vkDestroyBuffer DestroyBuffer;
+	PFN_vkGetBufferMemoryRequirements GetBufferMemoryRequirements;
+	PFN_vkAllocateMemory AllocateMemory;
+	PFN_vkFreeMemory FreeMemory;
+	PFN_vkBindBufferMemory BindBufferMemory;
+	PFN_vkMapMemory MapMemory;
+	PFN_vkInvalidateMappedMemoryRanges InvalidateMappedMemoryRanges;
+	PFN_vkBeginCommandBuffer BeginCommandBuffer;
+	PFN_vkEndCommandBuffer EndCommandBuffer;
+	PFN_vkResetCommandBuffer ResetCommandBuffer;
+	PFN_vkCmdPipelineBarrier CmdPipelineBarrier;
+	PFN_vkCmdCopyImageToBuffer CmdCopyImageToBuffer;
+	PFN_vkQueueSubmit QueueSubmit;
+	PFN_vkQueueWaitIdle QueueWaitIdle;
+	PFN_vkWaitForFences WaitForFences;
+	PFN_vkResetFences ResetFences;
+	PFN_vkDeviceWaitIdle DeviceWaitIdle;
+} vk = {.qmx = PTHREAD_MUTEX_INITIALIZER};
+
+/* chamado quando o nucleo pergunta a API: abre o Vulkan e confere que ha GPU */
+static bool vk_prepara(void)
+{
+	if (vk.pronto)
+		return true;
+	if (!gpu_quer_vulkan || fb.fake)
+		return false;
+	vk.lib = dlopen("libvulkan.so.1", RTLD_NOW | RTLD_LOCAL);
+	if (!vk.lib) {
+		LOG("gpu: sem libvulkan.so.1 (sudo apt install mesa-vulkan-drivers libvulkan1): usa GLES");
+		return false;
+	}
+	vk.gipa = (PFN_vkGetInstanceProcAddr)dlsym(vk.lib, "vkGetInstanceProcAddr");
+	if (!vk.gipa)
+		return false;
+	vk.CreateInstance = (PFN_vkCreateInstance)vk.gipa(NULL, "vkCreateInstance");
+	VkApplicationInfo app = {VK_STRUCTURE_TYPE_APPLICATION_INFO, NULL, "RetroVolt", 1, "rv-jogo", 1, VK_API_VERSION_1_1};
+	VkInstanceCreateInfo ici = {VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
+	ici.pApplicationInfo = &app;
+	if (!vk.CreateInstance || vk.CreateInstance(&ici, NULL, &vk.inst) != VK_SUCCESS) {
+		LOG("gpu: Vulkan nao abriu (sem driver?): usa GLES");
+		return false;
+	}
+#define VKI(n) vk.n = (PFN_vk##n)vk.gipa(vk.inst, "vk" #n)
+	VKI(EnumeratePhysicalDevices); VKI(GetPhysicalDeviceProperties); VKI(GetPhysicalDeviceMemoryProperties);
+	VKI(GetPhysicalDeviceQueueFamilyProperties); VKI(CreateDevice); VKI(GetDeviceQueue);
+	vk.gdpa = (PFN_vkGetDeviceProcAddr)vk.gipa(vk.inst, "vkGetDeviceProcAddr");
+#undef VKI
+	uint32_t n = 1;
+	VkPhysicalDevice d = VK_NULL_HANDLE;
+	if (!vk.EnumeratePhysicalDevices || !vk.gdpa ||
+	    (vk.EnumeratePhysicalDevices(vk.inst, &n, &d) != VK_SUCCESS && !d) || !d) {
+		LOG("gpu: Vulkan sem GPU: usa GLES");
+		return false;
+	}
+	VkPhysicalDeviceProperties pp;
+	vk.GetPhysicalDeviceProperties(d, &pp);
+	vk.gpu = d;
+	LOG("gpu: Vulkan %u.%u.%u em %s", VK_VERSION_MAJOR(pp.apiVersion), VK_VERSION_MINOR(pp.apiVersion),
+	    VK_VERSION_PATCH(pp.apiVersion), pp.deviceName);
+	vk.pronto = true;
+	return true;
+}
+
+static void vk_set_image(void *h, const struct retro_vulkan_image *img, uint32_t ns, const VkSemaphore *sem, uint32_t qf)
+{
+	(void)h; (void)qf;
+	vk.img = *img;
+	vk.tem_img = true;
+	vk.nsem = ns > 8 ? 8 : ns;
+	for (uint32_t i = 0; i < vk.nsem; i++)
+		vk.sem[i] = sem[i];
+}
+static uint32_t vk_sync_index(void *h) { (void)h; return 0; }
+static uint32_t vk_sync_mask(void *h) { (void)h; return 1; }
+static void vk_set_cmds(void *h, uint32_t n, const VkCommandBuffer *c)
+{
+	(void)h;
+	vk.nextra = n > 8 ? 8 : n;
+	for (uint32_t i = 0; i < vk.nextra; i++)
+		vk.extra[i] = c[i];
+}
+static void vk_lock(void *h) { (void)h; pthread_mutex_lock(&vk.qmx); }
+static void vk_unlock(void *h) { (void)h; pthread_mutex_unlock(&vk.qmx); }
+/* um quadro por vez: a copia ja espera a GPU, entao "esperar o indice" = fila parada */
+static void vk_wait_sync(void *h)
+{
+	(void)h;
+	pthread_mutex_lock(&vk.qmx);
+	vk.QueueWaitIdle(vk.q);
+	pthread_mutex_unlock(&vk.qmx);
+}
+static void vk_set_sinal(void *h, VkSemaphore s) { (void)h; vk.sinal = s; }
+
+static bool vk_pedido(struct retro_hw_render_callback *cb)
+{
+	if (!vk_prepara())
+		return false;
+	vk.cb = *cb;
+	vk.pedido = true;
+	LOG("gpu: nucleo desenha com Vulkan");
+	return true;
+}
+
+/* depois do load_game: dispositivo (o nucleo cria pela negociacao), fila e a copia */
+static bool vk_inicia(void)
+{
+	if (!vk.pedido)
+		return true;
+	struct retro_vulkan_context ctx;
+	memset(&ctx, 0, sizeof ctx);
+	if (vk.neg && vk.neg->create_device) {
+		if (!vk.neg->create_device(&ctx, vk.inst, vk.gpu, VK_NULL_HANDLE, vk.gipa, NULL, 0, NULL, 0, NULL)) {
+			LOG("gpu: o nucleo nao criou o dispositivo Vulkan");
+			return false;
+		}
+		vk.gpu = ctx.gpu;
+		vk.dev = ctx.device;
+		vk.q = ctx.queue;
+		vk.qfi = ctx.queue_family_index;
+	} else {
+		uint32_t nq = 0;
+		VkQueueFamilyProperties qp[8];
+		vk.GetPhysicalDeviceQueueFamilyProperties(vk.gpu, &nq, NULL);
+		if (nq > 8) nq = 8;
+		vk.GetPhysicalDeviceQueueFamilyProperties(vk.gpu, &nq, qp);
+		for (vk.qfi = 0; vk.qfi < nq && !(qp[vk.qfi].queueFlags & VK_QUEUE_GRAPHICS_BIT); vk.qfi++)
+			;
+		float pr = 1.0f;
+		VkDeviceQueueCreateInfo qci = {VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO, NULL, 0, vk.qfi, 1, &pr};
+		VkDeviceCreateInfo dci = {VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
+		dci.queueCreateInfoCount = 1;
+		dci.pQueueCreateInfos = &qci;
+		if (vk.CreateDevice(vk.gpu, &dci, NULL, &vk.dev) != VK_SUCCESS)
+			return false;
+		vk.GetDeviceQueue(vk.dev, vk.qfi, 0, &vk.q);
+	}
+#define VKD(n) vk.n = (PFN_vk##n)vk.gdpa(vk.dev, "vk" #n)
+	VKD(CreateCommandPool); VKD(AllocateCommandBuffers); VKD(CreateFence); VKD(CreateBuffer); VKD(DestroyBuffer);
+	VKD(GetBufferMemoryRequirements); VKD(AllocateMemory); VKD(FreeMemory); VKD(BindBufferMemory); VKD(MapMemory);
+	VKD(InvalidateMappedMemoryRanges); VKD(BeginCommandBuffer); VKD(EndCommandBuffer); VKD(ResetCommandBuffer);
+	VKD(CmdPipelineBarrier); VKD(CmdCopyImageToBuffer); VKD(QueueSubmit); VKD(QueueWaitIdle); VKD(WaitForFences);
+	VKD(ResetFences); VKD(DeviceWaitIdle);
+#undef VKD
+	VkCommandPoolCreateInfo pci = {VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO, NULL,
+	                               VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT, vk.qfi};
+	VkCommandBufferAllocateInfo cai = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO, NULL, 0,
+	                                   VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1};
+	VkFenceCreateInfo fci = {VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+	if (vk.CreateCommandPool(vk.dev, &pci, NULL, &vk.pool) != VK_SUCCESS)
+		return false;
+	cai.commandPool = vk.pool;
+	if (vk.AllocateCommandBuffers(vk.dev, &cai, &vk.cmd) != VK_SUCCESS || vk.CreateFence(vk.dev, &fci, NULL, &vk.fence) != VK_SUCCESS)
+		return false;
+	struct retro_hw_render_interface_vulkan *f = &vk.iface;
+	f->interface_type = RETRO_HW_RENDER_INTERFACE_VULKAN;
+	f->interface_version = RETRO_HW_RENDER_INTERFACE_VULKAN_VERSION;
+	f->handle = &vk;
+	f->instance = vk.inst;
+	f->gpu = vk.gpu;
+	f->device = vk.dev;
+	f->get_device_proc_addr = vk.gdpa;
+	f->get_instance_proc_addr = vk.gipa;
+	f->queue = vk.q;
+	f->queue_index = vk.qfi;
+	f->set_image = vk_set_image;
+	f->get_sync_index = vk_sync_index;
+	f->get_sync_index_mask = vk_sync_mask;
+	f->set_command_buffers = vk_set_cmds;
+	f->wait_sync_index = vk_wait_sync;
+	f->lock_queue = vk_lock;
+	f->unlock_queue = vk_unlock;
+	f->set_signal_semaphore = vk_set_sinal;
+	vk.ativo = true;
+	if (vk.cb.context_reset)
+		vk.cb.context_reset();
+	return true;
+}
+
+static bool vk_buf(size_t tam)
+{
+	if (tam <= vk.cap)
+		return true;
+	if (vk.buf) {
+		vk.DeviceWaitIdle(vk.dev);
+		vk.DestroyBuffer(vk.dev, vk.buf, NULL);
+		vk.FreeMemory(vk.dev, vk.mem, NULL);
+		vk.buf = VK_NULL_HANDLE;
+		vk.cap = 0;
+	}
+	VkBufferCreateInfo bci = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, NULL, 0, tam, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+	                          VK_SHARING_MODE_EXCLUSIVE};
+	if (vk.CreateBuffer(vk.dev, &bci, NULL, &vk.buf) != VK_SUCCESS)
+		return false;
+	VkMemoryRequirements mr;
+	vk.GetBufferMemoryRequirements(vk.dev, vk.buf, &mr);
+	VkPhysicalDeviceMemoryProperties mp;
+	vk.GetPhysicalDeviceMemoryProperties(vk.gpu, &mp);
+	uint32_t ti = UINT32_MAX;
+	/* de preferencia memoria com cache para o processador ler rapido */
+	for (int pass = 0; pass < 2 && ti == UINT32_MAX; pass++)
+		for (uint32_t i = 0; i < mp.memoryTypeCount; i++) {
+			VkMemoryPropertyFlags fl = mp.memoryTypes[i].propertyFlags;
+			VkMemoryPropertyFlags quer = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+			                             (pass == 0 ? VK_MEMORY_PROPERTY_HOST_CACHED_BIT : VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+			if ((mr.memoryTypeBits & (1u << i)) && (fl & quer) == quer) {
+				ti = i;
+				break;
+			}
+		}
+	VkMemoryAllocateInfo mai = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, NULL, mr.size, ti};
+	if (ti == UINT32_MAX || vk.AllocateMemory(vk.dev, &mai, NULL, &vk.mem) != VK_SUCCESS ||
+	    vk.BindBufferMemory(vk.dev, vk.buf, vk.mem, 0) != VK_SUCCESS ||
+	    vk.MapMemory(vk.dev, vk.mem, 0, VK_WHOLE_SIZE, 0, (void **)&vk.map) != VK_SUCCESS)
+		return false;
+	vk.cap = tam;
+	return true;
+}
+
+/* quadro pronto na imagem do nucleo -> memoria (XRGB8888, linha 0 = topo) */
+static const uint32_t *vk_le_quadro(unsigned w, unsigned h)
+{
+	if (!vk.tem_img || !w || !h || !vk_buf((size_t)w * h * 4))
+		return NULL;
+	VkImage im = vk.img.create_info.image;
+	VkImageSubresourceRange sr = vk.img.create_info.subresourceRange;
+	sr.levelCount = 1;
+	sr.layerCount = 1;
+	VkCommandBufferBeginInfo bi = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, NULL,
+	                               VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT};
+	vk.ResetCommandBuffer(vk.cmd, 0);
+	vk.BeginCommandBuffer(vk.cmd, &bi);
+	VkImageMemoryBarrier b = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+	b.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	b.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+	b.oldLayout = vk.img.image_layout;
+	b.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+	b.srcQueueFamilyIndex = b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	b.image = im;
+	b.subresourceRange = sr;
+	vk.CmdPipelineBarrier(vk.cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0,
+	                      NULL, 1, &b);
+	VkBufferImageCopy rg;
+	memset(&rg, 0, sizeof rg);
+	rg.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	rg.imageSubresource.layerCount = 1;
+	rg.imageExtent.width = w;
+	rg.imageExtent.height = h;
+	rg.imageExtent.depth = 1;
+	vk.CmdCopyImageToBuffer(vk.cmd, im, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, vk.buf, 1, &rg);
+	b.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+	b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	b.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+	b.newLayout = vk.img.image_layout;
+	vk.CmdPipelineBarrier(vk.cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, NULL, 0,
+	                      NULL, 1, &b);
+	vk.EndCommandBuffer(vk.cmd);
+	VkCommandBuffer cbs[9];
+	uint32_t ncb = 0;
+	for (uint32_t i = 0; i < vk.nextra; i++)
+		cbs[ncb++] = vk.extra[i];
+	cbs[ncb++] = vk.cmd;
+	VkPipelineStageFlags st[8];
+	for (uint32_t i = 0; i < vk.nsem; i++)
+		st[i] = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+	VkSubmitInfo si = {VK_STRUCTURE_TYPE_SUBMIT_INFO};
+	si.waitSemaphoreCount = vk.nsem;
+	si.pWaitSemaphores = vk.sem;
+	si.pWaitDstStageMask = st;
+	si.commandBufferCount = ncb;
+	si.pCommandBuffers = cbs;
+	if (vk.sinal) {
+		si.signalSemaphoreCount = 1;
+		si.pSignalSemaphores = &vk.sinal;
+	}
+	pthread_mutex_lock(&vk.qmx);
+	vk.ResetFences(vk.dev, 1, &vk.fence);
+	VkResult r = vk.QueueSubmit(vk.q, 1, &si, vk.fence);
+	pthread_mutex_unlock(&vk.qmx);
+	vk.nextra = 0;
+	vk.nsem = 0;
+	if (r != VK_SUCCESS || vk.WaitForFences(vk.dev, 1, &vk.fence, VK_TRUE, 1000000000ull) != VK_SUCCESS)
+		return NULL;
+	VkMappedMemoryRange mrg = {VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE, NULL, vk.mem, 0, VK_WHOLE_SIZE};
+	vk.InvalidateMappedMemoryRanges(vk.dev, 1, &mrg);
+	size_t n = (size_t)w * h;
+	if (n > vk.q32_cap) {
+		free(vk.q32);
+		vk.q32 = malloc(n * 4);
+		vk.q32_cap = n;
+	}
+	const uint32_t *o = (const uint32_t *)vk.map;
+	bool bgra = vk.img.create_info.format == VK_FORMAT_B8G8R8A8_UNORM || vk.img.create_info.format == VK_FORMAT_B8G8R8A8_SRGB;
+	if (bgra)
+		for (size_t i = 0; i < n; i++)
+			vk.q32[i] = o[i] & 0xffffff;
+	else /* R8G8B8A8 (o do Flycast): bytes R,G,B,A -> XRGB */
+		for (size_t i = 0; i < n; i++) {
+			uint32_t p = o[i];
+			vk.q32[i] = (p & 0xff) << 16 | (p & 0xff00) | (p >> 16 & 0xff);
+		}
+	return vk.q32;
+}
+
+static void vk_fim(void)
+{
+	if (!vk.ativo)
+		return;
+	vk.DeviceWaitIdle(vk.dev);
+	if (vk.cb.context_destroy)
+		vk.cb.context_destroy();
+	vk.ativo = false;
+}
+
 /* ultimo quadro do jogo (para o fundo do menu) */
 static uint8_t *ult_q;
 static unsigned ult_w, ult_h;
@@ -2453,7 +2816,13 @@ static void video_cb(const void *data, unsigned w, unsigned h, size_t pitch)
 	if (!data) /* repetir quadro: o fb.back ja tem a imagem */
 		return;
 	int fmt = pixfmt;
-	if (data == RETRO_HW_FRAME_BUFFER_VALID) {
+	if (data == RETRO_HW_FRAME_BUFFER_VALID && vk.ativo) {
+		data = vk_le_quadro(w, h);
+		if (!data)
+			return;
+		pitch = (size_t)w * 4;
+		fmt = RETRO_PIXEL_FORMAT_XRGB8888;
+	} else if (data == RETRO_HW_FRAME_BUFFER_VALID) {
 		if (!gl.ativo)
 			return;
 		if (w > gl.w || h > gl.h)
@@ -3107,9 +3476,31 @@ static bool environment(unsigned cmd, void *data)
 		return true;
 	}
 	case RETRO_ENVIRONMENT_SET_HW_RENDER:
+		if (((struct retro_hw_render_callback *)data)->context_type == RETRO_HW_CONTEXT_VULKAN)
+			return vk_pedido(data);
 		return gl_pedido(data);
 	case RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER:
-		*(unsigned *)data = RETRO_HW_CONTEXT_OPENGLES3; /* Pi 5: V3D com GLES 3.1 */
+		/* Vulkan se pedido e se o Pi tem driver; senao GLES 3 (V3D com GLES 3.1) */
+		*(unsigned *)data = vk_prepara() ? RETRO_HW_CONTEXT_VULKAN : RETRO_HW_CONTEXT_OPENGLES3;
+		return true;
+	case RETRO_ENVIRONMENT_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE: {
+		const struct retro_hw_render_context_negotiation_interface_vulkan *n = data;
+		if (!n || n->interface_type != RETRO_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_VULKAN)
+			return false;
+		vk.neg = n;
+		return true;
+	}
+	case RETRO_ENVIRONMENT_GET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_SUPPORT: {
+		struct retro_hw_render_context_negotiation_interface *n = data;
+		if (!n || n->interface_type != RETRO_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_VULKAN)
+			return false;
+		n->interface_version = RETRO_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_VULKAN_VERSION;
+		return true;
+	}
+	case RETRO_ENVIRONMENT_GET_HW_RENDER_INTERFACE:
+		if (!vk.ativo)
+			return false;
+		*(const struct retro_hw_render_interface **)data = (const struct retro_hw_render_interface *)&vk.iface;
 		return true;
 	case RETRO_ENVIRONMENT_GET_JIT_CAPABLE: /* Flycast: sem isso desiste (aarch64 tem JIT) */
 		*(bool *)data = true;
@@ -4283,6 +4674,7 @@ int main(int argc, char **argv)
 		else if (!strcmp(k, "--cd-faixas")) cd_faixas = atoi(v) != 0;
 		else if (!strcmp(k, "--tubo-480i")) tubo_480i_ok = atoi(v) != 0;
 		else if (!strcmp(k, "--saida-32")) saida32_ok = atoi(v) != 0;
+		else if (!strcmp(k, "--gpu")) gpu_quer_vulkan = !strcasecmp(v, "vulkan");
 		else if (!strcmp(k, "--cd-cache")) { /* MB */
 			int64_t n = (int64_t)atoi(v) * 1024 * 1024 / (BLOCO * SETOR);
 			ncache = n < NCACHE ? NCACHE : n > 16384 ? 16384 : (int)n;
@@ -4381,6 +4773,11 @@ int main(int argc, char **argv)
 	}
 	core.get_system_av_info(&av);
 	LOG("jogo: %ux%u %.3f Hz, som %.0f Hz", av.geometry.base_width, av.geometry.base_height, av.timing.fps, av.timing.sample_rate);
+	if (!vk_inicia()) {
+		LOG("ERRO: o Vulkan nao abriu para o nucleo");
+		core.unload_game();
+		return 2;
+	}
 	if (!gl_inicia()) {
 		LOG("ERRO: a GPU nao abriu para o nucleo");
 		core.unload_game();
@@ -4581,6 +4978,7 @@ int main(int argc, char **argv)
 		LOG("volume: %d", volume);
 	}
 	km_sai(); /* menu do RetroVolt: a tela do boot (240p no tubo) */
+	vk_fim();
 	gl_fim();
 	core.unload_game();
 	core.deinit();

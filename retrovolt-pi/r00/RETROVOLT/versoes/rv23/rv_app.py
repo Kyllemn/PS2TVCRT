@@ -112,6 +112,7 @@ CFG_PADRAO = [
     ('volume', '80', 'volume geral dos jogos, 0 a 100'),
     ('leitora_cache_dreamcast', '256', 'Dreamcast: MB de memoria guardando o que ja foi lido do disco (menos picotes)'),
     ('tubo_480i', 'SIM', 'tubo: jogo em 480i sai em 480i de verdade (SIM) ou sempre 240p (NAO)'),
+    ('dreamcast_gpu', 'VULKAN', 'Dreamcast: VULKAN (padrao) ou GLES (reserva, se o Vulkan der problema)'),
     ('tv_brilho', '0', 'RetroTV: brilho da imagem, -50 a 50 (LT/RT na tela cheia)'),
     ('tv_troca_rapida', 'SIM', 'RetroTV: SIM = tela cheia abre por tras da previa (sem tela preta); NAO = jeito antigo'),
     ('LEITORA', None, None),
@@ -1540,6 +1541,8 @@ class App:
         cmd += ['--cd', self.leitora.dev, '--cd-vel', self.cfg.get('leitora_velocidade', '4'),
                 '--cd-acorda', str(num(self.cfg, 'leitora_acordar', int, 2, 60))] if cd else ['--jogo', arquivo]
         cmd += ['--tubo-480i', '0' if self.cfg.get('tubo_480i', 'SIM').upper() == 'NAO' else '1']
+        if sistema == 'dreamcast':
+            cmd += ['--gpu', 'gles' if self.cfg.get('dreamcast_gpu', 'VULKAN').upper() == 'GLES' else 'vulkan']
         if cd and sistema == 'dreamcast':
             # CD-R em 2 sessoes: uma faixa por arquivo. Cache grande: o Dreamcast volta toda hora
             # aos mesmos arquivos e cada busca nova na leitora para o jogo ~100 ms
