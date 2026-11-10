@@ -68,7 +68,7 @@ static const char *a_filtro_arq;
 static bool sem_filtro; /* menu do jogo: nunca com filtro */
 static int imagem;       /* LCD: 0 = ORIGINAL (ampliacao inteira, nitida), 1 = TELA CHEIA (enche a altura) */
 static const char *a_imagem_arq;
-static int conv_menu_x, conv_menu_y; static double conv_menu_w = 1.0; /* convergencia geral (do menu) */
+static int conv_menu_x, conv_menu_y; static double conv_menu_w = 1.0, conv_menu_h = 1.0; /* convergencia geral (do menu) */
 static int volume = 100, volume_ini = -1;  /* 0..100 */
 static int cd_vel = 4;                     /* velocidade da leitora (x); 0 = maxima */
 static int32_t ganho = 32768;              /* Q15 */
@@ -1280,8 +1280,10 @@ static void desenha_base(const void *data, unsigned w, unsigned h, size_t pitch,
 		if (cw > fb.w) cw = fb.w;
 		if (cw < (int)w) cw = w;
 		x0 = (fb.w - cw) / 2 + conv_x;
-		y0 = (fb.h - eh * lp) / 2 + conv_y * lp;
-		dh = eh * lp;
+		/* altura (LT/RT na convergencia do jogo): linhas do jogo esticadas/encolhidas */
+		dh = (int)lround(eh * lp * conv_h);
+		if (dh < 1) dh = 1;
+		y0 = (fb.h - dh) / 2 + conv_y * lp;
 	} else {
 		lp = fb.h / gh;
 		if (lp < 1) lp = 1;
@@ -2324,7 +2326,7 @@ static int sub;           /* 0 = menu, 1 = opcoes do nucleo, 2 = controles, 3 = 
                            * 6 = confirmar substituir, 7 = convergencia */
 static int slot_modo, slot_sel; /* 0 = salvar, 1 = carregar */
 static int cv_x, cv_y;          /* convergencia ao entrar (B desfaz) */
-static double cv_w;
+static double cv_w, cv_h;
 static int ass_pos;       /* assistente: posicao em bot_ordem */
 static int sub_sel, sub_ini;
 static bool sub_mudou;
@@ -2755,12 +2757,14 @@ static void conv_le(void)
 	if (!f)
 		return;
 	int x, y;
-	double w;
-	if (fscanf(f, "%d %d %lf", &x, &y, &w) == 3) {
+	double w, h = 1.0;
+	int n = fscanf(f, "%d %d %lf %lf", &x, &y, &w, &h);
+	if (n >= 3) {
 		conv_x = x;
 		conv_y = y;
 		conv_w = w;
-		LOG("convergencia deste nucleo: %d %d %.3f", x, y, w);
+		conv_h = n == 4 && h >= 0.80 && h <= 1.10 ? h : 1.0;
+		LOG("convergencia deste nucleo: %d %d %.3f altura %.3f", x, y, w, conv_h);
 	}
 	fclose(f);
 }
@@ -2771,7 +2775,8 @@ static void conv_grava(void)
 	mkdir_pai(a_conv_arq);
 	FILE *f = fopen(a_conv_arq, "w");
 	if (f) {
-		fprintf(f, "%d %d %.3f\n# RETROVOLT: posicao x, posicao y, largura (so deste nucleo)\n", conv_x, conv_y, conv_w);
+		fprintf(f, "%d %d %.3f %.3f\n# RETROVOLT: posicao x, posicao y, largura, altura (so deste nucleo)\n",
+		        conv_x, conv_y, conv_w, conv_h);
 		fclose(f);
 		sync();
 	}
@@ -2833,9 +2838,10 @@ static void conv_desenha(void)
 	fb_retangulo(x0 + w - lx, y0 + h - ly, lx, ly, 255, 140, 40);
 	char l[64];
 	fb_texto(-1, 70, "CONVERGENCIA DESTE NUCLEO", 255, 140, 40, true);
-	snprintf(l, sizeof l, "X %+d  Y %+d  LARGURA %d%%", conv_x, conv_y, (int)lround(conv_w * 100));
+	snprintf(l, sizeof l, "X %+d  Y %+d  LARGURA %d%%  ALTURA %d%%", conv_x, conv_y, (int)lround(conv_w * 100),
+	         (int)lround(conv_h * 100));
 	fb_texto(-1, 70 + F->ch + 8, l, 240, 236, 225, true);
-	fb_texto(-1, 70 + 2 * (F->ch + 8), "SETAS POSICAO  LB/RB LARGURA", 120, 130, 160, true);
+	fb_texto(-1, 70 + 2 * (F->ch + 8), "SETAS POSICAO  LB/RB LARGURA  LT/RT ALTURA", 120, 130, 160, true);
 	fb_texto(-1, 70 + 3 * (F->ch + 8), "SELECT IGUAL AO MENU", 120, 130, 160, true);
 	fb_texto(-1, 70 + 4 * (F->ch + 8), "A SALVA  B VOLTA", 240, 236, 225, true);
 }
@@ -3084,7 +3090,7 @@ static int menu_passo(uint32_t b, uint32_t novo, bool combo)
 	}
 	if (sub == 7) { /* convergencia deste nucleo, com o jogo atras */
 		if (combo || (novo & VOLTA)) {
-			conv_x = cv_x; conv_y = cv_y; conv_w = cv_w;
+			conv_x = cv_x; conv_y = cv_y; conv_w = cv_w; conv_h = cv_h;
 			ult_x0 = -99999;
 			sub = 0;
 			return combo ? M_CONTINUAR : -1;
@@ -3096,12 +3102,18 @@ static int menu_passo(uint32_t b, uint32_t novo, bool combo)
 		if (rep & (1u << B_DOWN)) conv_y += 1;
 		if (novo & (1u << B_L)) conv_w -= 0.005;
 		if (novo & (1u << B_R)) conv_w += 0.005;
+		/* LT/RT: altura (antes nao existia no jogo; o menu mandava e ninguem usava) */
+		if (novo & (1u << B_L2)) conv_h -= 0.005;
+		if (novo & (1u << B_R2)) conv_h += 0.005;
 		if (novo & (1u << B_SELECT)) {
-			conv_x = conv_menu_x; conv_y = conv_menu_y; conv_w = conv_menu_w;
+			conv_x = conv_menu_x; conv_y = conv_menu_y; conv_w = conv_menu_w; conv_h = conv_menu_h;
 		}
 		conv_x = conv_x < -300 ? -300 : conv_x > 300 ? 300 : conv_x;
 		conv_y = conv_y < -20 ? -20 : conv_y > 20 ? 20 : conv_y;
 		conv_w = conv_w < 0.70 ? 0.70 : conv_w > 1.10 ? 1.10 : conv_w;
+		conv_h = conv_h < 0.80 ? 0.80 : conv_h > 1.10 ? 1.10 : conv_h;
+		if (novo & ((1u << B_L2) | (1u << B_R2)))
+			ult_x0 = -99999; /* geometria mudou: limpa as bordas */
 		if (novo & (1u << B_B)) {
 			conv_grava();
 			snprintf(slot_msg, sizeof slot_msg, "CONVERGENCIA SALVA");
@@ -3226,7 +3238,7 @@ static int menu_passo(uint32_t b, uint32_t novo, bool combo)
 				return -1;
 			}
 			if (menu_sel == M_CONV) {
-				cv_x = conv_x; cv_y = conv_y; cv_w = conv_w;
+				cv_x = conv_x; cv_y = conv_y; cv_w = conv_w; cv_h = conv_h;
 				sub = 7;
 				ult_x0 = -99999;
 				return -1;
@@ -3495,7 +3507,10 @@ int main(int argc, char **argv)
 	core.set_controller_port_device(1, RETRO_DEVICE_JOYPAD);
 	sram_carrega();
 	botoes_ler();
-	conv_menu_x = conv_x; conv_menu_y = conv_y; conv_menu_w = conv_w;
+	conv_menu_x = conv_x; conv_menu_y = conv_y; conv_menu_w = conv_w; conv_menu_h = conv_h;
+	/* altura do jogo: 100% ate ser ajustada aqui (encolher pula linhas da imagem do jogo;
+	 * a do menu so vale se escolhida com SELECT) */
+	conv_h = 1.0;
 	conv_le();
 	filtro_le();
 	imagem_le();

@@ -506,3 +506,11 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   5X7 NEGRITO, 4X6, 5X8, SPLEEN 5X8, 5X8 NEGRITO. As maiores continuam no fontes.py e no
   rv-jogo, mas nao aparecem. Padrao 5X7 (antes 6X10); fonte gravada que saiu da lista
   vira 5X7.
+
+## R23 (codigo escrito, aguardando #compilar)
+- Convergencia DENTRO do jogo sem altura: o menu mandava a altura (--conv) e o rv-jogo
+  nunca usava; a tela de ajuste do jogo so tinha posicao e largura. Agora LT/RT mudam a
+  altura (80% a 110%), o desenho no tubo usa (linhas do jogo esticadas/encolhidas), o
+  arquivo .conv de cada nucleo guarda 4 valores (o antigo, com 3, continua valendo).
+  O jogo comeca em 100% de altura ate ser ajustado (encolher pula linhas da imagem do
+  jogo); SELECT copia a convergencia do menu, altura inclusive.
