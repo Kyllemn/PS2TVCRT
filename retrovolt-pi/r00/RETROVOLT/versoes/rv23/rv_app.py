@@ -111,6 +111,7 @@ CFG_PADRAO = [
     ('SOM', None, None),
     ('volume', '80', 'volume geral dos jogos, 0 a 100'),
     ('tv_brilho', '0', 'RetroTV: brilho da imagem, -50 a 50 (LT/RT na tela cheia)'),
+    ('tv_troca_rapida', 'SIM', 'RetroTV: SIM = tela cheia abre por tras da previa (sem tela preta); NAO = jeito antigo'),
     ('LEITORA', None, None),
     ('leitora_velocidade', '4', 'velocidade da leitora nos jogos (0 = maxima; a leitora pode ter minimo proprio, ex.: 10x)'),
     ('leitora_acordar', '10', 'segundos sem leitura ate o RetroVolt acordar a leitora (2 a 60)'),
@@ -2401,8 +2402,9 @@ class App:
                 print('tv: canal fora do ar: %s' % pv.erro[:200], flush=True)
                 self.tv_previa = None
                 return True
-            if pv.quadros and time.monotonic() - self.tv_previa_ini >= 3:
-                self.tv_tela_cheia(cedo=True)       # toma a tela uns 2 s depois, ja com imagem
+            rapida = self.cfg.get('tv_troca_rapida', 'SIM').upper() != 'NAO'
+            if pv.quadros and time.monotonic() - self.tv_previa_ini >= (3 if rapida else 5):
+                self.tv_tela_cheia(cedo=rapida)     # rapida: toma a tela uns 2 s depois, ja com imagem
                 return False
         if self.tela == 'tv_cheia' and not self.tv_cheia.rodando():
             err = self.tv_cheia.erro()
@@ -2443,7 +2445,8 @@ class App:
             if getattr(self, 'tv_pre', 0):
                 pass                                 # tela cheia ja abrindo por tras
             elif getattr(self, 'tv_previa', None) and self.tv_previa.quadros:
-                self.tv_tela_cheia(cedo=True)        # A de novo: tela cheia sem esperar
+                # A de novo: tela cheia sem esperar
+                self.tv_tela_cheia(cedo=self.cfg.get('tv_troca_rapida', 'SIM').upper() != 'NAO')
             else:
                 self.tv_inicia_previa()
         elif a == 'B':
