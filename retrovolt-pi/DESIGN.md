@@ -539,3 +539,21 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
      trocada com o Pi ligado (EDID diferente, 2 leituras) -> decide e troca.
   3) Manual: SELECT 5 s; escolha TUBO/LCD so vale na tela em que foi feita.
   Limite de 2 trocas em 10 min continua (evita ficar reiniciando sem parar).
+
+## PENDENTE (anotado, sem codigo): scanlines desiguais em TELA CHEIA (LCD)
+- Fotos do autor (LCD 1280x960): no tamanho ORIGINAL as scanlines ficam iguais; em TELA
+  CHEIA ficam "descompassadas" (umas linhas grossas, outras finas).
+- Causa: ORIGINAL usa um numero inteiro de linhas da tela por linha do jogo (960/240 = 4:
+  toda linha do jogo vira 4, a 4a escurece). TELA CHEIA estica para a altura toda com
+  numero quebrado (ex.: 224 linhas -> 960 = 4,29): umas linhas do jogo viram 4 linhas, outras
+  5, e a scanline (sempre a ultima de cada grupo) fica com espacamento irregular.
+- Agravante possivel: o HP w1907 e 1440x900 nativo; em 1280x960 o proprio monitor reescala
+  960 -> 900 linhas, o que tambem deixa scanlines desiguais (ORIGINAL inclusive, menos visivel).
+- Opcoes de correcao (rv-jogo, desenha_base):
+  a) Scanline "de perfil" (como os shaders): para cada linha da tela, calcula a posicao
+     dentro da linha do jogo (0..1) e escurece pela distancia ao centro (mais escuro nas
+     bordas). Com 4 ou 5 linhas por linha do jogo o desenho fica igual em todas. Recomendado.
+  b) TELA CHEIA "inteira": usa o maior multiplo inteiro que enche mais (ex.: 224x4 = 896 de
+     960) - quase cheia, scanlines perfeitas, faixa preta fina em cima/embaixo.
+  c) Em TELA CHEIA desligar scanlines (so o efeito CRT de grade).
+- Para o monitor: usar a resolucao nativa (AUTO) evita a reescala do proprio monitor.
