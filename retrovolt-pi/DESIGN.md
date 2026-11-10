@@ -490,3 +490,8 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   disco Neo Geo CD sintetico com IPL.TXT em minusculas (test.prg; disco TEST.PRG):
   NeoCD da R19 = "not on the disc" (o erro do LOG do autor), R20 = carregou e entrou;
   PS1 igual a R14; musica guardada 23/23; convergencia PASSOU.
+
+## R21 (so Python; rv-jogo e nucleos iguais aos da R20)
+- menu_logo_sobe (padrao 16 pontos, ~2 cm): so a linha RETROVOLT + Wi-Fi + relogio sobe;
+  abas e conteudo ficam em menu_desce. A linha e desenhada numa camada da tela inteira
+  (CamadaTopo, transparente) misturada no FB.show.
