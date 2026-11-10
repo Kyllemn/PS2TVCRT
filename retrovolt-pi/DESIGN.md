@@ -369,3 +369,17 @@ Licoes do PS1/PCE aplicadas:
 - Nucleos do PS1 e PC Engine mantidos iguais aos da R15 (testados); so o Genesis Plus
   GX e novo. Licao: recompilar nucleo do repositorio muda versao sem querer.
 
+
+## R17
+- CONVERGENCIA do menu voltou (a tela sumiu na rv04 e o menu caia ao abri-la).
+- OPCOES > VIDEO: FILTRO so aparece no LCD (no tubo os efeitos nunca sao aplicados);
+  monitor que nao informa resolucoes ganha a lista comum (volta automatica protege);
+  confirmacao da resolucao nova: 30 s, A ou START (o controle sem fio demora a
+  aparecer no boot); "trocas demais" agora aparece na tela; tudo vai para o LOG.
+- Efeitos do LCD (no processador, nada a baixar; so em jogos ate 400x300):
+  SUAVE (linear 3x), SCALE2X, SCALE3X, XBR (2x, regras do nivel 1). No PC, por
+  quadro: nenhum 1,7 ms; SUAVE 5,6; SCALE2X 2,3; SCALE3X 3,4; XBR 3,4.
+  Shaders do RetroArch (GLSL) precisam de placa de video: ficam para a fase GPU.
+- LOG: "cd: bloco lento" diz onde (lba, musica/dados, faixa) e de onde veio cada travada.
+- Tarja laranja esquerda sumida no LCD: o desenho esta certo (conferido em 1280x960);
+  e posicao da imagem no monitor (VGA): botao AUTO do monitor.

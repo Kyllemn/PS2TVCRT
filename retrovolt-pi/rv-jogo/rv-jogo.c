@@ -61,8 +61,9 @@ static double agora(void)
 static const char *a_nucleo, *a_jogo, *a_cd, *a_bios = ".", *a_saves = ".", *a_nome = "jogo";
 static const char *a_audio, *a_opcoes, *a_fonte = "6X10", *a_save, *a_states, *a_conv_arq;
 static int filtro; /* LCD: 0 nenhum, 1 scanlines, 2 scanlines leves, 3 CRT */
-static const char *FILTROS[] = {"NENHUM", "SCANLINES", "SCANLINES LEVES", "CRT"};
-#define N_FILTROS 4
+static const char *FILTROS[] = {"NENHUM", "SCANLINES", "SCANLINES LEVES", "CRT", "SUAVE", "SCALE2X", "SCALE3X", "XBR"};
+#define N_FILTROS 8
+#define F_AMPLIA 4 /* daqui para frente: ampliadores (imagem intermediaria maior) */
 static const char *a_filtro_arq;
 static bool sem_filtro; /* menu do jogo: nunca com filtro */
 static int imagem;       /* LCD: 0 = ORIGINAL (ampliacao inteira, nitida), 1 = TELA CHEIA (enche a altura) */
@@ -378,6 +379,10 @@ static void cd_le_bloco(int64_t lba0, uint8_t *d)
 					LOG("cd: setor %lld ilegivel", (long long)(lba0 + i));
 			}
 	double t = agora() - t0;
+	if (t > 0.5) { /* diagnostico das travadas: onde e de que tipo era a leitura */
+		LOG("cd: bloco lento: lba %lld (%s, faixa %d) %.0f ms; leitura anterior lba %lld",
+		    (long long)lba0, cd_fx[cd_faixa(lba0)].dados ? "dados" : "musica", cd_faixa(lba0) + 1, t * 1e3, (long long)cd_ult_lba);
+	}
 	cd_n_blocos++;
 	cd_t_total += t;
 	cd_ult_leitura = agora();
@@ -1025,11 +1030,14 @@ static int *xmap;
 static int xmap_w = -1, xmap_cw = -1;
 static uint32_t *linha_tmp;
 
-/* desenha a imagem (w x h) no fb.back, ja com a convergencia */
-static void desenha(const void *data, unsigned w, unsigned h, size_t pitch, int fmt, double aspecto)
+/* desenha a imagem (w x h) no fb.back, ja com a convergencia.
+ * geo_h: linhas do jogo usadas para a geometria (0 = h); efeitos: scanlines/CRT valem */
+static void desenha_base(const void *data, unsigned w, unsigned h, size_t pitch, int fmt, double aspecto,
+                         int geo_h, bool efeitos)
 {
-	int passo = (h > 300 && !sem_filtro) ? 2 : 1; /* 480i do jogo: uma linha sim, outra nao */
+	int passo = (h > 300 && !sem_filtro && !geo_h) ? 2 : 1; /* 480i do jogo: uma linha sim, outra nao */
 	int eh = h / passo, lp, cw, x0, y0, dh;
+	int gh = geo_h ? geo_h : eh;
 	if (tubo) {
 		lp = fb.h >= 400 ? 2 : 1;
 		cw = (int)lround(fb.w * conv_w);
@@ -1039,9 +1047,9 @@ static void desenha(const void *data, unsigned w, unsigned h, size_t pitch, int 
 		y0 = (fb.h - eh * lp) / 2 + conv_y * lp;
 		dh = eh * lp;
 	} else {
-		lp = fb.h / eh;
+		lp = fb.h / gh;
 		if (lp < 1) lp = 1;
-		dh = eh * lp;
+		dh = gh * lp;
 		if (imagem == 1 && !sem_filtro) /* TELA CHEIA: usa a altura toda (linhas de 3 ou 4 pontos) */
 			dh = fb.h;
 		cw = (int)lround(dh * (aspecto > 0 ? aspecto : 4.0 / 3.0));
@@ -1080,7 +1088,7 @@ static void desenha(const void *data, unsigned w, unsigned h, size_t pitch, int 
 			/* efeitos (so no LCD, com a imagem ampliada 2x ou mais):
 			 * scanlines = ultima linha de cada grupo mais escura (50% ou 25%);
 			 * CRT = scanlines 50% + grade de fosforo (1 coluna em 3 com 25% menos luz) */
-			int ef = (!tubo && lp >= 2 && !sem_filtro) ? filtro : 0;
+			int ef = (efeitos && !tubo && lp >= 2 && !sem_filtro && filtro < F_AMPLIA) ? filtro : 0;
 			int linha_esc = (ef == 1 || ef == 3) && k == lpj - 1 ? 2 : (ef == 2 && k == lpj - 1) ? 1 : 0;
 			bool grade = ef == 3;
 			if (bpp == 2) {
@@ -1110,6 +1118,191 @@ static void desenha(const void *data, unsigned w, unsigned h, size_t pitch, int 
 			}
 		}
 	}
+}
+
+/* ---- ampliadores do LCD (no processador; nada a baixar). Trabalham em 0xRRGGBB. */
+static uint32_t *amp_src, *amp_dst;
+static size_t amp_src_n, amp_dst_n;
+
+static uint32_t px_rgb(const uint8_t *src, unsigned x, int fmt)
+{
+	unsigned r, g, b;
+	if (fmt == RETRO_PIXEL_FORMAT_RGB565) {
+		uint16_t p = ((const uint16_t *)src)[x];
+		r = (p >> 11) << 3; g = ((p >> 5) & 63) << 2; b = (p & 31) << 3;
+		r |= r >> 5; g |= g >> 6; b |= b >> 5;
+	} else if (fmt == RETRO_PIXEL_FORMAT_XRGB8888) {
+		return ((const uint32_t *)src)[x] & 0xFFFFFF;
+	} else {
+		uint16_t p = ((const uint16_t *)src)[x];
+		r = ((p >> 10) & 31) << 3; g = ((p >> 5) & 31) << 3; b = (p & 31) << 3;
+		r |= r >> 5; g |= g >> 5; b |= b >> 5;
+	}
+	return (r << 16) | (g << 8) | b;
+}
+
+/* distancia de cor (parecida com YUV: o olho ve mais o brilho) */
+static int cor_dist(uint32_t a, uint32_t b)
+{
+	int dr = (int)((a >> 16) & 255) - (int)((b >> 16) & 255);
+	int dg = (int)((a >> 8) & 255) - (int)((b >> 8) & 255);
+	int db = (int)(a & 255) - (int)(b & 255);
+	int y = (dr * 299 + dg * 587 + db * 114) / 1000;
+	int u = db - y, v = dr - y;
+	return 48 * abs(y) + 7 * abs(u) + 6 * abs(v);
+}
+
+static uint32_t cor_mistura(uint32_t a, uint32_t b) /* 50% */
+{
+	return ((a >> 1) & 0x7F7F7F) + ((b >> 1) & 0x7F7F7F) + (a & b & 0x010101);
+}
+
+#define PX(xx, yy) S[(size_t)((yy) < 0 ? 0 : (yy) >= (int)h ? (int)h - 1 : (yy)) * w + \
+                     ((xx) < 0 ? 0 : (xx) >= (int)w ? (int)w - 1 : (xx))]
+
+static void amp_scale2x(const uint32_t *S, unsigned w, unsigned h, uint32_t *O)
+{
+	unsigned ow = w * 2;
+	for (int y = 0; y < (int)h; y++)
+		for (int x = 0; x < (int)w; x++) {
+			uint32_t B = PX(x, y - 1), D = PX(x - 1, y), E = PX(x, y), F = PX(x + 1, y), H = PX(x, y + 1);
+			uint32_t e0 = E, e1 = E, e2 = E, e3 = E;
+			if (B != H && D != F) {
+				if (D == B) e0 = D;
+				if (B == F) e1 = F;
+				if (D == H) e2 = D;
+				if (H == F) e3 = F;
+			}
+			uint32_t *o = O + (size_t)y * 2 * ow + x * 2;
+			o[0] = e0; o[1] = e1; o[ow] = e2; o[ow + 1] = e3;
+		}
+}
+
+static void amp_scale3x(const uint32_t *S, unsigned w, unsigned h, uint32_t *O)
+{
+	unsigned ow = w * 3;
+	for (int y = 0; y < (int)h; y++)
+		for (int x = 0; x < (int)w; x++) {
+			uint32_t A = PX(x - 1, y - 1), B = PX(x, y - 1), C = PX(x + 1, y - 1);
+			uint32_t D = PX(x - 1, y), E = PX(x, y), F = PX(x + 1, y);
+			uint32_t G = PX(x - 1, y + 1), H = PX(x, y + 1), I = PX(x + 1, y + 1);
+			uint32_t e[9] = {E, E, E, E, E, E, E, E, E};
+			if (B != H && D != F) {
+				e[0] = D == B ? D : E;
+				e[1] = (D == B && E != C) || (B == F && E != A) ? B : E;
+				e[2] = B == F ? F : E;
+				e[3] = (D == B && E != G) || (D == H && E != A) ? D : E;
+				e[5] = (B == F && E != I) || (H == F && E != C) ? F : E;
+				e[6] = D == H ? D : E;
+				e[7] = (D == H && E != I) || (H == F && E != G) ? H : E;
+				e[8] = H == F ? F : E;
+			}
+			uint32_t *o = O + (size_t)y * 3 * ow + x * 3;
+			for (int k = 0; k < 3; k++)
+				for (int m = 0; m < 3; m++)
+					o[k * ow + m] = e[k * 3 + m];
+		}
+}
+
+/* xBR 2x (regras do nivel 1 de Hyllian, escrito aqui): para cada canto do ponto,
+ * compara a "forca" das duas diagonais e, se a borda passa pelo canto, puxa a cor
+ * do vizinho mais parecido (meio a meio, para a borda sair lisa) */
+static void amp_xbr2x(const uint32_t *S, unsigned w, unsigned h, uint32_t *O)
+{
+	unsigned ow = w * 2;
+	for (int y = 0; y < (int)h; y++)
+		for (int x = 0; x < (int)w; x++) {
+			uint32_t E = PX(x, y);
+			uint32_t *o = O + (size_t)y * 2 * ow + x * 2;
+			for (int c = 0; c < 4; c++) {
+				int sx = (c & 1) ? 1 : -1, sy = (c & 2) ? 1 : -1;
+				uint32_t F = PX(x + sx, y), H = PX(x, y + sy), I = PX(x + sx, y + sy);
+				uint32_t res = E;
+				if (E != F && E != H) {
+					uint32_t B = PX(x, y - sy), D = PX(x - sx, y);
+					uint32_t C = PX(x + sx, y - sy), G = PX(x - sx, y + sy);
+					uint32_t F4 = PX(x + 2 * sx, y), H5 = PX(x, y + 2 * sy);
+					uint32_t I4 = PX(x + 2 * sx, y + sy), I5 = PX(x + sx, y + 2 * sy);
+					int e1 = cor_dist(E, C) + cor_dist(E, G) + cor_dist(I, F4) + cor_dist(I, H5) + 4 * cor_dist(H, F);
+					int e2 = cor_dist(H, D) + cor_dist(H, I5) + cor_dist(F, I4) + cor_dist(F, B) + 4 * cor_dist(E, I);
+					if (e1 < e2)
+						res = cor_mistura(E, cor_dist(E, F) <= cor_dist(E, H) ? F : H);
+				}
+				o[((c & 2) ? ow : 0) + ((c & 1) ? 1 : 0)] = res;
+			}
+		}
+}
+
+/* suave: interpolacao linear k vezes (k fica perto da resolucao da tela).
+ * Vermelho e azul juntos num inteiro (0x00RR00BB) e verde separado: 2 contas por ponto. */
+static int *suave_x0, *suave_tx, suave_n;
+static inline uint32_t lerp_px(uint32_t a, uint32_t b, unsigned t)
+{
+	uint32_t rb = (((a & 0xFF00FF) * (256 - t) + (b & 0xFF00FF) * t) >> 8) & 0xFF00FF;
+	uint32_t g = (((a & 0x00FF00) * (256 - t) + (b & 0x00FF00) * t) >> 8) & 0x00FF00;
+	return rb | g;
+}
+static void amp_suave(const uint32_t *S, unsigned w, unsigned h, uint32_t *O, int k)
+{
+	unsigned ow = w * k, oh = h * k;
+	if ((int)ow > suave_n) {
+		free(suave_x0); free(suave_tx);
+		suave_x0 = malloc(sizeof(int) * ow); suave_tx = malloc(sizeof(int) * ow);
+		suave_n = ow;
+	}
+	for (unsigned ox = 0; ox < ow; ox++) {
+		int fx = (int)(((2 * ox + 1) * 256) / (2 * k)) - 128; /* centro do ponto, em 1/256 */
+		int x0 = fx >> 8, tx = fx & 255;
+		if (x0 < 0) { x0 = 0; tx = 0; }
+		if (x0 >= (int)w - 1) { x0 = w - 1; tx = 0; }
+		suave_x0[ox] = x0; suave_tx[ox] = tx;
+	}
+	for (unsigned oy = 0; oy < oh; oy++) {
+		int fy = (int)(((2 * oy + 1) * 256) / (2 * k)) - 128;
+		int y0 = fy >> 8, ty = fy & 255;
+		if (y0 < 0) { y0 = 0; ty = 0; }
+		if (y0 >= (int)h - 1) { y0 = h - 1; ty = 0; }
+		const uint32_t *r0 = S + (size_t)y0 * w, *r1 = ty ? r0 + w : r0;
+		uint32_t *o = O + (size_t)oy * ow;
+		for (unsigned ox = 0; ox < ow; ox++) {
+			int x0 = suave_x0[ox], tx = suave_tx[ox], x1 = tx ? x0 + 1 : x0;
+			uint32_t top = lerp_px(r0[x0], r0[x1], tx);
+			o[ox] = ty ? lerp_px(top, lerp_px(r1[x0], r1[x1], tx), ty) : top;
+		}
+	}
+}
+#undef PX
+
+static void desenha(const void *data, unsigned w, unsigned h, size_t pitch, int fmt, double aspecto)
+{
+	/* ampliadores so no LCD, em jogo de baixa resolucao; senao o desenho normal */
+	if (tubo || sem_filtro || filtro < F_AMPLIA || w > 400 || h > 300 || !w || !h) {
+		desenha_base(data, w, h, pitch, fmt, aspecto, 0, true);
+		return;
+	}
+	int k = filtro == 6 ? 3 : 2;
+	if (filtro == 4) {
+		k = fb.h / (int)h;
+		if (k > 3) k = 3; /* 4x custava ~9 ms por quadro no PC: 3x e o limite seguro no Pi */
+		if (k < 2) k = 2;
+	}
+	size_t ns = (size_t)w * h, nd = ns * k * k;
+	if (ns > amp_src_n) { free(amp_src); amp_src = malloc(ns * 4); amp_src_n = ns; }
+	if (nd > amp_dst_n) { free(amp_dst); amp_dst = malloc(nd * 4); amp_dst_n = nd; }
+	for (unsigned y = 0; y < h; y++) {
+		const uint8_t *src = (const uint8_t *)data + (size_t)y * pitch;
+		for (unsigned x = 0; x < w; x++)
+			amp_src[(size_t)y * w + x] = px_rgb(src, x, fmt);
+	}
+	if (filtro == 4)
+		amp_suave(amp_src, w, h, amp_dst, k);
+	else if (filtro == 5)
+		amp_scale2x(amp_src, w, h, amp_dst);
+	else if (filtro == 6)
+		amp_scale3x(amp_src, w, h, amp_dst);
+	else
+		amp_xbr2x(amp_src, w, h, amp_dst);
+	desenha_base(amp_dst, w * k, h * k, (size_t)w * k * 4, RETRO_PIXEL_FORMAT_XRGB8888, aspecto, h, false);
 }
 
 /* aviso de resolucao: "640x480 @ 59.94 Hz" por 3 s no canto superior direito
@@ -2274,7 +2467,7 @@ static void filtro_le(void)
 	int v;
 	if (f && fscanf(f, "%d", &v) == 1 && v >= 0 && v < N_FILTROS) {
 		filtro = v;
-		LOG("filtro deste nucleo: %s", FILTROS[v]);
+		LOG("filtro deste nucleo: %s%s", FILTROS[v], tubo ? " (sem efeito no tubo)" : "");
 	}
 	if (f)
 		fclose(f);
@@ -2286,7 +2479,7 @@ static void filtro_grava(void)
 	mkdir_pai(a_filtro_arq);
 	FILE *f = fopen(a_filtro_arq, "w");
 	if (f) {
-		fprintf(f, "%d\n# RETROVOLT: filtro deste nucleo (0 nenhum, 1 scanlines, 2 scanlines leves, 3 CRT)\n", filtro);
+		fprintf(f, "%d\n# RETROVOLT: filtro deste nucleo (0 nenhum, 1 scanlines, 2 scanlines leves, 3 CRT, 4 suave, 5 scale2x, 6 scale3x, 7 xbr)\n", filtro);
 		fclose(f);
 		sync();
 	}
