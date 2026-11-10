@@ -2235,7 +2235,7 @@ class App:
         if not hasattr(self, 'tv_st'):
             self.tv_carrega()
         st = self.tv_st
-        cabecalho(c, 'TV', self.wifi, '<- -> GRUPO  A ASSISTE' if st['lista'] is not None else 'A ENTRA')
+        cabecalho(c, 'TV', self.wifi, '<- -> 10  LT/RT GRUPO  A VER' if st['lista'] is not None else 'A ENTRA')
         if not self.tv_progs['ffmpeg']:
             c.text(24, 64, 'FALTA O FFMPEG NO SISTEMA. NO PUTTY:', ORANGE)
             c.text(24, 64 + F.ch + 6, 'SUDO APT INSTALL -Y FFMPEG MPV', IVORY)
@@ -2388,13 +2388,13 @@ class App:
                 st['lista'], st['sel'] = st['sel_lista'], 0
             return
         canais = self.tv_canais()
-        if a in ('CIMA', 'BAIXO', 'ESQ', 'DIR'):
+        if a in ('CIMA', 'BAIXO', 'ESQ', 'DIR', 'L2', 'R2'):
             self.tv_para_previa()
-            if a in ('ESQ', 'DIR') and any(c.get('grupo') for c in canais):
-                # lista com grupos (IPTV): pula para o comeco do grupo seguinte/anterior
+            if a in ('L2', 'R2'):
+                # LT/RT: comeco do grupo seguinte/anterior (lista com grupos); <- -> = 10 em 10
                 inicios = [i for i, c in enumerate(canais) if i == 0 or c.get('grupo') != canais[i - 1].get('grupo')]
                 atual = max(i for i in inicios if i <= st['sel'])
-                if a == 'DIR':
+                if a == 'R2':
                     st['sel'] = next((i for i in inicios if i > atual), st['sel'])
                 else:
                     st['sel'] = atual if st['sel'] != atual else max([i for i in inicios if i < atual] or [0])

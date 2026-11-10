@@ -25,6 +25,28 @@ SOCK = '/run/retrovolt/mpv.sock'
 
 
 # ------------------------------------------------------------------ listas
+# Servidores de IPTV (Xtream etc.) costumam recusar o "Lavf"/"mpv" e so abrir para players
+# conhecidos: entra como VLC. A lista pode pedir outro (#EXTVLCOPT:http-user-agent= ou
+# user-agent="..." no #EXTINF) e um referer (#EXTVLCOPT:http-referrer=).
+UA_PADRAO = 'VLC/3.0.20 LibVLC/3.0.20'
+HTTP_URL = {}     # url -> {'ua': ..., 'ref': ...} do que a lista pediu
+
+
+def http_de(url):
+    h = HTTP_URL.get(url, {})
+    return h.get('ua') or UA_PADRAO, h.get('ref') or ''
+
+
+def args_ffmpeg_http(url):
+    if not url.lower().startswith(('http://', 'https://')):
+        return []
+    ua, ref = http_de(url)
+    a = ['-user_agent', ua, '-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '4']
+    if ref:
+        a += ['-referer', ref]
+    return a
+
+
 def limpa_nome(n):
     """'TV Camara (288p) [Not 24/7]' -> 'TV Camara' (qualidade e avisos so atrapalham a lista)"""
     n = re.sub(r'\s*\[[^\]]*\]', '', n)
@@ -33,7 +55,7 @@ def limpa_nome(n):
 
 
 def _m3u(txt):
-    out, info = [], None
+    out, info, http = [], None, {}
     for l in txt.splitlines():
         l = l.strip().lstrip('﻿')
         if not l:
@@ -43,14 +65,25 @@ def _m3u(txt):
             nome = l.rsplit(',', 1)[1].strip() if ',' in l else ''
             info = {'nome': limpa_nome(nome or atr.get('tvg-name', '')), 'grupo': atr.get('group-title', ''),
                     'logo': atr.get('tvg-logo', ''), 'chno': atr.get('tvg-chno', '').strip()}
+            if atr.get('user-agent') or atr.get('http-user-agent'):
+                http['ua'] = atr.get('user-agent') or atr.get('http-user-agent')
+            continue
+        if l.upper().startswith('#EXTVLCOPT:'):
+            k, _, v = l[11:].partition('=')
+            if k.strip().lower() == 'http-user-agent' and v.strip():
+                http['ua'] = v.strip()
+            elif k.strip().lower() in ('http-referrer', 'http-referer') and v.strip():
+                http['ref'] = v.strip()
             continue
         if l.startswith('#'):
             continue
         c = info or {'nome': '', 'grupo': '', 'logo': ''}
         c['url'] = l
         c['nome'] = c['nome'] or os.path.basename(l.split('?')[0]) or l
+        if http:
+            HTTP_URL[l] = http
         out.append(c)
-        info = None
+        info, http = None, {}
     return out
 
 
@@ -229,7 +262,7 @@ class Previa(threading.Thread):
               'scale=%d:%d,fps=15' % (self.aw, self.ah, self.aw, self.ah, self.w, self.h))
         cmd = ['ffmpeg', '-hide_banner', '-loglevel', 'error', '-nostdin']
         if '://' in self.url:
-            cmd += ['-rw_timeout', '10000000']  # canal fora do ar: desiste em 10 s
+            cmd += ['-rw_timeout', '10000000'] + args_ffmpeg_http(self.url)  # fora do ar: desiste em 10 s
         else:
             cmd += ['-re']                      # video no pendrive: no ritmo real
         cmd += ['-i', self.url, '-map', '0:v:0', '-vf', vf, '-f', 'rawvideo', '-pix_fmt', fmt, 'pipe:1']
@@ -286,7 +319,10 @@ class TelaCheia:
             cmd = ['mpv', '--vo=drm', '--hwdec=auto-safe', '--fs', '--really-quiet', '--no-input-terminal',
                    '--no-osc', '--input-ipc-server=' + SOCK, '--volume=%d' % self.volume,
                    '--osd-level=1', '--osd-duration=3000', '--keep-open=no', '--cache=yes',
-                   '--demuxer-max-bytes=32MiB', '--force-media-title=' + (nome or url)]
+                   '--demuxer-max-bytes=32MiB', '--force-media-title=' + (nome or url),
+                   '--user-agent=' + http_de(url)[0]]
+            if http_de(url)[1]:
+                cmd += ['--referrer=' + http_de(url)[1]]
             if msg:      # aparece quando o canal comeca (o socket ainda nao existe aqui)
                 cmd += ['--osd-playing-msg=' + msg.replace('\n', '   '), '--osd-playing-msg-duration=4000']
             if self.tubo:
@@ -306,6 +342,7 @@ class TelaCheia:
             cmd = ['ffmpeg', '-hide_banner', '-loglevel', 'error', '-nostdin']
             if '://' not in url:
                 cmd += ['-re']
+            cmd += args_ffmpeg_http(url)
             cmd += ['-i', url, '-map', '0:v:0', '-vf', vf,
                     '-pix_fmt', 'rgb565le' if self.bpp == 16 else 'bgra', '-f', 'fbdev', '/dev/fb0']
             if self.audio_dev:
@@ -316,6 +353,8 @@ class TelaCheia:
     def troca(self, url, nome=''):
         """troca de canal sem fechar o mpv (mais rapido); sem mpv, reabre"""
         if self.com_mpv and self.rodando():
+            self._comando(['set_property', 'user-agent', http_de(url)[0]])
+            self._comando(['set_property', 'referrer', http_de(url)[1]])
             if self._comando(['loadfile', url, 'replace']):
                 self._comando(['set_property', 'force-media-title', nome or url])
                 self._comando(['show-text', nome or url, 3000])
