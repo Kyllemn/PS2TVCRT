@@ -456,7 +456,7 @@ Licoes do PS1/PCE aplicadas:
   virtual, BIOS HLE carregou e entrou no jogo; Neo Geo = 59,60 Hz (0,67%: precisava do
   limite de 2%); convergencia PASSOU. Nucleos PS1/PCE/GPGX iguais aos da R18.
 
-## R20 (codigo escrito, aguardando #compilar)
+## R20 (compilada)
 LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
 - Disco 1: pre-carga das musicas levou 47,6 s (um bloco perto do fim do disco: 35 s de
   tentativas de 5 s, metodo por setor); a leitora se reiniciou e passou a responder
@@ -486,3 +486,7 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   convertida). SPLEEN 5X8 ganhou os acentos (vinham vazios) da 5X8. Fontes de origem e
   licencas em tools/fontes_src; gerador unico: tools/fontes_rv.py; licencas vao no
   pacote (versoes/rvNN/licencas/). fonte.h do rv-jogo regenerado (vale apos #compilar).
+- R20 compilada: rv-jogo sem avisos; NeoCD b1e04c7 + remendo dos nomes. Testes no PC:
+  disco Neo Geo CD sintetico com IPL.TXT em minusculas (test.prg; disco TEST.PRG):
+  NeoCD da R19 = "not on the disc" (o erro do LOG do autor), R20 = carregou e entrou;
+  PS1 igual a R14; musica guardada 23/23; convergencia PASSOU.

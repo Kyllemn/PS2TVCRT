@@ -582,12 +582,6 @@ static void msf(int lba, char *o)
 	sprintf(o, "%02d:%02d:%02d", lba / 4500, lba / 75 % 60, lba % 75);
 }
 
-static int cmp_fixo(const void *a, const void *b)
-{
-	int64_t x = ((const struct cd_fixo *)a)->lba, y = ((const struct cd_fixo *)b)->lba;
-	return x < y ? -1 : x > y;
-}
-
 /* poe um bloco guardado na lista ordenada (com cd_mx, ou antes das threads) */
 static void cd_fixo_poe(int64_t b0, uint8_t *d)
 {
