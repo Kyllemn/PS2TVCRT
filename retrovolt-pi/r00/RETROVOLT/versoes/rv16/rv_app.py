@@ -107,7 +107,7 @@ CFG_PADRAO = [
     ('SOM', None, None),
     ('volume', '80', 'volume geral dos jogos, 0 a 100'),
     ('LEITORA', None, None),
-    ('leitora_velocidade', '4', 'velocidade da leitora nos jogos (2, 4, 8...; 0 = maxima, mais barulho)'),
+    ('leitora_velocidade', '4', 'velocidade da leitora nos jogos (0 = maxima; a leitora pode ter minimo proprio, ex.: 10x)'),
     ('JOGOS', None, None),
     ('pasta_jogos', 'pendrive', 'onde ficam jogos, BIOS e saves: pendrive ou cartao'),
     ('VIDEO', None, None),
@@ -116,6 +116,7 @@ CFG_PADRAO = [
     ('video_filtro', 'NENHUM', 'so no LCD: NENHUM, SCANLINES, SCANLINES LEVES ou CRT (padrao; cada nucleo pode ter o seu)'),
     ('MENU', None, None),
     ('fonte', '6X10', 'fonte do menu: ' + ', '.join(f[0] for f in FONTES_LISTA)),
+    ('menu_fundo_brilho', '45', 'brilho da imagem de fundo do menu, 0 a 100 (imagens em imagens/wallpapers)'),
 ]
 
 
@@ -178,9 +179,12 @@ def num(c, k, tipo, lo, hi):
 
 
 # ---------------------------------------------------------------- desenho
+FUNDO = None   # imagem de fundo do menu (lista de W*H cores), sorteada no inicio
+
+
 class Canvas:
-    def __init__(self):
-        self.px = [NAV] * (W * H)
+    def __init__(self, liso=False):
+        self.px = list(FUNDO) if FUNDO and not liso and len(FUNDO) == W * H else [NAV] * (W * H)
         self.extras = []    # imagens desenhadas na resolucao do monitor (LCD), por cima
 
     def rect(self, x, y, w, h, c):
@@ -345,6 +349,7 @@ class FB:
         cont = [((i + 1) * cw) // W - (i * cw) // W for i in range(W)]
         cache = {}
         linhas = {}
+        por_y = {}
         corte_e = max(0, -x0) * bpp
         dest_x = max(0, x0)
         linha_preta = preto * (self.stride // bpp)
@@ -354,6 +359,11 @@ class FB:
             if not 0 <= yy < self.h:
                 continue
             y = (2 * j + 1) * H // (2 * ch)                 # linha logica (centro): 1a e ultima sempre aparecem
+            row = por_y.get(y)
+            if row is not None:
+                off = yy * self.stride + dest_x * bpp
+                frame[off:off + len(row)] = row
+                continue
             chave = tuple(canvas.px[y * W:(y + 1) * W])
             row = linhas.get(chave)
             if row is None:
@@ -367,6 +377,7 @@ class FB:
                 row = b''.join(parts)[corte_e:]
                 row = row[:max(0, (self.w - dest_x) * bpp)]
                 linhas[chave] = row
+            por_y[y] = row
             off = yy * self.stride + dest_x * bpp
             frame[off:off + len(row)] = row
         if not self.tubo:
@@ -389,37 +400,49 @@ class FB:
         chave = (id(m), circulo, self.bpp)
         linhas = self._linhas_img.get(chave)
         if linhas is None:
-            fundo = self.pixel(NAV)
+            # cada linha: lista de trechos (x, bytes); fora do disco e o furo ficam
+            # sem desenhar (aparece o fundo do menu)
             aro = self.pixel((200, 205, 215))
             r2 = (min(w, h) / 2.0) ** 2
             f2 = (min(w, h) / 9.0) ** 2
             f2b = (min(w, h) / 9.0 - 2) ** 2
             linhas = []
             for y in range(h):
-                partes = []
+                trechos, partes, x_ini = [], [], None
                 for x in range(w):
+                    p = None
                     if circulo:
                         dx, dy = x - w / 2.0 + 0.5, y - h / 2.0 + 0.5
                         d2 = dx * dx + dy * dy
-                        if d2 > r2:
-                            partes.append(fundo)
-                            continue
-                        if d2 <= f2:
-                            partes.append(fundo if d2 <= f2b else aro)
-                            continue
-                    o = (y * w + x) * 3
-                    partes.append(self.pixel((rgb[o], rgb[o + 1], rgb[o + 2])))
-                linhas.append(b''.join(partes))
+                        if d2 > r2 or d2 <= f2b:
+                            p = False
+                        elif d2 <= f2:
+                            p = aro
+                    if p is None:
+                        o = (y * w + x) * 3
+                        p = self.pixel((rgb[o], rgb[o + 1], rgb[o + 2]))
+                    if p is False:
+                        if partes:
+                            trechos.append((x_ini, b''.join(partes)))
+                            partes = []
+                        continue
+                    if not partes:
+                        x_ini = x
+                    partes.append(p)
+                if partes:
+                    trechos.append((x_ini, b''.join(partes)))
+                linhas.append(trechos)
             if len(self._linhas_img) > 12:
                 self._linhas_img.clear()
             self._linhas_img[chave] = linhas
         ox = x0 + lx * s + (lw * s - w) // 2
         oy = y0 + ly * s + (lh * s - h) // 2
-        for y, row in enumerate(linhas):
+        for y, trechos in enumerate(linhas):
             yy = oy + y
             if 0 <= yy < self.h and 0 <= ox and ox + w <= self.w:
-                off = yy * self.stride + ox * bpp
-                frame[off:off + len(row)] = row
+                for x, row in trechos:
+                    off = yy * self.stride + (ox + x) * bpp
+                    frame[off:off + len(row)] = row
 
     def espera_vsync(self):
         """espera o retraco vertical (FBIO_WAITFORVSYNC), se o driver suportar"""
@@ -822,7 +845,8 @@ def base(onde='pendrive'):
     b = os.environ.get('RV_BASE')
     if not b:
         b = os.path.join(USB, 'RETROVOLT') if onde != 'cartao' and tem_pendrive() else BASE_CARTAO
-    for p in ('config', 'bios', 'roms', 'saves', 'states', 'tv', 'imagens/consoles', 'capturas', 'logs'):
+    for p in ('config', 'bios', 'roms', 'saves', 'states', 'tv', 'imagens/consoles', 'imagens/wallpapers',
+              'capturas', 'logs'):
         os.makedirs(os.path.join(b, p), exist_ok=True)
     for s, (_, nucleo, _) in SISTEMAS.items():
         if nucleo:
@@ -838,6 +862,21 @@ def nome_limpo(arq):
     if disc:
         n += ' (DISCO %s)' % disc.group(1)
     return n.upper().replace('_', ' ')
+
+
+def exe_rv_jogo():
+    """caminho do rv-jogo pronto para rodar (pendrive sem permissao de execucao: copia)"""
+    exe = os.path.join(PASTA, 'rv-jogo')
+    if os.access(exe, os.X_OK):
+        return exe
+    try:
+        os.makedirs('/run/retrovolt/bin', exist_ok=True)
+        subprocess.run(['cp', exe, '/run/retrovolt/bin/rv-jogo'])
+        os.chmod('/run/retrovolt/bin/rv-jogo', 0o755)
+        return '/run/retrovolt/bin/rv-jogo'
+    except OSError as ex:
+        print('jogo: rv-jogo sem permissao:', ex, flush=True)
+        return exe
 
 
 def lista_jogos(b, sistema):
@@ -1180,6 +1219,12 @@ class App:
         self.leitora = Leitora(self.fila)
         self.mini = None
         self.base = base(self.cfg.get('pasta_jogos', 'pendrive'))
+        global FUNDO
+        t0 = time.monotonic()
+        FUNDO, qual = imagens.fundo_menu(self.base, W, H, exe_rv_jogo(), os.path.join(self.base, 'imagens', '.cache'),
+                                         num(self.cfg, 'menu_fundo_brilho', int, 0, 100))
+        print('fundo: %s (%.1f s)' % (os.path.basename(qual) if qual else 'nenhum (cor lisa)',
+                                      time.monotonic() - t0), flush=True)
         self.mini = Miniaturas(self.fila, os.path.join(self.base, 'imagens', '.cache'))
         self.mini.start()
         self.aba = os.environ.get('RV_ABA', 'DISCO')
@@ -1250,16 +1295,8 @@ class App:
         if falta:
             self.mostra_aviso(falta)
             return
-        exe = os.path.join(PASTA, 'rv-jogo')
+        exe = exe_rv_jogo()
         so = os.path.join(PASTA, 'nucleos', nucleo)
-        if not os.access(exe, os.X_OK):
-            try:          # pendrive sem permissao de execucao: roda uma copia
-                os.makedirs('/run/retrovolt/bin', exist_ok=True)
-                subprocess.run(['cp', exe, '/run/retrovolt/bin/rv-jogo'])
-                os.chmod('/run/retrovolt/bin/rv-jogo', 0o755)
-                exe = '/run/retrovolt/bin/rv-jogo'
-            except OSError as ex:
-                print('jogo: rv-jogo sem permissao:', ex, flush=True)
         if cd:
             i = self.leitora.info or {}
             nome = i.get('nome') or i.get('rotulo') or 'DISCO'
@@ -1385,6 +1422,7 @@ class App:
             if self.pergunta_disco:
                 self.desenha_pergunta_disco(c)
         elif t == 'conv':
+            c.px = [NAV] * (W * H)          # teste de convergencia: sem imagem de fundo
             self.desenha_conv(c)
         elif t == 'video':
             self.desenha_video(c)
@@ -1584,11 +1622,11 @@ class App:
             if not (arte and self.desenha_arte(c, arte, cx, cy, 2 * raio)):
                 desenha_cd(c, cx, cy, raio)
         else:
-            for r, cor in ((raio, (30, 38, 66)), (raio * 5 // 14, NAV)):
-                for y in range(cy - r, cy + r + 1):
-                    for x in range(cx - r, cx + r + 1):
-                        if (x - cx) ** 2 + (y - cy) ** 2 <= r * r:
-                            c.px[y * W + x] = cor
+            furo = raio * 5 // 14
+            for y in range(cy - raio, cy + raio + 1):
+                for x in range(cx - raio, cx + raio + 1):
+                    if furo * furo < (x - cx) ** 2 + (y - cy) ** 2 <= raio * raio:
+                        c.px[y * W + x] = (30, 38, 66)
         x, y = cx + raio + 16, 66
         if st == 'procurando':
             c.text(x, y, 'PROCURANDO A', SLATE)

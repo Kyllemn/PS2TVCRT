@@ -326,7 +326,7 @@ A aba JOGOS mostra so as pastas que tem jogos.
   Engine do 1 quadro por vsync).
 - Log "ritmo" mostra "adiante usados/lidos".
 
-## R16 (codigo escrito, aguardando #compilar)
+## R16 (compilada)
 Sega CD (e Mega Drive / Master System, mesmo nucleo) com Genesis Plus GX.
 Licoes do PS1/PCE aplicadas:
 - Nucleo le o CD pelo VFS do rv-jogo (cue/bin virtual), com cache, leitura adiante e
@@ -358,3 +358,14 @@ Licoes do PS1/PCE aplicadas:
 - Leitura que passa de 5 s (leitora acordando) tenta de novo do mesmo jeito e nao
   troca mais o metodo de leitura pelo resto do jogo (antes: 22,7 s e tudo lento).
 - Copiar o disco para o cartao: RECUSADO pelo autor (tira a sensacao da midia real).
+- Fundo do menu: imagens em RETROVOLT/imagens/wallpapers (qualquer nome .png/.jpg;
+  sugerido wallpaper_1 ... wallpaper_10). Sorteia uma a cada inicio, sem repetir a da
+  vez anterior (/var/lib/retrovolt/fundo_ultimo). Reduzida para a tela logica do menu
+  (pixel art fica nitida; igual no LCD e no tubo), cortando o excesso no centro, e
+  escurecida para o texto aparecer (menu_fundo_brilho, padrao 45%). O rv-jogo converte
+  (--fundo, stb_image) uma vez; o resultado fica em imagens/.cache. Teste de
+  convergencia sempre liso. Disco redondo e furo mostram o fundo (sem quadrado azul).
+- Leitora do autor: minimo 10x (o pedido de 4x nao tem efeito nela).
+- Nucleos do PS1 e PC Engine mantidos iguais aos da R15 (testados); so o Genesis Plus
+  GX e novo. Licao: recompilar nucleo do repositorio muda versao sem querer.
+

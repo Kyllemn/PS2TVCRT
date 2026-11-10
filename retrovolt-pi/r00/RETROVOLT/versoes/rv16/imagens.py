@@ -176,3 +176,73 @@ def reduz(path, bw, bh, cache_dir=None):
         except OSError:
             pass
     return w, h, bytes(out)
+
+
+# ------------------------------------------------------------------ fundo do menu
+EXT_FUNDO = ('.png', '.jpg', '.jpeg')
+ULTIMO_FUNDO = '/var/lib/retrovolt/fundo_ultimo'
+
+
+def fundos(base):
+    """imagens da pasta RETROVOLT/imagens/wallpapers (qualquer nome .png/.jpg;
+    wallpaper_1 ... wallpaper_10 e o jeito sugerido)"""
+    pasta = os.path.join(base, 'imagens', 'wallpapers')
+    try:
+        nomes = sorted(os.listdir(pasta))
+    except OSError:
+        return []
+    return [os.path.join(pasta, n) for n in nomes
+            if not n.startswith('.') and os.path.splitext(n)[1].lower() in EXT_FUNDO]
+
+
+def fundo_menu(base, w, h, exe, cache_dir, brilho=45):
+    """sorteia um fundo (sem repetir o da ultima vez quando ha mais de um), reduzido
+    para a tela logica w x h e escurecido (brilho em %, para o texto aparecer).
+    Devolve (lista de (r, g, b) com w*h pontos, caminho) ou (None, None)."""
+    import random
+    import subprocess
+    lista = fundos(base)
+    if not lista:
+        return None, None
+    try:
+        ultimo = open(ULTIMO_FUNDO).read().strip()
+    except OSError:
+        ultimo = ''
+    opcoes = [p for p in lista if os.path.basename(p) != ultimo] or lista
+    random.shuffle(opcoes)
+    for path in opcoes:           # se uma imagem estiver ruim, tenta a proxima
+        try:
+            st = os.stat(path)
+        except OSError:
+            continue
+        nome = hashlib.md5(('%s|%d|%d' % (path, st.st_size, int(st.st_mtime))).encode()).hexdigest()
+        arq = os.path.join(cache_dir, 'fundo_%s_%dx%d.rgb' % (nome, w, h))
+        if not os.path.exists(arq):
+            try:
+                os.makedirs(cache_dir, exist_ok=True)
+                r = subprocess.run([exe, '--fundo', path, arq, str(w), str(h)],
+                                   capture_output=True, text=True, timeout=30)
+                if r.returncode:
+                    print('fundo: %s nao converteu (%s)' % (path, r.stderr.strip()), flush=True)
+                    continue
+            except (OSError, subprocess.TimeoutExpired) as ex:
+                print('fundo: conversor falhou:', ex, flush=True)
+                return None, None
+        try:
+            d = open(arq, 'rb').read()
+        except OSError:
+            continue
+        if len(d) != 4 + w * h * 3 or (d[0] | d[1] << 8) != w or (d[2] | d[3] << 8) != h:
+            continue
+        k = max(0, min(100, brilho)) / 100.0
+        tab = bytes(int(v * k) for v in range(256))
+        rgb = d[4:].translate(tab)
+        px = list(zip(rgb[0::3], rgb[1::3], rgb[2::3]))
+        try:
+            os.makedirs(os.path.dirname(ULTIMO_FUNDO), exist_ok=True)
+            with open(ULTIMO_FUNDO, 'w') as f:
+                f.write(os.path.basename(path))
+        except OSError:
+            pass
+        return px, path
+    return None, None

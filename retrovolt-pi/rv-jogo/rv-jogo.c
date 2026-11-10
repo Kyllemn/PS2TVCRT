@@ -512,8 +512,13 @@ static bool cd_abrir(const char *dev)
 		cd_tam = st.st_size / SETOR * SETOR;
 		cd_nfx = 1;
 		cd_fx[0].dados = true;
-		cd_fx[0].modo = 2;
-		snprintf(cd_cue, sizeof cd_cue, "FILE \"disco.bin\" BINARY\n  TRACK 01 MODE2/2352\n    INDEX 01 00:00:00\n");
+		uint8_t h16[16] = {0};
+		if (pread(cd_fd, h16, 16, 0) == 16 && h16[15] == 1)
+			cd_fx[0].modo = 1; /* modo 1 (Sega CD, PC Engine): o cue tem que dizer */
+		else
+			cd_fx[0].modo = 2;
+		snprintf(cd_cue, sizeof cd_cue, "FILE \"disco.bin\" BINARY\n  TRACK 01 MODE%d/2352\n    INDEX 01 00:00:00\n",
+		         cd_fx[0].modo);
 	} else {
 		cd_fd = open(dev, O_RDONLY | O_NONBLOCK);
 		if (cd_fd < 0) {
@@ -2878,9 +2883,75 @@ static void governador(bool jogo)
 	}
 }
 
+/* ------------------------------------------------------------------ fundo do menu */
+/* rv-jogo --fundo entrada.jpg|png saida.rgb L A
+ * Decodifica a imagem, corta o excesso (preenche L x A mantendo a proporcao, centro)
+ * e reduz pela media dos pontos. Saida: L e A (16 bits cada) + RGB. O menu (Python)
+ * le esse arquivo pronto; decodificar JPG em Python puro levaria minutos. */
+#define STB_IMAGE_IMPLEMENTATION
+#define STBI_ONLY_JPEG
+#define STBI_ONLY_PNG
+#define STBI_NO_STDIO_WRITE
+#include "stb_image.h"
+
+static int fundo_converte(const char *ent, const char *sai, int L, int A)
+{
+	int w, h, n;
+	if (L < 1 || A < 1 || L > 4096 || A > 4096)
+		return 2;
+	uint8_t *img = stbi_load(ent, &w, &h, &n, 3);
+	if (!img) {
+		fprintf(stderr, "fundo: nao abriu %s (%s)\n", ent, stbi_failure_reason());
+		return 1;
+	}
+	/* janela da imagem com a proporcao da tela */
+	double cx = 0, cy = 0, cw = w, chh = h;
+	if ((double)w / h > (double)L / A) {
+		cw = (double)h * L / A;
+		cx = (w - cw) / 2;
+	} else {
+		chh = (double)w * A / L;
+		cy = (h - chh) / 2;
+	}
+	uint8_t *out = malloc(4 + (size_t)L * A * 3);
+	out[0] = L & 255; out[1] = L >> 8; out[2] = A & 255; out[3] = A >> 8;
+	for (int y = 0; y < A; y++) {
+		int y0 = cy + y * chh / A, y1 = cy + (y + 1) * chh / A;
+		if (y1 <= y0) y1 = y0 + 1;
+		if (y1 > h) y1 = h;
+		for (int x = 0; x < L; x++) {
+			int x0 = cx + x * cw / L, x1 = cx + (x + 1) * cw / L;
+			if (x1 <= x0) x1 = x0 + 1;
+			if (x1 > w) x1 = w;
+			unsigned r = 0, g = 0, b = 0, k = 0;
+			for (int yy = y0; yy < y1; yy++)
+				for (int xx = x0; xx < x1; xx++) {
+					const uint8_t *p = img + ((size_t)yy * w + xx) * 3;
+					r += p[0]; g += p[1]; b += p[2]; k++;
+				}
+			uint8_t *o = out + 4 + ((size_t)y * L + x) * 3;
+			o[0] = k ? r / k : 0; o[1] = k ? g / k : 0; o[2] = k ? b / k : 0;
+		}
+	}
+	stbi_image_free(img);
+	char tmp[4200];
+	snprintf(tmp, sizeof tmp, "%s.tmp", sai);
+	FILE *f = fopen(tmp, "wb");
+	if (!f || fwrite(out, 1, 4 + (size_t)L * A * 3, f) != 4 + (size_t)L * A * 3) {
+		if (f) fclose(f);
+		free(out);
+		return 3;
+	}
+	fclose(f);
+	free(out);
+	return rename(tmp, sai) ? 3 : 0;
+}
+
 int main(int argc, char **argv)
 {
 	setvbuf(stdout, NULL, _IOLBF, 0);
+	if (argc == 6 && !strcmp(argv[1], "--fundo"))
+		return fundo_converte(argv[2], argv[3], atoi(argv[4]), atoi(argv[5]));
 	for (int i = 1; i + 1 < argc; i += 2) {
 		const char *k = argv[i], *v = argv[i + 1];
 		if (!strcmp(k, "--nucleo")) a_nucleo = v;
