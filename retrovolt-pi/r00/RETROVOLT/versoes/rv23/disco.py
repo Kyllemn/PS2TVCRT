@@ -193,6 +193,16 @@ def identifica(src):
         s0 = src.ler(base)
     except OSError:
         s0 = b''
+    if s0[:16] != b'SEGA SEGAKATANA ' and len(dados) > 1:
+        # Dreamcast selfboot "dados + dados" (DiscJuggler, prensados piratas): a 1a sessao tem
+        # uma faixa de dados pequena e o jogo (IP.BIN) esta na ultima - e por ela que o console
+        # da o boot
+        try:
+            sl = src.ler(dados[-1])
+        except OSError:
+            sl = b''
+        if sl[:16] == b'SEGA SEGAKATANA ':
+            base, s0 = dados[-1], sl
     if s0[:14] == b'SEGADISCSYSTEM':
         r['sistema'] = 'segacd'
         r['nome'] = _texto_sega(s0[0x150:0x180]) or _texto_sega(s0[0x120:0x150])
