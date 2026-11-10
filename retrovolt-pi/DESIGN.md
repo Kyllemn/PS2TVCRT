@@ -567,6 +567,29 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   menu (.cdi .gdi .chd .cue .m3u), disco identificado por "SEGA SEGAKATANA" (IP.BIN).
   BIOS (dc_boot.bin, dc_flash.bin) em bios/dreamcast; o Flycast tambem tem BIOS embutida.
 - Sistema de CD so aparece sempre se o nucleo estiver no pacote (senao, so com jogos).
+- Dreamcast / Flycast (CODIGO ESCRITO, aguardando #compilar):
+  * rv-jogo GPU: nucleo que pede SET_HW_RENDER (GLES2/GLES3) ganha contexto EGL sem janela
+    (Mesa surfaceless; reserva: GBM em /dev/dri/renderD128), GLES 3.2->3.1->3.0. libEGL,
+    libGLESv2 e libgbm carregadas na hora (dlopen): os outros nucleos nao mudam nada.
+    FBO do tamanho maximo do jogo (RGBA8 + profundidade/stencil); context_reset depois do
+    load_game, context_destroy antes do unload. Quadro pronto: glReadPixels -> XRGB8888 ->
+    o mesmo desenha() de sempre (tubo 1 linha = 1 linha, convergencia, efeitos, menu,
+    miniatura do save state). GET_PREFERRED_HW_RENDER = GLES3; GET_JIT_CAPABLE = sim.
+  * Gatilhos L/R analogicos (INDEX_ANALOG_BUTTON): LT/RT do 8BitDo = 0 ou maximo.
+  * CD em faixas (--cd-faixas 1, so Dreamcast): cue com FILE faixaNN.bin por faixa e
+    REM SESSION 01/02 (2a sessao pelo CDROMMULTISESSION; fim da 1a = inicio da 2a - 11400,
+    que e o que o Flycast soma: lead-out 6750 + lead-in 4500 + pausa 150). Cada faixa e um
+    arquivo virtual no VFS que le direto da leitora (mesmo cache/leitura adiante/musica
+    guardada). Disco de 1 sessao: mesmas faixas, sem REM SESSION.
+  * Menu: bios/dreamcast/ vira system/dc do nucleo por atalho direto para a pasta do
+    pendrive (o Flycast grava ali dc_nvmem.bin: data e idioma nao se perdem). Sem BIOS o
+    Flycast usa a embutida (HLE). VMU (memory card) em saves/dreamcast. Opcao inicial:
+    reicast_internal_resolution 640x480 (nativa).
+  * mknucleos: Flycast por CMake (LIBRETRO, GLES, sem Vulkan, -mcpu=cortex-a76). Para
+    ligar precisa libgles-dev:arm64 na maquina que compila. No Pi: libegl1 libgles2 libgbm1
+    (ja no instalar.sh).
+  * A medir no #compilar: custo do glReadPixels por quadro (640x480 ~1,2 MB). Se pesar:
+    ler pelo PBO com 1 quadro de atraso, ou mostrar direto pela GPU (fase 2).
 
 ## ANOTADO (autor, sem codigo ainda)
 - RetroTV: 3-4 s de tela preta da previa para a tela cheia. Causa: a previa (ffmpeg) e

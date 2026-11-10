@@ -197,6 +197,11 @@ static long cd_n_fixos_usados;
 /* faixas do disco (para saber se um setor e de audio) */
 static int cd_nfx;
 static struct { int lba; bool dados; int modo; } cd_fx[100];
+/* --cd-faixas (Dreamcast): cada faixa vira um arquivo virtual faixaNN.bin e o cue diz
+ * as sessoes (CD-R do Dreamcast: musica na 1a sessao, jogo na 2a). O Flycast acha a
+ * posicao de cada faixa pelo tamanho dos arquivos, entao o fim da 1a sessao conta. */
+static bool cd_faixas;
+static int cd_fx_fim[100];
 /* metodo de leitura: 0 = READ CD (SG_IO), 1 = CDROMREADRAW, 2 = setor de 2048 + cabecalho montado */
 static int cd_metodo;
 static long cd_n_blocos;
@@ -713,6 +718,39 @@ static void *cd_pre_thread(void *x)
 	return NULL;
 }
 
+static void cd_cue_faixas(int fim)
+{
+	int s2 = 0;
+	struct cdrom_multisession ms;
+	memset(&ms, 0, sizeof ms);
+	ms.addr_format = CDROM_LBA;
+	if (ioctl(cd_fd, CDROMMULTISESSION, &ms) == 0 && ms.addr.lba > 0) {
+		for (int i = 1; i < cd_nfx; i++)
+			if (cd_fx[i].lba == ms.addr.lba && ms.addr.lba - 11400 > cd_fx[i - 1].lba)
+				s2 = ms.addr.lba;
+		if (!s2)
+			LOG("cd: 2a sessao em %d nao bate com o TOC: tratado como sessao unica", ms.addr.lba);
+	}
+	int n = 0;
+	if (s2)
+		n += snprintf(cd_cue + n, sizeof cd_cue - n, "REM SESSION 01\n");
+	for (int i = 0; i < cd_nfx && n < (int)sizeof cd_cue - 120; i++) {
+		int ini = cd_fx[i].lba, f = i + 1 < cd_nfx ? cd_fx[i + 1].lba : fim;
+		/* fim da 1a sessao = inicio da 2a menos lead-out (6750) + lead-in (4500) + pausa (150) */
+		if (s2 && ini < s2 && f >= s2)
+			f = s2 - 11400;
+		if (f <= ini)
+			f = ini + 1;
+		cd_fx_fim[i] = f;
+		if (s2 && ini == s2)
+			n += snprintf(cd_cue + n, sizeof cd_cue - n, "REM SESSION 02\n");
+		const char *tipo = !cd_fx[i].dados ? "AUDIO" : cd_fx[i].modo == 1 ? "MODE1/2352" : "MODE2/2352";
+		n += snprintf(cd_cue + n, sizeof cd_cue - n, "FILE \"faixa%02d.bin\" BINARY\n  TRACK %02d %s\n    INDEX 01 00:00:00\n",
+		              i + 1, i + 1, tipo);
+	}
+	LOG("cd: disco em faixas separadas (%d faixas, %s)", cd_nfx, s2 ? "2 sessoes" : "1 sessao");
+}
+
 static bool cd_abrir(const char *dev)
 {
 	for (int k = 0; k < NCACHE; k++)
@@ -822,6 +860,8 @@ static bool cd_abrir(const char *dev)
 			ant = lba;
 			ant_dados = dados;
 		}
+		if (cd_faixas)
+			cd_cue_faixas(fim);
 	}
 	mkdir("/run/retrovolt", 0755);
 	mkdir(CD_DIR, 0755);
@@ -868,9 +908,9 @@ static bool cd_abrir(const char *dev)
 }
 
 /* ------------------------------------------------------------------ VFS */
-enum { T_ARQ, T_CUE, T_BIN };
+enum { T_ARQ, T_CUE, T_BIN, T_FAIXA };
 struct retro_vfs_file_handle {
-	int tipo;
+	int tipo, fx;
 	bool gravou;
 	FILE *fp;
 	char *path;
@@ -882,8 +922,22 @@ struct retro_vfs_dir_handle {
 	char *path;
 };
 
+/* faixaNN.bin do --cd-faixas: devolve o indice (0..) ou -1 */
+static int vfs_faixa(const char *p)
+{
+	const char *pre = CD_DIR "/faixa";
+	size_t lp = strlen(pre);
+	if (cd_fd < 0 || !cd_faixas || strncmp(p, pre, lp))
+		return -1;
+	int k = atoi(p + lp);
+	return k >= 1 && k <= cd_nfx && !strcmp(p + lp + 2, ".bin") ? k - 1 : -1;
+}
+static int64_t faixa_tam(int i) { return (int64_t)(cd_fx_fim[i] - cd_fx[i].lba) * SETOR; }
+
 static int vfs_tipo(const char *p)
 {
+	if (vfs_faixa(p) >= 0)
+		return T_FAIXA;
 	if (cd_fd >= 0 && !strcmp(p, CD_CUE))
 		return T_CUE;
 	if (cd_fd >= 0 && !strcmp(p, CD_BIN))
@@ -913,6 +967,7 @@ static struct retro_vfs_file_handle *v_open(const char *path, unsigned mode, uns
 		return NULL;
 	struct retro_vfs_file_handle *s = calloc(1, sizeof *s);
 	s->tipo = t;
+	s->fx = t == T_FAIXA ? vfs_faixa(path) : 0;
 	s->fp = fp;
 	s->path = strdup(path);
 	return s;
@@ -936,6 +991,8 @@ static int64_t v_size(struct retro_vfs_file_handle *s)
 		return strlen(cd_cue);
 	if (s->tipo == T_BIN)
 		return cd_tam;
+	if (s->tipo == T_FAIXA)
+		return faixa_tam(s->fx);
 	struct stat st;
 	return fstat(fileno(s->fp), &st) ? -1 : st.st_size;
 }
@@ -963,6 +1020,11 @@ static int64_t v_read(struct retro_vfs_file_handle *s, void *buf, uint64_t len)
 		int64_t tam = strlen(cd_cue);
 		n = s->pos >= tam ? 0 : (int64_t)len < tam - s->pos ? (int64_t)len : tam - s->pos;
 		memcpy(buf, cd_cue + s->pos, n);
+	} else if (s->tipo == T_FAIXA) {
+		int64_t tam = faixa_tam(s->fx);
+		n = s->pos >= tam ? 0 : (int64_t)len < tam - s->pos ? (int64_t)len : tam - s->pos;
+		if (n > 0)
+			n = cd_ler((int64_t)cd_fx[s->fx].lba * SETOR + s->pos, buf, n);
 	} else
 		n = cd_ler(s->pos, buf, len);
 	s->pos += n;
@@ -987,7 +1049,8 @@ static int v_stat(const char *p, int32_t *size)
 	int t = vfs_tipo(p);
 	if (t != T_ARQ) {
 		if (size)
-			*size = t == T_CUE ? (int32_t)strlen(cd_cue) : (int32_t)(cd_tam > 0x7fffffff ? 0x7fffffff : cd_tam);
+			*size = t == T_CUE ? (int32_t)strlen(cd_cue) : t == T_FAIXA ? (int32_t)faixa_tam(vfs_faixa(p))
+			      : (int32_t)(cd_tam > 0x7fffffff ? 0x7fffffff : cd_tam);
 		return RETRO_VFS_STAT_IS_VALID;
 	}
 	struct stat st;
@@ -1624,6 +1687,349 @@ static void osd_desenha(void)
 	aviso_desenha(&av_ctl);
 }
 
+
+/* ------------------------------------------------------------------ GPU (nucleos 3D: Flycast)
+ * Nucleo que desenha com OpenGL ES (SET_HW_RENDER): contexto EGL sem janela na GPU do
+ * Pi (V3D, /dev/dri/renderD128), o nucleo desenha num FBO e o quadro pronto volta para a
+ * memoria (glReadPixels) e segue o caminho de sempre (tubo, convergencia, efeitos, menu).
+ * Tudo carregado na hora (dlopen): quem nao usa GPU nao depende de nada novo. */
+typedef void *EGLDisplay, *EGLConfig, *EGLContext, *EGLSurface;
+typedef int32_t EGLint;
+typedef unsigned EGLBoolean, EGLenum;
+typedef intptr_t EGLAttrib;
+#define EGL_NONE 0x3038
+#define EGL_RENDERABLE_TYPE 0x3040
+#define EGL_SURFACE_TYPE 0x3033
+#define EGL_OPENGL_ES2_BIT 0x0004
+#define EGL_OPENGL_ES3_BIT 0x0040
+#define EGL_OPENGL_ES_API 0x30A0
+#define EGL_CONTEXT_MAJOR_VERSION 0x3098
+#define EGL_CONTEXT_MINOR_VERSION 0x30FB
+#define EGL_PLATFORM_GBM_KHR 0x31D7
+#define EGL_PLATFORM_SURFACELESS_MESA 0x31DD
+#define EGL_EXTENSIONS 0x3055
+#define GL_TEXTURE_2D 0x0DE1
+#define GL_TEXTURE_MIN_FILTER 0x2801
+#define GL_TEXTURE_MAG_FILTER 0x2800
+#define GL_NEAREST 0x2600
+#define GL_RGBA 0x1908
+#define GL_RGBA8 0x8058
+#define GL_UNSIGNED_BYTE 0x1401
+#define GL_FRAMEBUFFER 0x8D40
+#define GL_READ_FRAMEBUFFER 0x8CA8
+#define GL_READ_FRAMEBUFFER_BINDING 0x8CAA
+#define GL_RENDERBUFFER 0x8D41
+#define GL_COLOR_ATTACHMENT0 0x8CE0
+#define GL_DEPTH_ATTACHMENT 0x8D00
+#define GL_DEPTH_STENCIL_ATTACHMENT 0x821A
+#define GL_DEPTH24_STENCIL8 0x88F0
+#define GL_DEPTH_COMPONENT24 0x81A6
+#define GL_FRAMEBUFFER_COMPLETE 0x8CD5
+#define GL_PIXEL_PACK_BUFFER 0x88EB
+#define GL_PIXEL_PACK_BUFFER_BINDING 0x88ED
+#define GL_PACK_ALIGNMENT 0x0D05
+#define GL_PACK_ROW_LENGTH 0x0D02
+#define GL_RENDERER 0x1F01
+#define GL_VERSION 0x1F02
+
+static struct {
+	void *hegl, *hgles, *hgbm;
+	EGLDisplay dpy;
+	EGLContext ctx;
+	int gbm_fd;
+	void *gbm;
+	unsigned fbo, tex, rb;
+	unsigned w, h;
+	bool ativo;           /* o nucleo pediu GPU e o contexto existe */
+	struct retro_hw_render_callback cb;
+	uint32_t *q;          /* quadro lido da GPU, ja em XRGB8888 de cima para baixo */
+	uint32_t *tmp;
+	size_t cap;
+	/* EGL */
+	EGLDisplay (*GetPlatformDisplay)(EGLenum, void *, const EGLAttrib *);
+	EGLDisplay (*GetPlatformDisplayEXT)(EGLenum, void *, const EGLint *);
+	EGLBoolean (*Initialize)(EGLDisplay, EGLint *, EGLint *);
+	EGLBoolean (*BindAPI)(EGLenum);
+	EGLBoolean (*ChooseConfig)(EGLDisplay, const EGLint *, EGLConfig *, EGLint, EGLint *);
+	EGLContext (*CreateContext)(EGLDisplay, EGLConfig, EGLContext, const EGLint *);
+	EGLBoolean (*MakeCurrent)(EGLDisplay, EGLSurface, EGLSurface, EGLContext);
+	EGLBoolean (*DestroyContext)(EGLDisplay, EGLContext);
+	EGLBoolean (*Terminate)(EGLDisplay);
+	const char *(*QueryString)(EGLDisplay, EGLint);
+	void *(*GetProcAddress)(const char *);
+	/* GL */
+	void (*GenFramebuffers)(int, unsigned *);
+	void (*BindFramebuffer)(unsigned, unsigned);
+	void (*FramebufferTexture2D)(unsigned, unsigned, unsigned, unsigned, int);
+	void (*GenRenderbuffers)(int, unsigned *);
+	void (*BindRenderbuffer)(unsigned, unsigned);
+	void (*RenderbufferStorage)(unsigned, unsigned, int, int);
+	void (*FramebufferRenderbuffer)(unsigned, unsigned, unsigned, unsigned);
+	unsigned (*CheckFramebufferStatus)(unsigned);
+	void (*DeleteFramebuffers)(int, const unsigned *);
+	void (*DeleteRenderbuffers)(int, const unsigned *);
+	void (*GenTextures)(int, unsigned *);
+	void (*DeleteTextures)(int, const unsigned *);
+	void (*BindTexture)(unsigned, unsigned);
+	void (*TexImage2D)(unsigned, int, int, int, int, int, unsigned, unsigned, const void *);
+	void (*TexParameteri)(unsigned, unsigned, int);
+	void (*PixelStorei)(unsigned, int);
+	void (*ReadPixels)(int, int, int, int, unsigned, unsigned, void *);
+	void (*GetIntegerv)(unsigned, int *);
+	void (*BindBuffer)(unsigned, unsigned);
+	const unsigned char *(*GetString)(unsigned);
+} gl = {.gbm_fd = -1};
+
+static retro_proc_address_t gl_proc(const char *n)
+{
+	void *p = gl.GetProcAddress ? gl.GetProcAddress(n) : NULL;
+	if (!p && gl.hgles)
+		p = dlsym(gl.hgles, n);
+	return (retro_proc_address_t)p;
+}
+static uintptr_t gl_fb_atual(void) { return gl.fbo; }
+
+static void *gl_abre_lib(const char *const *nomes)
+{
+	for (int i = 0; nomes[i]; i++) {
+		void *h = dlopen(nomes[i], RTLD_NOW | RTLD_GLOBAL);
+		if (h)
+			return h;
+	}
+	return NULL;
+}
+
+/* display EGL: 1o sem janela (Mesa "surfaceless", escolhe a GPU de render sozinho);
+ * se nao der, GBM em /dev/dri/renderD128 */
+static bool gl_display(void)
+{
+	*(void **)&gl.GetPlatformDisplay = dlsym(gl.hegl, "eglGetPlatformDisplay");
+	*(void **)&gl.GetPlatformDisplayEXT = gl.GetProcAddress ? gl.GetProcAddress("eglGetPlatformDisplayEXT") : NULL;
+	EGLint ma, mi;
+	for (int tent = 0; tent < 2; tent++) {
+		void *nativo = NULL;
+		EGLenum plat = EGL_PLATFORM_SURFACELESS_MESA;
+		if (tent == 1) {
+			static const char *const lg[] = {"libgbm.so.1", "libgbm.so", NULL};
+			gl.hgbm = gl_abre_lib(lg);
+			void *(*cria)(int) = gl.hgbm ? (void *(*)(int))dlsym(gl.hgbm, "gbm_create_device") : NULL;
+			if (!cria)
+				break;
+			gl.gbm_fd = open("/dev/dri/renderD128", O_RDWR | O_CLOEXEC);
+			if (gl.gbm_fd < 0)
+				break;
+			gl.gbm = cria(gl.gbm_fd);
+			if (!gl.gbm)
+				break;
+			nativo = gl.gbm;
+			plat = EGL_PLATFORM_GBM_KHR;
+		}
+		gl.dpy = gl.GetPlatformDisplay ? gl.GetPlatformDisplay(plat, nativo, NULL)
+		       : gl.GetPlatformDisplayEXT ? gl.GetPlatformDisplayEXT(plat, nativo, NULL) : NULL;
+		if (gl.dpy && gl.Initialize(gl.dpy, &ma, &mi)) {
+			LOG("gpu: EGL %d.%d (%s)", ma, mi, tent ? "gbm" : "sem janela");
+			return true;
+		}
+		gl.dpy = NULL;
+	}
+	return false;
+}
+
+static bool gl_cria_contexto(void)
+{
+	static const char *const le[] = {"libEGL.so.1", "libEGL.so", NULL};
+	static const char *const lg[] = {"libGLESv2.so.2", "libGLESv2.so", NULL};
+	gl.hegl = gl_abre_lib(le);
+	gl.hgles = gl_abre_lib(lg);
+	if (!gl.hegl || !gl.hgles) {
+		LOG("gpu: ERRO: sem libEGL/libGLESv2 (instalar libegl1 libgles2)");
+		return false;
+	}
+#define EGLF(n) *(void **)&gl.n = dlsym(gl.hegl, "egl" #n)
+	EGLF(Initialize); EGLF(BindAPI); EGLF(ChooseConfig); EGLF(CreateContext); EGLF(MakeCurrent);
+	EGLF(DestroyContext); EGLF(Terminate); EGLF(QueryString); EGLF(GetProcAddress);
+#undef EGLF
+	if (!gl.Initialize || !gl.CreateContext || !gl.MakeCurrent || !gl_display()) {
+		LOG("gpu: ERRO: EGL nao abriu a GPU");
+		return false;
+	}
+	gl.BindAPI(EGL_OPENGL_ES_API);
+	const char *ext = gl.QueryString ? gl.QueryString(gl.dpy, EGL_EXTENSIONS) : "";
+	EGLConfig cfg = NULL; /* EGL_NO_CONFIG_KHR: sem janela nao precisa de config */
+	if (!ext || !strstr(ext, "EGL_KHR_no_config_context")) {
+		const EGLint at[] = {EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT, EGL_SURFACE_TYPE, 0, EGL_NONE};
+		EGLint n = 0;
+		if (!gl.ChooseConfig(gl.dpy, at, &cfg, 1, &n) || n < 1) {
+			LOG("gpu: ERRO: nenhuma configuracao GLES3");
+			return false;
+		}
+	}
+	/* GLES 3.2 -> 3.1 -> 3.0 (o Pi 5 faz 3.1; o nucleo pede 3.0 ou 2.0, tudo cabe) */
+	static const int vers[][2] = {{3, 2}, {3, 1}, {3, 0}, {2, 0}};
+	for (int i = 0; i < 4 && !gl.ctx; i++) {
+		if ((int)gl.cb.version_major > vers[i][0] ||
+		    ((int)gl.cb.version_major == vers[i][0] && (int)gl.cb.version_minor > vers[i][1]))
+			break;
+		const EGLint at[] = {EGL_CONTEXT_MAJOR_VERSION, vers[i][0], EGL_CONTEXT_MINOR_VERSION, vers[i][1], EGL_NONE};
+		gl.ctx = gl.CreateContext(gl.dpy, cfg, NULL, at);
+	}
+	if (!gl.ctx || !gl.MakeCurrent(gl.dpy, NULL, NULL, gl.ctx)) {
+		LOG("gpu: ERRO: contexto GLES nao foi criado");
+		return false;
+	}
+#define GLF(n) *(void **)&gl.n = (void *)gl_proc("gl" #n)
+	GLF(GenFramebuffers); GLF(BindFramebuffer); GLF(FramebufferTexture2D); GLF(GenRenderbuffers);
+	GLF(BindRenderbuffer); GLF(RenderbufferStorage); GLF(FramebufferRenderbuffer); GLF(CheckFramebufferStatus);
+	GLF(DeleteFramebuffers); GLF(DeleteRenderbuffers); GLF(GenTextures); GLF(DeleteTextures); GLF(BindTexture);
+	GLF(TexImage2D); GLF(TexParameteri); GLF(PixelStorei); GLF(ReadPixels); GLF(GetIntegerv); GLF(BindBuffer);
+	GLF(GetString);
+#undef GLF
+	if (!gl.ReadPixels || !gl.GenFramebuffers || !gl.TexImage2D) {
+		LOG("gpu: ERRO: GLES incompleto");
+		return false;
+	}
+	LOG("gpu: %s / %s", gl.GetString ? (const char *)gl.GetString(GL_RENDERER) : "?",
+	    gl.GetString ? (const char *)gl.GetString(GL_VERSION) : "?");
+	return true;
+}
+
+/* FBO do tamanho maximo do jogo (cor RGBA8 + profundidade/stencil) */
+static bool gl_cria_fbo(unsigned w, unsigned h)
+{
+	if (w < 1) w = 640;
+	if (h < 1) h = 480;
+	if (w > 4096) w = 4096;
+	if (h > 4096) h = 4096;
+	if (gl.fbo) {
+		gl.DeleteFramebuffers(1, &gl.fbo);
+		gl.DeleteTextures(1, &gl.tex);
+		if (gl.rb)
+			gl.DeleteRenderbuffers(1, &gl.rb);
+		gl.fbo = gl.tex = gl.rb = 0;
+	}
+	gl.GenTextures(1, &gl.tex);
+	gl.BindTexture(GL_TEXTURE_2D, gl.tex);
+	gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+	gl.BindTexture(GL_TEXTURE_2D, 0);
+	gl.GenFramebuffers(1, &gl.fbo);
+	gl.BindFramebuffer(GL_FRAMEBUFFER, gl.fbo);
+	gl.FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gl.tex, 0);
+	if (gl.cb.depth || gl.cb.stencil) {
+		gl.GenRenderbuffers(1, &gl.rb);
+		gl.BindRenderbuffer(GL_RENDERBUFFER, gl.rb);
+		gl.RenderbufferStorage(GL_RENDERBUFFER, gl.cb.stencil ? GL_DEPTH24_STENCIL8 : GL_DEPTH_COMPONENT24, w, h);
+		gl.FramebufferRenderbuffer(GL_FRAMEBUFFER, gl.cb.stencil ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT,
+		                           GL_RENDERBUFFER, gl.rb);
+		gl.BindRenderbuffer(GL_RENDERBUFFER, 0);
+	}
+	unsigned st = gl.CheckFramebufferStatus(GL_FRAMEBUFFER);
+	gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
+	if (st != GL_FRAMEBUFFER_COMPLETE) {
+		LOG("gpu: ERRO: FBO %ux%u incompleto (0x%x)", w, h, st);
+		return false;
+	}
+	gl.w = w;
+	gl.h = h;
+	LOG("gpu: FBO %ux%u%s", w, h, gl.rb ? " com profundidade" : "");
+	return true;
+}
+
+/* depois do retro_load_game: cria tudo e chama o context_reset do nucleo */
+static bool gl_inicia(void)
+{
+	if (!gl.cb.context_reset)
+		return true; /* nucleo sem GPU */
+	if (!gl.ctx || !gl_cria_fbo(av.geometry.max_width, av.geometry.max_height))
+		return false;
+	gl.ativo = true;
+	gl.cb.context_reset();
+	return true;
+}
+
+static void gl_fim(void)
+{
+	if (!gl.ativo)
+		return;
+	if (gl.cb.context_destroy)
+		gl.cb.context_destroy();
+	gl.ativo = false;
+}
+
+static void gl_fecha(void)
+{
+	if (gl.dpy) {
+		gl.MakeCurrent(gl.dpy, NULL, NULL, NULL);
+		if (gl.ctx)
+			gl.DestroyContext(gl.dpy, gl.ctx);
+		gl.Terminate(gl.dpy);
+	}
+	if (gl.gbm && gl.hgbm) {
+		void (*destroi)(void *) = (void (*)(void *))dlsym(gl.hgbm, "gbm_device_destroy");
+		if (destroi)
+			destroi(gl.gbm);
+	}
+	if (gl.gbm_fd >= 0)
+		close(gl.gbm_fd);
+}
+
+/* quadro pronto no FBO -> memoria (XRGB8888, linha 0 = topo da imagem) */
+static const uint32_t *gl_le_quadro(unsigned w, unsigned h)
+{
+	if (w > gl.w) w = gl.w;
+	if (h > gl.h) h = gl.h;
+	size_t n = (size_t)w * h;
+	if (n > gl.cap) {
+		free(gl.q);
+		free(gl.tmp);
+		gl.q = malloc(n * 4);
+		gl.tmp = malloc(n * 4);
+		gl.cap = n;
+	}
+	int rfb = 0, pbo = 0;
+	gl.GetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &rfb);
+	gl.GetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING, &pbo);
+	gl.BindFramebuffer(GL_READ_FRAMEBUFFER, gl.fbo);
+	if (pbo)
+		gl.BindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+	gl.PixelStorei(GL_PACK_ALIGNMENT, 4);
+	gl.PixelStorei(GL_PACK_ROW_LENGTH, 0);
+	gl.ReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, gl.tmp);
+	gl.BindFramebuffer(GL_READ_FRAMEBUFFER, rfb);
+	if (pbo)
+		gl.BindBuffer(GL_PIXEL_PACK_BUFFER, pbo);
+	/* RGBA (bytes) -> XRGB8888; o padrao libretro em GL ja tem a linha 0 em cima,
+	 * bottom_left_origin = imagem "de pe" no GL: inverte */
+	for (unsigned y = 0; y < h; y++) {
+		const uint32_t *o = gl.tmp + (size_t)(gl.cb.bottom_left_origin ? h - 1 - y : y) * w;
+		uint32_t *d = gl.q + (size_t)y * w;
+		for (unsigned x = 0; x < w; x++) {
+			uint32_t p = o[x];
+			d[x] = (p & 0xff) << 16 | (p & 0xff00) | (p >> 16 & 0xff);
+		}
+	}
+	return gl.q;
+}
+
+static bool gl_pedido(struct retro_hw_render_callback *cb)
+{
+	if (cb->context_type != RETRO_HW_CONTEXT_OPENGLES2 && cb->context_type != RETRO_HW_CONTEXT_OPENGLES3 &&
+	    cb->context_type != RETRO_HW_CONTEXT_OPENGLES_VERSION) {
+		LOG("gpu: nucleo pediu contexto %d: so GLES aqui", cb->context_type);
+		return false;
+	}
+	gl.cb = *cb;
+	if (!gl.ctx && !gl_cria_contexto())
+		return false;
+	cb->get_current_framebuffer = gl_fb_atual;
+	cb->get_proc_address = gl_proc;
+	gl.cb.get_current_framebuffer = gl_fb_atual;
+	gl.cb.get_proc_address = gl_proc;
+	LOG("gpu: nucleo desenha com GLES (tipo %d, %u.%u)", cb->context_type, cb->version_major, cb->version_minor);
+	return true;
+}
+
 /* ultimo quadro do jogo (para o fundo do menu) */
 static uint8_t *ult_q;
 static unsigned ult_w, ult_h;
@@ -1634,6 +2040,16 @@ static void video_cb(const void *data, unsigned w, unsigned h, size_t pitch)
 {
 	if (!data) /* repetir quadro: o fb.back ja tem a imagem */
 		return;
+	int fmt = pixfmt;
+	if (data == RETRO_HW_FRAME_BUFFER_VALID) {
+		if (!gl.ativo)
+			return;
+		data = gl_le_quadro(w, h);
+		if (w > gl.w) w = gl.w;
+		if (h > gl.h) h = gl.h;
+		pitch = (size_t)w * 4;
+		fmt = RETRO_PIXEL_FORMAT_XRGB8888;
+	}
 	size_t t = pitch * h;
 	if (t > ult_cap) {
 		free(ult_q);
@@ -1641,8 +2057,8 @@ static void video_cb(const void *data, unsigned w, unsigned h, size_t pitch)
 		ult_cap = t;
 	}
 	memcpy(ult_q, data, t);
-	ult_w = w; ult_h = h; ult_pitch = pitch; ult_fmt = pixfmt;
-	desenha(data, w, h, pitch, pixfmt, av.geometry.aspect_ratio);
+	ult_w = w; ult_h = h; ult_pitch = pitch; ult_fmt = fmt;
+	desenha(data, w, h, pitch, fmt, av.geometry.aspect_ratio);
 	if (w != osd_w || h != osd_h) {
 		osd_w = w;
 		osd_h = h;
@@ -2108,6 +2524,9 @@ static int16_t input_state(unsigned port, unsigned device, unsigned index, unsig
 	}
 	if ((device & RETRO_DEVICE_MASK) == RETRO_DEVICE_ANALOG && index < 2 && id < 2)
 		return pad_ana[port][index * 2 + id];
+	/* gatilhos analogicos (Dreamcast L/R): o 8BitDo manda LT/RT como botao */
+	if ((device & RETRO_DEVICE_MASK) == RETRO_DEVICE_ANALOG && index == RETRO_DEVICE_INDEX_ANALOG_BUTTON)
+		return id < 16 && (b >> id & 1) ? 0x7fff : 0;
 	return 0;
 }
 
@@ -2269,6 +2688,14 @@ static bool environment(unsigned cmd, void *data)
 			}
 		return true;
 	}
+	case RETRO_ENVIRONMENT_SET_HW_RENDER:
+		return gl_pedido(data);
+	case RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER:
+		*(unsigned *)data = RETRO_HW_CONTEXT_OPENGLES3; /* Pi 5: V3D com GLES 3.1 */
+		return true;
+	case RETRO_ENVIRONMENT_GET_JIT_CAPABLE: /* Flycast: sem isso desiste (aarch64 tem JIT) */
+		*(bool *)data = true;
+		return true;
 	case RETRO_ENVIRONMENT_SET_CONTROLLER_INFO:
 	case RETRO_ENVIRONMENT_SET_SUBSYSTEM_INFO:
 	case RETRO_ENVIRONMENT_SET_MEMORY_MAPS:
@@ -3414,6 +3841,7 @@ int main(int argc, char **argv)
 		else if (!strcmp(k, "--filtro-arq")) a_filtro_arq = v;
 		else if (!strcmp(k, "--imagem-arq")) a_imagem_arq = v;
 		else if (!strcmp(k, "--cd-vel")) cd_vel = atoi(v);
+		else if (!strcmp(k, "--cd-faixas")) cd_faixas = atoi(v) != 0;
 		else if (!strcmp(k, "--cd-acorda")) cd_acorda_s = atoi(v) < 2 ? 2 : atoi(v) > 60 ? 60 : atoi(v);
 		else if (!strcmp(k, "--volume")) volume = atoi(v) < 0 ? 0 : atoi(v) > 100 ? 100 : atoi(v);
 		else if (!strcmp(k, "--audio")) a_audio = v;
@@ -3503,6 +3931,11 @@ int main(int argc, char **argv)
 	}
 	core.get_system_av_info(&av);
 	LOG("jogo: %ux%u %.3f Hz, som %.0f Hz", av.geometry.base_width, av.geometry.base_height, av.timing.fps, av.timing.sample_rate);
+	if (!gl_inicia()) {
+		LOG("ERRO: a GPU nao abriu para o nucleo");
+		core.unload_game();
+		return 2;
+	}
 	core.set_controller_port_device(0, RETRO_DEVICE_JOYPAD);
 	core.set_controller_port_device(1, RETRO_DEVICE_JOYPAD);
 	sram_carrega();
@@ -3689,8 +4122,10 @@ int main(int argc, char **argv)
 		}
 		LOG("volume: %d", volume);
 	}
+	gl_fim();
 	core.unload_game();
 	core.deinit();
+	gl_fecha();
 	LOG("fim (%ld quadros)", quadros);
 	return ret;
 }

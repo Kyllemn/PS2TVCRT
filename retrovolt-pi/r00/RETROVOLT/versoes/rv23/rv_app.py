@@ -876,6 +876,8 @@ OPCOES_PADRAO = {
     # Neo Geo CD: regiao USA (textos em ingles; Japan e o padrao do nucleo) e o atalho da
     # BIOS que encurta a espera de leitura
     'neocd_libretro.so': {'neocd_region': 'USA', 'neocd_cdspeedhack': 'On'},
+    # Dreamcast: resolucao nativa (640x480); no tubo cada linha vai para a TV
+    'flycast_libretro.so': {'reicast_internal_resolution': '640x480'},
 }
 # Sega CD: uma BIOS por regiao do disco (o nucleo escolhe pela regiao gravada no disco)
 BIOS_SEGACD = {'U': ('bios_CD_U.bin', 'AMERICANO'), 'E': ('bios_CD_E.bin', 'EUROPEU'),
@@ -922,6 +924,14 @@ def bios_pasta_nucleo(base_rv, sistema):
     try:
         shutil.rmtree(destino, ignore_errors=True)
         os.makedirs(destino)
+        if sistema == 'dreamcast':
+            # Flycast: BIOS em dc/ e ele GRAVA ali a memoria do console (dc_nvmem.bin: data,
+            # idioma). dc/ aponta direto para RETROVOLT/bios/dreamcast no pendrive, para nao
+            # se perder ao desligar (no pendrive a caixa das letras nao conta)
+            pasta = os.path.join(base_rv, 'bios', 'dreamcast')
+            os.makedirs(pasta, exist_ok=True)
+            os.symlink(pasta, os.path.join(destino, 'dc'))
+            return destino
         alvo = os.path.join(destino, 'neocd') if sistema == 'neogeocd' else destino
         os.makedirs(alvo, exist_ok=True)
         exatos = {n.lower(): n for n in BIOS_NOMES}
@@ -1525,6 +1535,8 @@ class App:
                '--imagem-arq', os.path.join(self.base, 'config', 'nucleos', nucleo.replace('_libretro.so', '.imagem'))]
         cmd += ['--cd', self.leitora.dev, '--cd-vel', self.cfg.get('leitora_velocidade', '4'),
                 '--cd-acorda', str(num(self.cfg, 'leitora_acordar', int, 2, 60))] if cd else ['--jogo', arquivo]
+        if cd and sistema == 'dreamcast':
+            cmd += ['--cd-faixas', '1']   # CD-R em 2 sessoes: uma faixa por arquivo
         if self.cfg.get('audio_dispositivo'):
             cmd += ['--audio', self.cfg['audio_dispositivo']]
         self.carregando(nome)

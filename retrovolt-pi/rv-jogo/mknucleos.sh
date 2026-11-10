@@ -37,4 +37,24 @@ git clone -q --depth 1 https://github.com/libretro/snes9x "$T/snes9x"
        AR=aarch64-linux-gnu-ar -j"$(nproc)" >/dev/null )   # Super Nintendo
 aarch64-linux-gnu-strip -o "$DEST/snes9x_libretro.so" "$T/snes9x/libretro/snes9x_libretro.so"
 echo "snes9x $(cd "$T/snes9x" && git log -1 --format=%h)"
+# Dreamcast: Flycast com GLES 3 (a GPU V3D do Pi 5) e JIT aarch64. Precisa das bibliotecas
+# GLES do arm64 para ligar (dpkg --add-architecture arm64; apt-get install libgles-dev:arm64)
+git clone -q --depth 1 https://github.com/flyinghead/flycast "$T/flycast"
+( cd "$T/flycast" && git submodule update --init --depth 1 -q &&
+  cat > "$T/aarch64.cmake" <<'TC'
+set(CMAKE_SYSTEM_NAME Linux)
+set(CMAKE_SYSTEM_PROCESSOR aarch64)
+set(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
+set(CMAKE_CXX_COMPILER aarch64-linux-gnu-g++)
+set(CMAKE_FIND_ROOT_PATH /usr/aarch64-linux-gnu /usr/lib/aarch64-linux-gnu)
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE BOTH)
+TC
+  cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE="$T/aarch64.cmake" -DCMAKE_BUILD_TYPE=Release \
+        -DLIBRETRO=ON -DUSE_GLES=ON -DUSE_OPENGL=ON -DUSE_VULKAN=OFF -DUSE_LUA=OFF -DUSE_BREAKPAD=OFF \
+        -DCMAKE_C_FLAGS="-mcpu=cortex-a76" -DCMAKE_CXX_FLAGS="-mcpu=cortex-a76" >/dev/null &&
+  cmake --build build -j"$(nproc)" >/dev/null )
+aarch64-linux-gnu-strip -o "$DEST/flycast_libretro.so" "$T/flycast/build/flycast_libretro.so"
+echo "flycast $(cd "$T/flycast" && git log -1 --format=%h)"
 rm -rf "$T"
