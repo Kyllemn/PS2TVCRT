@@ -205,6 +205,11 @@ def identifica(src):
         # regiao pelo codigo de seguranca (igual ao nucleo): escolhe a BIOS
         r['regiao'] = {0x64: 'E', 0xa1: 'J'}.get(s0[0x20b] if len(s0) > 0x20b else 0, 'U')
         return r
+    if s0[:16] == b'SEGA SEGAKATANA ':     # Dreamcast (IP.BIN; CD-R selfboot: 2a sessao)
+        r['sistema'] = 'dreamcast'
+        r['codigo'] = _texto_sega(s0[0x40:0x4a])
+        r['nome'] = _texto_sega(s0[0x80:0x100])
+        return r
     if s0[:15] == b'SEGA SEGASATURN':
         r['sistema'] = 'saturn'
         r['codigo'] = s0[0x20:0x2a].decode('ascii', 'replace').strip() or None

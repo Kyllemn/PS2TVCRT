@@ -557,3 +557,13 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
      960) - quase cheia, scanlines perfeitas, faixa preta fina em cima/embaixo.
   c) Em TELA CHEIA desligar scanlines (so o efeito CRT de grade).
 - Para o monitor: usar a resolucao nativa (AUTO) evita a reescala do proprio monitor.
+- Super Nintendo: Snes9x (mknucleos; .sfc .smc .fig .swc .bs; ROM carregada na memoria
+  pelo rv-jogo, need_fullpath=false ja suportado). Entra com o proximo #compilar.
+- Dreamcast (PLANO, fase GPU): Flycast nao tem desenho por software (pede OpenGL/Vulkan
+  via SET_HW_RENDER); o rv-jogo hoje e so framebuffer -> precisa contexto EGL/GBM no DRM
+  (Pi 5: GLES 3.1). Disco: CD-R gravado (selfboot/MIL-CD, 2 sessoes, dados em 11702) a
+  leitora le; GD-ROM original nao (densidade alta). O cue do Flycast entende REM SESSION:
+  o CD virtual do rv-jogo precisa escrever as sessoes. Ja feito: sistema 'dreamcast' no
+  menu (.cdi .gdi .chd .cue .m3u), disco identificado por "SEGA SEGAKATANA" (IP.BIN).
+  BIOS (dc_boot.bin, dc_flash.bin) em bios/dreamcast; o Flycast tambem tem BIOS embutida.
+- Sistema de CD so aparece sempre se o nucleo estiver no pacote (senao, so com jogos).

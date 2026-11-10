@@ -838,11 +838,14 @@ SISTEMAS = {
     'mastersystem': ('MASTER SYSTEM', 'genesis_plus_gx_libretro.so', False),
     'gamegear': ('GAME GEAR', 'genesis_plus_gx_libretro.so', False),
     'sg1000': ('SG-1000', 'genesis_plus_gx_libretro.so', False),
+    'snes': ('SUPER NINTENDO', 'snes9x_libretro.so', False),
+    # Dreamcast: Flycast precisa de placa de video (OpenGL/Vulkan) -> fase GPU do rv-jogo.
+    # Disco: CD-R gravado (selfboot, 2 sessoes) a leitora le; GD-ROM original nao.
+    'dreamcast': ('DREAMCAST', 'flycast_libretro.so', True),
     'saturn': ('SATURN', None, True),
     '3do': ('3DO', None, True),
-    'dreamcast': ('DREAMCAST', None, False),
     'atari2600': ('ATARI 2600', None, False), 'nes': ('NES', None, False),
-    'snes': ('SUPER NINTENDO', None, False), 'n64': ('NINTENDO 64', None, False),
+    'n64': ('NINTENDO 64', None, False),
     'gb': ('GAME BOY', None, False), 'gbc': ('GAME BOY COLOR', None, False),
     'gba': ('GAME BOY ADVANCE', None, False),
     'neogeo': ('NEO GEO', None, False), 'arcade': ('ARCADE', None, False),
@@ -857,6 +860,8 @@ EXT_JOGO = {
     'mastersystem': ('.sms',),
     'gamegear': ('.gg',),
     'sg1000': ('.sg',),
+    'snes': ('.sfc', '.smc', '.fig', '.swc', '.bs'),
+    'dreamcast': ('.cdi', '.gdi', '.chd', '.cue', '.m3u'),
 }
 # PC Engine: uma lista so (cartoes e CDs). "pcenginecd" e o nome do disco na leitora e
 # da pasta antiga roms/pcenginecd, que entra na mesma lista.
@@ -1444,8 +1449,8 @@ class App:
         for s in SISTEMAS:
             if s in APELIDO:                 # pcenginecd entra na lista do PC Engine
                 continue
-            if SISTEMAS[s][1] and SISTEMAS[s][2]:
-                out.append(s)                # sistema de CD com nucleo: sempre (INICIAR CD)
+            if SISTEMAS[s][1] and SISTEMAS[s][2] and os.path.exists(os.path.join(PASTA, 'nucleos', SISTEMAS[s][1])):
+                out.append(s)                # sistema de CD com nucleo no pacote: sempre (INICIAR CD)
                 continue
             tem = bool(lista_jogos(self.base, s)) if s in EXT_JOGO else False
             if not tem and s in EXT_JOGO:

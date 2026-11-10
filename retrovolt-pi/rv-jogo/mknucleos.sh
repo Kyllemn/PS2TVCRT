@@ -32,4 +32,9 @@ git clone -q --depth 1 https://github.com/libretro/picodrive "$T/pico"
        AR=aarch64-linux-gnu-ar -j"$(nproc)" >/dev/null )   # 32X (e MD/SMS/Sega CD, mas esses ficam no GPGX)
 aarch64-linux-gnu-strip -o "$DEST/picodrive_libretro.so" "$T/pico/picodrive_libretro.so"
 echo "picodrive $(cd "$T/pico" && git log -1 --format=%h)"
+git clone -q --depth 1 https://github.com/libretro/snes9x "$T/snes9x"
+( cd "$T/snes9x/libretro" && make platform=unix CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++ \
+       AR=aarch64-linux-gnu-ar -j"$(nproc)" >/dev/null )   # Super Nintendo
+aarch64-linux-gnu-strip -o "$DEST/snes9x_libretro.so" "$T/snes9x/libretro/snes9x_libretro.so"
+echo "snes9x $(cd "$T/snes9x" && git log -1 --format=%h)"
 rm -rf "$T"
