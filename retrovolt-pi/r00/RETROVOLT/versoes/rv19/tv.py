@@ -81,6 +81,46 @@ def _txt(txt):
     return out
 
 
+def _e_lista_de_canais(txt):
+    """lista IPTV (varios canais com #EXTINF) e nao um canal HLS (#EXT-X-...)"""
+    return '#EXTINF' in txt and '#EXT-X-' not in txt
+
+
+def baixa_lista(url, pasta_cache, max_idade=6 * 3600):
+    """baixa uma lista de canais da internet; guarda uma copia (usa a copia se a internet
+    falhar ou se for recente). Devolve o texto ou None."""
+    import hashlib
+    import urllib.request
+    os.makedirs(pasta_cache, exist_ok=True)
+    arq = os.path.join(pasta_cache, hashlib.md5(url.encode()).hexdigest() + '.m3u')
+    try:
+        if time.time() - os.path.getmtime(arq) < max_idade:
+            return open(arq, encoding='utf-8', errors='replace').read()
+    except OSError:
+        pass
+    try:
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (RetroVolt)'})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            dados = r.read(8 * 1024 * 1024)
+        txt = dados.decode('utf-8', 'replace')
+        if _e_lista_de_canais(txt):
+            with open(arq + '.tmp', 'w', encoding='utf-8') as f:
+                f.write(txt)
+            os.replace(arq + '.tmp', arq)
+        return txt
+    except Exception as ex:
+        print('tv: nao baixou %s (%s); usando a copia guardada' % (url[:80], ex), flush=True)
+        try:
+            return open(arq, encoding='utf-8', errors='replace').read()
+        except OSError:
+            return None
+
+
+def _parece_lista(url):
+    caminho = url.split('?')[0].lower()
+    return caminho.endswith('.m3u') or caminho.endswith('.m3u8') or caminho.endswith('.pls')
+
+
 def le_lista(path):
     try:
         txt = open(path, encoding='utf-8', errors='replace').read()
@@ -95,8 +135,24 @@ def le_lista(path):
         canais = _m3u(txt)
     else:
         canais = _txt(txt)
-    # caminho relativo (video no pendrive): relativo a pasta da lista
+    # link de LISTA dentro do arquivo (ex.: .txt com o endereco de um .m3u de IPTV):
+    # baixa e troca pelo conteudo. Canal HLS (.m3u8 de um canal so) fica como esta.
     pasta = os.path.dirname(path)
+    expandidos = []
+    for c in canais:
+        if '://' in c['url'] and _parece_lista(c['url']) and ext == '.txt' or c.get('lista'):
+            txt2 = baixa_lista(c['url'], os.path.join(pasta, '.cache'))
+            if txt2 and _e_lista_de_canais(txt2):
+                novos = _m3u(txt2)
+                print('tv: %s -> %d canais' % (c['url'][:80], len(novos)), flush=True)
+                expandidos += novos
+                continue
+            if txt2 and txt2.lstrip().lower().startswith('[playlist]'):
+                expandidos += _pls(txt2)
+                continue
+        expandidos.append(c)
+    canais = expandidos
+    # caminho relativo (video no pendrive): relativo a pasta da lista
     for c in canais:
         if '://' not in c['url'] and not c['url'].startswith('/'):
             c['url'] = os.path.join(pasta, c['url'])

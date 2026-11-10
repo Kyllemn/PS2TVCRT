@@ -436,3 +436,8 @@ Licoes do PS1/PCE aplicadas:
   (instalar.sh ja inclui). Media player separado: outra fase.
 - Neo Geo CD: opcoes iniciais neocd_region=USA e neocd_cdspeedhack=On (so se o .opt
   nao existe). NeoCD NAO roda MVS/AES (cartucho): isso e FinalBurn Neo (neogeo.zip).
+- RetroTV: link de LISTA dentro do .txt (ex.: .m3u de IPTV no GitHub) e baixado e
+  aberto como canais (copia em tv/.cache, vale 6 h; sem internet usa a copia). Leitura
+  das listas em segundo plano ("LENDO AS LISTAS..."). Lista com grupos (group-title):
+  ESQ/DIR pula de grupo; o grupo aparece no titulo. Testado com a lista do autor
+  (Pluto TV ES: 152 canais, 17 grupos; canal abriu na previa).

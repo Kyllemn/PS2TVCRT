@@ -1991,10 +1991,32 @@ class App:
         return itens
 
     # ---------------------------------------------------------- RetroTV
-    def tv_carrega(self):
-        self.tv_listas = tv.listas(self.base)
+    def tv_carrega(self, espera=False):
+        """le as listas em segundo plano (podem vir da internet); o menu mostra
+        LENDO AS LISTAS... e redesenha quando terminar"""
         self.tv_progs = tv.tem_programas()
-        st = self.__dict__.setdefault('tv_st', {'lista': None, 'sel_lista': 0, 'sel': 0})
+        self.__dict__.setdefault('tv_st', {'lista': None, 'sel_lista': 0, 'sel': 0})
+        if not hasattr(self, 'tv_listas'):
+            self.tv_listas = []
+        if getattr(self, 'tv_carregando', False):
+            return
+        self.tv_carregando = True
+
+        def tarefa():
+            try:
+                self._tv_carrega()
+            finally:
+                self.tv_carregando = False
+                self.fila.put('_tv')
+        if espera:
+            tarefa()
+        else:
+            threading.Thread(target=tarefa, daemon=True).start()
+
+    def _tv_carrega(self):
+        listas = tv.listas(self.base)
+        self.tv_listas = listas
+        st = self.tv_st
         if st['lista'] is not None and st['lista'] >= len(self.tv_listas):
             st['lista'] = None
         if len(self.tv_listas) == 1:          # uma lista so: vai direto aos canais
@@ -2017,13 +2039,16 @@ class App:
         return x0, y0, bw, bh
 
     def desenha_tv(self, c):
-        if not hasattr(self, 'tv_listas'):
+        if not hasattr(self, 'tv_st'):
             self.tv_carrega()
         st = self.tv_st
-        cabecalho(c, 'TV', self.wifi, 'A ASSISTE  B VOLTA' if st['lista'] is not None else 'A ENTRA')
+        cabecalho(c, 'TV', self.wifi, '<- -> GRUPO  A ASSISTE' if st['lista'] is not None else 'A ENTRA')
         if not self.tv_progs['ffmpeg']:
             c.text(24, 64, 'FALTA O FFMPEG NO SISTEMA. NO PUTTY:', ORANGE)
             c.text(24, 64 + F.ch + 6, 'SUDO APT INSTALL -Y FFMPEG MPV', IVORY)
+            return
+        if not self.tv_listas and getattr(self, 'tv_carregando', False):
+            c.text(24, 64, 'LENDO AS LISTAS DE CANAIS...', SLATE)
             return
         if not self.tv_listas:
             c.text(24, 64, 'NENHUMA LISTA DE CANAIS.', SLATE)
@@ -2039,7 +2064,9 @@ class App:
             return
         nome_l, _, canais = self.tv_listas[st['lista']]
         sel = st['sel'] = min(st['sel'], len(canais) - 1)
-        c.text(16, 50, nome_l.upper()[:30], ORANGE)
+        grupo = canais[sel].get('grupo', '')
+        titulo = nome_l.upper() + ('  > ' + grupo.upper() if grupo else '')
+        c.text(16, 50, titulo[:(W - 80) // F.cw], ORANGE)
         c.rtext(W - 12, 50, '%d/%d' % (sel + 1, len(canais)), SLATE)
         x0, y0c, bw, bh = self.tv_caixa()
         passo = F.ch + 7
@@ -2150,8 +2177,9 @@ class App:
         return False
 
     def acao_tv(self, a):
-        if not hasattr(self, 'tv_listas'):
+        if not hasattr(self, 'tv_st'):
             self.tv_carrega()
+            return
         st = self.tv_st
         if st['lista'] is None:
             n = len(self.tv_listas)
@@ -2165,8 +2193,17 @@ class App:
         canais = self.tv_canais()
         if a in ('CIMA', 'BAIXO', 'ESQ', 'DIR'):
             self.tv_para_previa()
-            d = (1 if a in ('BAIXO', 'DIR') else -1) * (10 if a in ('ESQ', 'DIR') else 1)
-            st['sel'] = max(0, min(len(canais) - 1, st['sel'] + d))
+            if a in ('ESQ', 'DIR') and any(c.get('grupo') for c in canais):
+                # lista com grupos (IPTV): pula para o comeco do grupo seguinte/anterior
+                inicios = [i for i, c in enumerate(canais) if i == 0 or c.get('grupo') != canais[i - 1].get('grupo')]
+                atual = max(i for i in inicios if i <= st['sel'])
+                if a == 'DIR':
+                    st['sel'] = next((i for i in inicios if i > atual), st['sel'])
+                else:
+                    st['sel'] = atual if st['sel'] != atual else max([i for i in inicios if i < atual] or [0])
+            else:
+                d = (1 if a in ('BAIXO', 'DIR') else -1) * (10 if a in ('ESQ', 'DIR') else 1)
+                st['sel'] = max(0, min(len(canais) - 1, st['sel'] + d))
         elif a == 'A':
             if getattr(self, 'tv_previa', None) and self.tv_previa.quadros:
                 self.tv_tela_cheia()                 # A de novo: tela cheia na hora
