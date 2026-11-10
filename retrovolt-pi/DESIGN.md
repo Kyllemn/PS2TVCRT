@@ -592,6 +592,14 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
     ler pelo PBO com 1 quadro de atraso, ou mostrar direto pela GPU (fase 2).
 
 ## ANOTADO (autor, sem codigo ainda)
+- RetroTV (FEITO na R23): <- -> anda de 10 em 10, LT/RT pula grupo (LB/RB troca de aba).
+  IPTV entra como VLC (user-agent; a lista pode pedir outro com #EXTVLCOPT:http-user-agent
+  ou user-agent=, e referer com #EXTVLCOPT:http-referrer), reconexao do ffmpeg.
+  Previa -> tela cheia: aos 3 s o mpv abre por tras (a previa continua na caixa) e so
+  toma a tela quando ja tem imagem (propriedade vo-configured pelo socket); ai a previa
+  fecha. Servidor de 1 conexao (o mpv falha) ou 8 s sem imagem: volta ao jeito antigo.
+  A durante a previa = o mesmo, sem esperar. Brilho: LT/RT na tela cheia (-50..50, de 5
+  em 5), tv_brilho no retrovolt.cfg, vale tambem na previa (eq do ffmpeg).
 - RetroTV: 3-4 s de tela preta da previa para a tela cheia. Causa: a previa (ffmpeg) e
   fechada e o mpv abre o canal do zero (lista HLS, primeiros pedacos, buffer). Plano:
   abrir o mpv ~2 s antes do fim da previa e so fechar o ffmpeg quando o mpv mostrar o 1o

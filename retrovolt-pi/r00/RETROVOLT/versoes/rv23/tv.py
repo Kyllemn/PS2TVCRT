@@ -243,7 +243,7 @@ class Previa(threading.Thread):
     """decodifica o canal em quadros w x h no formato do framebuffer e chama
     desenha(bytes) a cada quadro. Som pelo ALSA (audio_dev)."""
 
-    def __init__(self, url, w, h, bpp, desenha, audio_dev=None, volume=80, aw=None, ah=None):
+    def __init__(self, url, w, h, bpp, desenha, audio_dev=None, volume=80, aw=None, ah=None, brilho=0):
         """w x h: pontos da caixa no framebuffer; aw x ah: a mesma caixa em pontos
         quadrados (no tubo os pontos sao 6x mais largos: encaixa em aw x ah e estica)"""
         super().__init__(daemon=True)
@@ -251,6 +251,7 @@ class Previa(threading.Thread):
         self.aw, self.ah = aw or w, ah or h
         self.desenha = desenha
         self.audio_dev, self.volume = audio_dev, volume
+        self.brilho = brilho      # -50..50 (o mesmo numero da tela cheia)
         self.proc = None
         self.parar = threading.Event()
         self.quadros = 0
@@ -260,6 +261,8 @@ class Previa(threading.Thread):
         fmt = 'rgb565le' if self.bpp == 16 else 'bgr0'
         vf = ('scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,'
               'scale=%d:%d,fps=15' % (self.aw, self.ah, self.aw, self.ah, self.w, self.h))
+        if self.brilho:
+            vf = 'eq=brightness=%.3f,' % (self.brilho / 200.0) + vf
         cmd = ['ffmpeg', '-hide_banner', '-loglevel', 'error', '-nostdin']
         if '://' in self.url:
             cmd += ['-rw_timeout', '10000000'] + args_ffmpeg_http(self.url)  # fora do ar: desiste em 10 s
@@ -302,8 +305,9 @@ class Previa(threading.Thread):
 class TelaCheia:
     """mpv na saida inteira (troca de canal sem fechar, pelo socket de comando)"""
 
-    def __init__(self, tubo, fb_w, fb_h, bpp, audio_dev=None, volume=80):
+    def __init__(self, tubo, fb_w, fb_h, bpp, audio_dev=None, volume=80, brilho=0):
         self.tubo, self.audio_dev, self.volume = tubo, audio_dev, volume
+        self.brilho = brilho
         self.fb_w, self.fb_h, self.bpp = fb_w, fb_h, bpp
         self.proc = None
         self.com_mpv = bool(shutil.which('mpv'))
@@ -320,7 +324,9 @@ class TelaCheia:
                    '--no-osc', '--input-ipc-server=' + SOCK, '--volume=%d' % self.volume,
                    '--osd-level=1', '--osd-duration=3000', '--keep-open=no', '--cache=yes',
                    '--demuxer-max-bytes=32MiB', '--force-media-title=' + (nome or url),
-                   '--user-agent=' + http_de(url)[0]]
+                   '--user-agent=' + http_de(url)[0], '--brightness=%d' % self.brilho,
+                   # inicio rapido: le pouco do canal para descobrir o formato
+                   '--demuxer-lavf-analyzeduration=1']
             if http_de(url)[1]:
                 cmd += ['--referrer=' + http_de(url)[1]]
             if msg:      # aparece quando o canal comeca (o socket ainda nao existe aqui)
@@ -366,6 +372,45 @@ class TelaCheia:
         if self.com_mpv and self.rodando():
             self._comando(['set_property', 'volume', v])
             self._comando(['show-text', 'VOLUME %d' % v, 1500])
+
+    def muda_brilho(self, b):
+        self.brilho = b
+        if self.com_mpv and self.rodando():
+            self._comando(['set_property', 'brightness', b])
+            self._comando(['show-text', 'BRILHO %+d' % b if b else 'BRILHO NORMAL', 1500])
+
+    def consulta(self, prop):
+        """valor de uma propriedade do mpv (None se nao respondeu)"""
+        if not (self.com_mpv and self.rodando()):
+            return None
+        try:
+            s = socket.socket(socket.AF_UNIX)
+            s.settimeout(0.3)
+            s.connect(SOCK)
+            s.sendall((json.dumps({'command': ['get_property', prop], 'request_id': 7}) + '\n').encode())
+            buf = b''
+            fim = time.monotonic() + 0.3
+            while time.monotonic() < fim:
+                buf += s.recv(4096)
+                *linhas, buf = buf.split(b'\n')
+                for l in linhas:
+                    try:
+                        r = json.loads(l)
+                    except ValueError:
+                        continue
+                    if r.get('request_id') == 7:
+                        s.close()
+                        return r.get('data') if r.get('error') == 'success' else None
+            s.close()
+        except OSError:
+            pass
+        return None
+
+    def mostrando(self):
+        """o mpv ja tomou a tela (1o quadro pronto)"""
+        if not self.com_mpv:
+            return self.rodando()
+        return bool(self.consulta('vo-configured'))
 
     def texto(self, txt, ms=4000):
         """texto por cima do video (guia de canais, avisos); so com mpv"""

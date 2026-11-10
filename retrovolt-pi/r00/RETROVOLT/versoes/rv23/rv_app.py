@@ -110,6 +110,7 @@ CFG_PADRAO = [
     ('video_altura', '1.000', 'altura da imagem (1.000 = todas as linhas; 0.950 = 95%)'),
     ('SOM', None, None),
     ('volume', '80', 'volume geral dos jogos, 0 a 100'),
+    ('tv_brilho', '0', 'RetroTV: brilho da imagem, -50 a 50 (LT/RT na tela cheia)'),
     ('LEITORA', None, None),
     ('leitora_velocidade', '4', 'velocidade da leitora nos jogos (0 = maxima; a leitora pode ter minimo proprio, ex.: 10x)'),
     ('leitora_acordar', '10', 'segundos sem leitura ate o RetroVolt acordar a leitora (2 a 60)'),
@@ -2289,7 +2290,15 @@ class App:
             c.text(x0 + 6, y0c + bh // 2 - F.ch // 2, 'A: ASSISTIR', SLATE)
         c.text(x0, y0c + bh + 6, ('%s %s' % (ch.get('num', ''), ch['nome'].upper())).strip()[:bw // F.cw], IVORY)
 
+    def tv_brilho(self):
+        return num(self.cfg, 'tv_brilho', int, -50, 50)
+
     def tv_para_previa(self):
+        if getattr(self, 'tv_pre', 0):        # tela cheia abrindo por tras: cancela
+            self.tv_pre = 0
+            if getattr(self, 'tv_cheia', None):
+                self.tv_cheia.fecha()
+            self.leitora.pausa.clear()
         pv = getattr(self, 'tv_previa', None)
         if pv:
             pv.fecha()
@@ -2325,27 +2334,35 @@ class App:
                 self.fila.put('_tv')                # tira o "SINTONIZANDO..."
 
         pv = tv.Previa(ch['url'], pw, ph, self.fb.bpp, desenha, self.cfg.get('audio_dispositivo') or AUDIO_PADRAO,
-                       self.volume(), aw, ah)
+                       self.volume(), aw, ah, self.tv_brilho())
         self.tv_previa = pv
         self.tv_previa_ini = time.monotonic()
         print('tv: previa %s (%s)' % (ch['nome'], ch['url']), flush=True)
         pv.start()
 
-    def tv_tela_cheia(self):
+    def tv_tela_cheia(self, cedo=False):
+        """cedo: o mpv abre por tras com a previa ainda rodando e so toma a tela quando ja
+        tem imagem (sem os 3-4 s de preto); a previa fecha nessa hora (tv_vigia)"""
         canais = self.tv_canais()
         if not canais:
             return
         ch = canais[self.tv_st['sel']]
-        self.tv_para_previa()
+        if not cedo:
+            self.tv_para_previa()
         if not getattr(self, 'tv_cheia', None):
             self.tv_cheia = tv.TelaCheia(self.fb.tubo, self.fb.w, self.fb.h, self.fb.bpp,
                                          self.cfg.get('audio_dispositivo') or AUDIO_PADRAO, self.volume())
         self.leitora.pausa.set()
-        self.tela = 'tv_cheia'
-        print('tv: tela cheia %s' % ch['nome'], flush=True)
+        if cedo:
+            self.tv_pre = time.monotonic()
+        else:
+            self.tela = 'tv_cheia'
+        print('tv: tela cheia %s%s' % (ch['nome'], ' (abrindo por tras da previa)' if cedo else ''), flush=True)
         self.tv_cheia.volume = self.volume()
+        self.tv_cheia.brilho = self.tv_brilho()
         self.tv_cheia.abre(ch['url'], '%s  %s' % (ch.get('num', ''), ch['nome']),
-                           '%s  %s\nA: LISTA DE CANAIS   <- ->: VOLUME   B: VOLTAR' % (ch.get('num', ''), ch['nome']))
+                           '%s  %s\nA: LISTA DE CANAIS   <- ->: VOLUME   LT/RT: BRILHO   B: VOLTAR'
+                           % (ch.get('num', ''), ch['nome']))
 
     def tv_sai_tela_cheia(self, aviso=None):
         if getattr(self, 'tv_cheia', None):
@@ -2357,14 +2374,34 @@ class App:
 
     def tv_vigia(self):
         """chamado pelo laco do menu: previa -> tela cheia em 5 s; mpv fechou sozinho"""
+        pre = getattr(self, 'tv_pre', 0)
+        if pre and self.tela == 'menu':
+            tc = self.tv_cheia
+            if tc.rodando() and tc.mostrando():
+                self.tv_pre = 0
+                pv = getattr(self, 'tv_previa', None)
+                if pv:
+                    pv.fecha()
+                    self.tv_previa = None
+                self.tela = 'tv_cheia'
+                print('tv: tela cheia no ar (%.1f s depois de abrir)' % (time.monotonic() - pre), flush=True)
+                return False
+            if not tc.rodando() or time.monotonic() - pre > 8:
+                # nao abriu junto com a previa (servidor que so aceita 1 conexao?): do jeito antigo
+                print('tv: tela cheia nao abriu junto com a previa: %s' % (tc.erro()[:200] if not tc.rodando()
+                                                                          else 'demorou'), flush=True)
+                self.tv_pre = 0
+                self.tv_tela_cheia()
+                return True
+            return False
         pv = getattr(self, 'tv_previa', None)
         if pv and self.tela == 'menu':
             if pv.erro:
                 print('tv: canal fora do ar: %s' % pv.erro[:200], flush=True)
                 self.tv_previa = None
                 return True
-            if pv.quadros and time.monotonic() - self.tv_previa_ini >= 5:
-                self.tv_tela_cheia()
+            if pv.quadros and time.monotonic() - self.tv_previa_ini >= 3:
+                self.tv_tela_cheia(cedo=True)       # toma a tela uns 2 s depois, ja com imagem
                 return False
         if self.tela == 'tv_cheia' and not self.tv_cheia.rodando():
             err = self.tv_cheia.erro()
@@ -2402,8 +2439,10 @@ class App:
                 d = (1 if a in ('BAIXO', 'DIR') else -1) * (10 if a in ('ESQ', 'DIR') else 1)
                 st['sel'] = max(0, min(len(canais) - 1, st['sel'] + d))
         elif a == 'A':
-            if getattr(self, 'tv_previa', None) and self.tv_previa.quadros:
-                self.tv_tela_cheia()                 # A de novo: tela cheia na hora
+            if getattr(self, 'tv_pre', 0):
+                pass                                 # tela cheia ja abrindo por tras
+            elif getattr(self, 'tv_previa', None) and self.tv_previa.quadros:
+                self.tv_tela_cheia(cedo=True)        # A de novo: tela cheia sem esperar
             else:
                 self.tv_inicia_previa()
         elif a == 'B':
@@ -2431,10 +2470,16 @@ class App:
     def acao_tv_cheia(self, a):
         """tela cheia. Sem guia: CIMA/BAIXO troca de canal, A abre o guia, B/START volta a
         lista. Com guia: CIMA/BAIXO anda no guia (o video continua), A troca, B fecha.
-        ESQ/DIR (ou L1/R1): volume."""
+        ESQ/DIR (ou L1/R1): volume. LT/RT: brilho (tv_brilho no retrovolt.cfg)."""
         canais = self.tv_canais()
         st = self.tv_st
         guia = time.monotonic() < getattr(self, 'tv_guia_ate', 0)
+        if a in ('L2', 'R2'):
+            b = max(-50, min(50, self.tv_brilho() + (5 if a == 'R2' else -5)))
+            self.cfg['tv_brilho'] = str(b)
+            self.vol_sujo = time.monotonic()            # grava no retrovolt.cfg em 1,5 s
+            self.tv_cheia.muda_brilho(b)
+            return
         if a in ('ESQ', 'DIR', 'L1', 'R1'):
             v = max(0, min(100, self.volume() + (5 if a in ('DIR', 'R1') else -5)))
             self.cfg['volume'] = str(v)
@@ -3051,7 +3096,8 @@ class App:
             while True:
                 try:
                     rolando = self.aviso and len(self.aviso[0]) > (W - 44) // F.cw
-                    curto = self.contagem or self.tela in ('teste_video', 'tv_cheia') or getattr(self, 'tv_previa', None)
+                    curto = (self.contagem or self.tela in ('teste_video', 'tv_cheia') or getattr(self, 'tv_previa', None)
+                             or getattr(self, 'tv_pre', 0))
                     a = self.fila.get(timeout=0.25 if curto else 0.1 if rolando else 1.0)
                 except queue.Empty:
                     a = None
