@@ -176,7 +176,11 @@ static pthread_mutex_t cd_mx = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t cd_io_mx = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t cd_cv = PTHREAD_COND_INITIALIZER;    /* um bloco ficou pronto */
 static pthread_cond_t cd_pf_cv = PTHREAD_COND_INITIALIZER; /* pedido de leitura adiante */
-static struct { int64_t lba; uint64_t uso; bool lendo, adiantado; uint8_t d[BLOCO * SETOR]; } cd_cache[NCACHE];
+/* cache dos blocos lidos. Padrao: NCACHE (1,8 MB). Dreamcast (--cd-cache MB): bem maior,
+ * porque o jogo volta toda hora aos mesmos arquivos e cada busca nova na leitora custa
+ * ~100 ms com o nucleo parado esperando. Memoria de cada vaga so na 1a vez que e usada. */
+static struct cd_vaga_s { int64_t lba; uint64_t uso; bool lendo, adiantado; uint8_t *d; } *cd_cache;
+static int ncache = NCACHE;
 static uint64_t cd_relogio;
 static volatile double cd_ult_leitura;
 static int cd_acorda_s = 10; /* --cd-acorda: segundos sem leitura ate acordar a leitora (regra do autor: 10) */
@@ -444,7 +448,7 @@ static void cd_le_bloco(int64_t lba0, uint8_t *d)
 /* procura o bloco no cache (com cd_mx) */
 static int cd_acha(int64_t b0)
 {
-	for (int k = 0; k < NCACHE; k++)
+	for (int k = 0; k < ncache; k++)
 		if (cd_cache[k].lba == b0)
 			return k;
 	return -1;
@@ -454,7 +458,7 @@ static int cd_acha(int64_t b0)
 static int cd_vaga(void)
 {
 	int v = -1;
-	for (int k = 0; k < NCACHE; k++)
+	for (int k = 0; k < ncache; k++)
 		if (!cd_cache[k].lendo && (v < 0 || cd_cache[k].uso < cd_cache[v].uso))
 			v = k;
 	return v;
@@ -463,6 +467,10 @@ static int cd_vaga(void)
 /* le o bloco b0 da leitora para a vaga k (entra e sai com cd_mx) */
 static void cd_carrega(int k, int64_t b0)
 {
+	if (!cd_cache[k].d && !(cd_cache[k].d = malloc(BLOCO * SETOR))) {
+		LOG("ERRO: sem memoria para o cache do CD");
+		exit(3);
+	}
 	cd_cache[k].lba = b0;
 	cd_cache[k].lendo = true;
 	pthread_mutex_unlock(&cd_mx);
@@ -753,8 +761,15 @@ static void cd_cue_faixas(int fim)
 
 static bool cd_abrir(const char *dev)
 {
-	for (int k = 0; k < NCACHE; k++)
+	cd_cache = calloc(ncache, sizeof *cd_cache);
+	if (!cd_cache) {
+		LOG("cd: sem memoria para o cache de %d blocos", ncache);
+		return false;
+	}
+	for (int k = 0; k < ncache; k++)
 		cd_cache[k].lba = -1;
+	if (ncache > NCACHE)
+		LOG("cd: cache de %d MB (%d blocos de %d setores)", (int)((int64_t)ncache * BLOCO * SETOR >> 20), ncache, BLOCO);
 	cd_pf_base = -1;
 	struct stat st;
 	if (stat(dev, &st) == 0 && S_ISREG(st.st_mode)) {
@@ -2027,6 +2042,70 @@ static const uint32_t *gl_le_quadro(unsigned w, unsigned h)
 	return gl.q;
 }
 
+/* diagnostico: uma vez por tamanho informado (2 s depois de mudar), le o FBO INTEIRO,
+ * anota no LOG ate onde vai a imagem de verdade e grava /run/retrovolt/gpu_WxH.ppm
+ * (de cima para baixo como o jogo e visto) */
+static void gl_foto(unsigned w, unsigned h)
+{
+	static unsigned fw, fh, nq, feitos[16][2], nfeitos;
+	if (w != fw || h != fh) {
+		fw = w; fh = h; nq = 0;
+		return;
+	}
+	if (++nq != 120)
+		return;
+	for (unsigned i = 0; i < nfeitos; i++)
+		if (feitos[i][0] == w && feitos[i][1] == h)
+			return;
+	if (nfeitos < 16) {
+		feitos[nfeitos][0] = w;
+		feitos[nfeitos++][1] = h;
+	}
+	size_t n = (size_t)gl.w * gl.h;
+	uint32_t *p = malloc(n * 4);
+	if (!p)
+		return;
+	int rfb = 0;
+	gl.GetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &rfb);
+	gl.BindFramebuffer(GL_READ_FRAMEBUFFER, gl.fbo);
+	gl.BindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+	gl.PixelStorei(GL_PACK_ALIGNMENT, 4);
+	gl.ReadPixels(0, 0, gl.w, gl.h, GL_RGBA, GL_UNSIGNED_BYTE, p);
+	gl.BindFramebuffer(GL_READ_FRAMEBUFFER, rfb);
+	/* caixa do que nao e preto (linhas do GL) */
+	int x1 = -1, y1 = -1, x0 = gl.w, y0 = gl.h;
+	for (unsigned y = 0; y < gl.h; y++)
+		for (unsigned x = 0; x < gl.w; x++)
+			if (p[(size_t)y * gl.w + x] & 0xf0f0f0) {
+				if ((int)x < x0) x0 = x;
+				if ((int)x > x1) x1 = x;
+				if ((int)y < y0) y0 = y;
+				if ((int)y > y1) y1 = y;
+			}
+	LOG("gpu: diagnostico: nucleo informou %ux%u; imagem no FBO %ux%u vai de x %d a %d, linha %d a %d",
+	    w, h, gl.w, gl.h, x0, x1, y0, y1);
+	char nome[96];
+	snprintf(nome, sizeof nome, "/run/retrovolt/gpu_%ux%u.ppm", w, h);
+	FILE *f = fopen(nome, "wb");
+	if (f) {
+		fprintf(f, "P6\n%u %u\n255\n", gl.w, gl.h);
+		uint8_t *l = malloc(gl.w * 3);
+		/* padrao libretro: linha 0 do GL = topo da imagem (bottom_left_origin inverte) */
+		for (int i = 0; l && i < (int)gl.h; i++) {
+			int y = gl.cb.bottom_left_origin ? (int)gl.h - 1 - i : i;
+			for (unsigned x = 0; x < gl.w; x++) {
+				uint32_t c = p[(size_t)y * gl.w + x];
+				l[x * 3] = c & 0xff; l[x * 3 + 1] = c >> 8 & 0xff; l[x * 3 + 2] = c >> 16 & 0xff;
+			}
+			fwrite(l, 1, gl.w * 3, f);
+		}
+		free(l);
+		fclose(f);
+		LOG("gpu: diagnostico gravado em %s", nome);
+	}
+	free(p);
+}
+
 static bool gl_pedido(struct retro_hw_render_callback *cb)
 {
 	if (cb->context_type != RETRO_HW_CONTEXT_OPENGLES2 && cb->context_type != RETRO_HW_CONTEXT_OPENGLES3 &&
@@ -2059,6 +2138,7 @@ static void video_cb(const void *data, unsigned w, unsigned h, size_t pitch)
 	if (data == RETRO_HW_FRAME_BUFFER_VALID) {
 		if (!gl.ativo)
 			return;
+		gl_foto(w, h);
 		data = gl_le_quadro(w, h);
 		if (w > gl.w) w = gl.w;
 		if (h > gl.h) h = gl.h;
@@ -3857,6 +3937,10 @@ int main(int argc, char **argv)
 		else if (!strcmp(k, "--imagem-arq")) a_imagem_arq = v;
 		else if (!strcmp(k, "--cd-vel")) cd_vel = atoi(v);
 		else if (!strcmp(k, "--cd-faixas")) cd_faixas = atoi(v) != 0;
+		else if (!strcmp(k, "--cd-cache")) { /* MB */
+			int64_t n = (int64_t)atoi(v) * 1024 * 1024 / (BLOCO * SETOR);
+			ncache = n < NCACHE ? NCACHE : n > 16384 ? 16384 : (int)n;
+		}
 		else if (!strcmp(k, "--cd-acorda")) cd_acorda_s = atoi(v) < 2 ? 2 : atoi(v) > 60 ? 60 : atoi(v);
 		else if (!strcmp(k, "--volume")) volume = atoi(v) < 0 ? 0 : atoi(v) > 100 ? 100 : atoi(v);
 		else if (!strcmp(k, "--audio")) a_audio = v;

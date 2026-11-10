@@ -110,6 +110,7 @@ CFG_PADRAO = [
     ('video_altura', '1.000', 'altura da imagem (1.000 = todas as linhas; 0.950 = 95%)'),
     ('SOM', None, None),
     ('volume', '80', 'volume geral dos jogos, 0 a 100'),
+    ('leitora_cache_dreamcast', '256', 'Dreamcast: MB de memoria guardando o que ja foi lido do disco (menos picotes)'),
     ('tv_brilho', '0', 'RetroTV: brilho da imagem, -50 a 50 (LT/RT na tela cheia)'),
     ('tv_troca_rapida', 'SIM', 'RetroTV: SIM = tela cheia abre por tras da previa (sem tela preta); NAO = jeito antigo'),
     ('LEITORA', None, None),
@@ -1538,7 +1539,9 @@ class App:
         cmd += ['--cd', self.leitora.dev, '--cd-vel', self.cfg.get('leitora_velocidade', '4'),
                 '--cd-acorda', str(num(self.cfg, 'leitora_acordar', int, 2, 60))] if cd else ['--jogo', arquivo]
         if cd and sistema == 'dreamcast':
-            cmd += ['--cd-faixas', '1']   # CD-R em 2 sessoes: uma faixa por arquivo
+            # CD-R em 2 sessoes: uma faixa por arquivo. Cache grande: o Dreamcast volta toda hora
+            # aos mesmos arquivos e cada busca nova na leitora para o jogo ~100 ms
+            cmd += ['--cd-faixas', '1', '--cd-cache', str(num(self.cfg, 'leitora_cache_dreamcast', int, 2, 600))]
         if self.cfg.get('audio_dispositivo'):
             cmd += ['--audio', self.cfg['audio_dispositivo']]
         self.carregando(nome)
