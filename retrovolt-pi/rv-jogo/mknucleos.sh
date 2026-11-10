@@ -21,6 +21,7 @@ git clone -q --depth 1 https://github.com/libretro/Genesis-Plus-GX "$T/gpgx"
 aarch64-linux-gnu-strip -o "$DEST/genesis_plus_gx_libretro.so" "$T/gpgx/genesis_plus_gx_libretro.so"
 echo "genesis-plus-gx $(cd "$T/gpgx" && git log -1 --format=%h)"
 git clone -q --depth 1 https://github.com/libretro/neocd_libretro "$T/neocd"
+python3 "$(dirname "$0")/remendos/neocd_nomes_sem_caixa.py" "$T/neocd"
 ( cd "$T/neocd" && make platform=unix CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++ \
        AR=aarch64-linux-gnu-ar -j"$(nproc)" >/dev/null )   # Neo Geo CD (CD pelo VFS; BIOS opcional: tem HLE)
 aarch64-linux-gnu-strip -o "$DEST/neocd_libretro.so" "$T/neocd/neocd_libretro.so"

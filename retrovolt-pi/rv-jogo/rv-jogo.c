@@ -163,7 +163,7 @@ static void opcoes_ler(void)
 #define NCACHE 48
 #define PF_BLOCOS 6 /* blocos lidos adiante, em segundo plano */
 #define PRE_BLOCOS 8 /* comeco de cada musica guardado ao abrir o disco: 8 x 16 setores = 1,7 s */
-#define PRE_LIMITE_S 25.0 /* tempo maximo gasto nisso ao abrir o disco */
+#define PRE_SINC_S 6.0 /* no maximo isso antes do jogo; o resto em segundo plano, com a leitora ociosa */
 
 static int cd_fd = -1;
 static bool cd_arquivo; /* teste: --cd aponta para um .bin */
@@ -188,7 +188,10 @@ static long cd_n_adiante, cd_n_acertos_pf;
  * na leitora leva ~1,5 s e o jogo travava toda vez que uma musica comecava. Ordenado por
  * lba; so muda antes do jogo comecar (depois e so leitura, sem trava). */
 static struct cd_fixo { int64_t lba; uint8_t *d; } *cd_fixos;
-static int cd_nfixos;
+static int cd_nfixos, cd_cap_fixos;
+static int64_t *cd_pre_pend; /* blocos de comeco de musica ainda nao lidos (vao em segundo plano) */
+static int cd_pre_npend, cd_pre_prox, cd_pre_falhas;
+static volatile double cd_ult_pedido; /* ultima leitura pedida pelo jogo */
 static long cd_n_fixos_usados;
 
 /* faixas do disco (para saber se um setor e de audio) */
@@ -211,6 +214,8 @@ static int cd_faixa(int64_t lba)
 
 /* tipo esperado: 0 = qualquer; 0x04 = so audio (a leitora recusa se for dados) */
 static bool cd_timeout; /* a ultima leitura falhou por tempo (leitora ocupada/girando), nao por erro */
+static int cd_sense_chave; /* 2 = nao pronta (sem disco / girando), 6 = atencao (trocou/reiniciou) */
+static int cd_timeout_ms = 5000;
 static bool cd_read_cd_t(uint32_t lba, int n, uint8_t *buf, uint8_t flags, uint8_t tipo)
 {
 	uint8_t cmd[12] = {0xBE, tipo, lba >> 24, lba >> 16, lba >> 8, lba, 0, 0, n, flags, 0, 0};
@@ -225,10 +230,11 @@ static bool cd_read_cd_t(uint32_t lba, int n, uint8_t *buf, uint8_t flags, uint8
 	io.sbp = sense;
 	io.dxfer_len = n * SETOR;
 	io.dxferp = buf;
-	io.timeout = 5000;
+	io.timeout = cd_timeout_ms;
 	int r = ioctl(cd_fd, SG_IO, &io);
 	bool ok = r == 0 && io.status == 0 && io.host_status == 0 && (io.driver_status & 0x7) == 0;
 	cd_timeout = !ok && r == 0 && io.host_status == 3; /* DID_TIME_OUT */
+	cd_sense_chave = ok ? 0 : (sense[2] & 15);
 	if (!ok && cd_n_erros++ < 8)
 		LOG("cd: READ CD lba %u x%d flags %02x falhou: ioctl %d (%s) status %d host %d driver %d sense %x/%02x/%02x",
 		    lba, n, flags, r, r ? strerror(errno) : "-", io.status, io.host_status, io.driver_status,
@@ -257,6 +263,26 @@ static bool cd_scsi(uint8_t *cmd, int cl, uint8_t *buf, int n, int dir)
 	io.dxferp = buf;
 	io.timeout = 3000;
 	return ioctl(cd_fd, SG_IO, &io) == 0 && io.status == 0 && io.host_status == 0 && (io.driver_status & 0x7) == 0;
+}
+
+/* leitora "nao pronta" (sense 2) ou "atencao" (6): acordando ou se reiniciou depois de
+ * travar. Espera ficar pronta (TEST UNIT READY) em vez de achar que o disco sumiu e
+ * trocar de metodo (foi isso que deu tela preta no Neo Geo: setores vazios). */
+static bool cd_espera_pronta(void)
+{
+	static int n_log;
+	double t0 = agora();
+	for (int i = 0; i < 50; i++) {
+		uint8_t tur[6] = {0};
+		if (cd_scsi(tur, 6, NULL, 0, SG_DXFER_NONE)) {
+			if (n_log++ < 10)
+				LOG("cd: leitora pronta de novo depois de %.1f s", agora() - t0);
+			return true;
+		}
+		usleep(300000);
+	}
+	LOG("cd: leitora NAO ficou pronta em 15 s");
+	return false;
 }
 
 /* temporizador de descanso da leitora (pagina 0x0D do padrao MMC, "inactivity
@@ -325,7 +351,11 @@ static bool cd_le_setor(int64_t lba, uint8_t *b)
 {
 	bool audio = !cd_fx[cd_faixa(lba)].dados;
 	if (audio) {
-		if ((cd_metodo == 0 && cd_read_cd(lba, 1, b, 0x10)) || cd_audio_ioctl(lba, b) || cd_read_cd(lba, 1, b, 0x10))
+		if (cd_metodo == 0 && cd_read_cd(lba, 1, b, 0x10))
+			return true;
+		if ((cd_sense_chave == 2 || cd_sense_chave == 6) && !cd_arquivo && cd_espera_pronta() && cd_read_cd(lba, 1, b, 0x10))
+			return true;
+		if (cd_audio_ioctl(lba, b) || cd_read_cd(lba, 1, b, 0x10))
 			return true;
 		/* "audio" pelo TOC mas e dados (fim da faixa de dados antes da musica) */
 		return cd_read_cd(lba, 1, b, 0xF8) || cd_raw_ioctl(lba, b);
@@ -335,7 +365,10 @@ static bool cd_le_setor(int64_t lba, uint8_t *b)
 	/* passou do tempo (leitora acordando): tenta de novo do mesmo jeito; um atraso
 	 * nao e motivo para trocar de metodo pelo resto do jogo (antes: 22,7 s e depois
 	 * tudo pelo metodo lento) */
-	bool demorou = cd_metodo == 0 && cd_timeout;
+	bool acordando = cd_sense_chave == 2 || cd_sense_chave == 6;
+	bool demorou = cd_metodo == 0 && (cd_timeout || acordando);
+	if (acordando && !cd_arquivo)
+		cd_espera_pronta();
 	if (demorou && cd_read_cd(lba, 1, b, 0xF8))
 		return true;
 	/* intervalo entre faixas (Sega CD, PC Engine): o TOC diz dados, o setor e audio */
@@ -376,8 +409,11 @@ static void cd_le_bloco(int64_t lba0, uint8_t *d)
 	bool mesma = cd_metodo == 0 && cd_faixa(lba0) == cd_faixa(lba0 + n - 1);
 	uint8_t fl = cd_fx[cd_faixa(lba0)].dados ? 0xF8 : 0x10;
 	bool ok = mesma && cd_read_cd(lba0, n, d, fl);
-	if (!ok && mesma && cd_timeout) {
-		LOG("cd: leitora demorou mais de 5 s (lba %lld): tentando de novo", (long long)lba0);
+	if (!ok && mesma && (cd_timeout || cd_sense_chave == 2 || cd_sense_chave == 6)) {
+		LOG("cd: leitora %s (lba %lld): tentando de novo", cd_timeout ? "demorou mais de 5 s" : "nao estava pronta",
+		    (long long)lba0);
+		if (!cd_timeout)
+			cd_espera_pronta();
 		ok = cd_read_cd(lba0, n, d, fl);
 	}
 	if (!ok)
@@ -455,6 +491,7 @@ static int64_t cd_ler(int64_t pos, uint8_t *s, int64_t len)
 	if (pos + len > cd_tam)
 		len = cd_tam - pos;
 	int64_t feito = 0, ult = -1;
+	cd_ult_pedido = agora();
 	pthread_mutex_lock(&cd_mx);
 	while (feito < len) {
 		int64_t lba = (pos + feito) / SETOR;
@@ -551,8 +588,56 @@ static int cmp_fixo(const void *a, const void *b)
 	return x < y ? -1 : x > y;
 }
 
+/* poe um bloco guardado na lista ordenada (com cd_mx, ou antes das threads) */
+static void cd_fixo_poe(int64_t b0, uint8_t *d)
+{
+	int i = cd_nfixos;
+	while (i > 0 && cd_fixos[i - 1].lba > b0)
+		i--;
+	if ((i > 0 && cd_fixos[i - 1].lba == b0) || cd_nfixos >= cd_cap_fixos) {
+		free(d);
+		return;
+	}
+	memmove(&cd_fixos[i + 1], &cd_fixos[i], (cd_nfixos - i) * sizeof *cd_fixos);
+	cd_fixos[i].lba = b0;
+	cd_fixos[i].d = d;
+	cd_nfixos++;
+}
+
+/* le um bloco do comeco de musica: UM comando (3 s no maximo), sem os metodos lentos.
+ * Antes: um bloco problematico perto do fim do disco levou 35 s e a leitora se
+ * reiniciou ("sem disco") - o jogo do Neo Geo recebeu setores vazios. */
+static bool cd_pre_le(int64_t b0, uint8_t *d)
+{
+	int64_t total = cd_tam / SETOR;
+	int n = BLOCO;
+	if (b0 + n > total)
+		n = total - b0;
+	if (n <= 0)
+		return false;
+	if (cd_arquivo || cd_metodo != 0) {
+		cd_le_bloco(b0, d);
+		return true;
+	}
+	memset(d, 0, BLOCO * SETOR);
+	int ant = cd_timeout_ms;
+	cd_timeout_ms = 3000;
+	bool ok = true;
+	int f0 = cd_faixa(b0), f1 = cd_faixa(b0 + n - 1);
+	if (f0 == f1)
+		ok = cd_read_cd(b0, n, d, cd_fx[f0].dados ? 0xF8 : 0x10);
+	else
+		for (int i = 0; i < n && ok; i++)
+			ok = cd_read_cd(b0 + i, 1, d + i * SETOR, cd_fx[cd_faixa(b0 + i)].dados ? 0xF8 : 0x10);
+	cd_timeout_ms = ant;
+	cd_ult_leitura = agora();
+	cd_ult_lba = b0;
+	return ok;
+}
+
 /* guarda o comeco de cada faixa de musica (so musica: dados o jogo le em sequencia,
- * e a leitura adiante cobre). Le faixa por faixa, todas de musica, sem trocar de modo. */
+ * e a leitura adiante cobre). Ate PRE_SINC_S antes do jogo; o resto fica na fila e
+ * cd_pre_thread le quando o jogo nao esta usando a leitora. */
 static void cd_pre_musicas(void)
 {
 	int naudio = 0;
@@ -561,36 +646,77 @@ static void cd_pre_musicas(void)
 	if (!naudio)
 		return;
 	int64_t total = cd_tam / SETOR;
-	cd_fixos = calloc((size_t)naudio * (PRE_BLOCOS + 1), sizeof *cd_fixos);
-	double t0 = agora();
-	int faixas = 0;
-	for (int i = 0; i < cd_nfx && agora() - t0 < PRE_LIMITE_S; i++) {
+	cd_cap_fixos = naudio * (PRE_BLOCOS + 1);
+	cd_fixos = calloc(cd_cap_fixos, sizeof *cd_fixos);
+	cd_pre_pend = calloc(cd_cap_fixos, sizeof *cd_pre_pend);
+	for (int i = 0; i < cd_nfx; i++) {
 		if (cd_fx[i].dados)
 			continue;
 		int64_t ini = cd_fx[i].lba, fim = i + 1 < cd_nfx ? cd_fx[i + 1].lba : total;
-		for (int64_t b0 = ini - ini % BLOCO; b0 < ini + PRE_BLOCOS * BLOCO && b0 < fim; b0 += BLOCO) {
-			uint8_t *d = malloc(BLOCO * SETOR);
-			if (!d)
-				break;
-			cd_le_bloco(b0, d);
-			cd_fixos[cd_nfixos].lba = b0;
-			cd_fixos[cd_nfixos].d = d;
-			cd_nfixos++;
-		}
-		faixas++;
+		for (int64_t b0 = ini - ini % BLOCO; b0 < ini + PRE_BLOCOS * BLOCO && b0 < fim; b0 += BLOCO)
+			if (!cd_pre_npend || cd_pre_pend[cd_pre_npend - 1] != b0)
+				cd_pre_pend[cd_pre_npend++] = b0;
 	}
-	qsort(cd_fixos, cd_nfixos, sizeof *cd_fixos, cmp_fixo);
-	int u = 0; /* blocos repetidos (faixa curta, dois comecos no mesmo bloco): fica um */
-	for (int i = 0; i < cd_nfixos; i++) {
-		if (u && cd_fixos[u - 1].lba == cd_fixos[i].lba) {
-			free(cd_fixos[i].d);
+	double t0 = agora();
+	int seguidas = 0;
+	while (cd_pre_prox < cd_pre_npend && agora() - t0 < PRE_SINC_S) {
+		uint8_t *d = malloc(BLOCO * SETOR);
+		if (!d)
+			break;
+		int64_t b0 = cd_pre_pend[cd_pre_prox++];
+		if (cd_pre_le(b0, d)) {
+			cd_fixo_poe(b0, d);
+			seguidas = 0;
+		} else {
+			free(d);
+			cd_pre_falhas++;
+			if (++seguidas >= 3) { /* leitora com problema: para (o jogo vem primeiro) */
+				LOG("cd: comeco das musicas: 3 falhas seguidas (lba %lld): parei", (long long)b0);
+				if (cd_sense_chave == 2 || cd_sense_chave == 6)
+					cd_espera_pronta();
+				cd_pre_prox = cd_pre_npend;
+			}
+		}
+	}
+	LOG("cd: comeco das musicas: %d de %d blocos guardados (%d MB) em %.1f s; %d ficam para segundo plano; %d falhas",
+	    cd_nfixos, cd_pre_npend, (int)((int64_t)cd_nfixos * BLOCO * SETOR >> 20), agora() - t0,
+	    cd_pre_npend - cd_pre_prox, cd_pre_falhas);
+}
+
+/* continua guardando o comeco das musicas so com a leitora ociosa (o jogo sem pedir
+ * nada ha 2 s): telas paradas, menus. Tambem mantem a leitora girando. */
+static void *cd_pre_thread(void *x)
+{
+	(void)x;
+	int seguidas = 0, feitos = 0;
+	while (!g_sair && cd_pre_prox < cd_pre_npend) {
+		if (agora() - cd_ult_pedido < 2.0) {
+			usleep(200000);
 			continue;
 		}
-		cd_fixos[u++] = cd_fixos[i];
+		uint8_t *d = malloc(BLOCO * SETOR);
+		if (!d)
+			break;
+		int64_t b0 = cd_pre_pend[cd_pre_prox++];
+		pthread_mutex_lock(&cd_io_mx);
+		bool ok = cd_pre_le(b0, d);
+		pthread_mutex_unlock(&cd_io_mx);
+		if (ok) {
+			pthread_mutex_lock(&cd_mx);
+			cd_fixo_poe(b0, d);
+			pthread_mutex_unlock(&cd_mx);
+			seguidas = 0;
+			feitos++;
+		} else {
+			free(d);
+			cd_pre_falhas++;
+			if (++seguidas >= 3)
+				break;
+		}
 	}
-	cd_nfixos = u;
-	LOG("cd: comeco de %d de %d musicas guardado (%d blocos, %d MB) em %.1f s",
-	    faixas, naudio, cd_nfixos, (int)((int64_t)cd_nfixos * BLOCO * SETOR >> 20), agora() - t0);
+	LOG("cd: comeco das musicas em segundo plano: +%d blocos (total %d de %d), %d falhas",
+	    feitos, cd_nfixos, cd_pre_npend, cd_pre_falhas);
+	return NULL;
 }
 
 static bool cd_abrir(const char *dev)
@@ -3385,6 +3511,10 @@ int main(int argc, char **argv)
 		pthread_t ta;
 		cd_ult_leitura = agora();
 		pthread_create(&ta, NULL, cd_acorda_thread, NULL);
+		if (cd_pre_prox < cd_pre_npend) {
+			pthread_t tpre;
+			pthread_create(&tpre, NULL, cd_pre_thread, NULL);
+		}
 	}
 	if (cd_fd >= 0) {
 		pthread_t tp;

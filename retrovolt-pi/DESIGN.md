@@ -455,3 +455,21 @@ Licoes do PS1/PCE aplicadas:
   blocos iguais ao disco; disco Neo Geo CD sintetico (IPL.TXT + PRG) lido pelo CD
   virtual, BIOS HLE carregou e entrou no jogo; Neo Geo = 59,60 Hz (0,67%: precisava do
   limite de 2%); convergencia PASSOU. Nucleos PS1/PCE/GPGX iguais aos da R18.
+
+## R20 (codigo escrito, aguardando #compilar)
+LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
+- Disco 1: pre-carga das musicas levou 47,6 s (um bloco perto do fim do disco: 35 s de
+  tentativas de 5 s, metodo por setor); a leitora se reiniciou e passou a responder
+  "sem disco" (sense 2/3a); o rv-jogo trocou para o metodo de 2048 e o jogo recebeu
+  setores vazios -> "IPL.TXT lists nothing to load" -> tela preta.
+  Corrigido: pre-carga com UM comando por bloco (3 s), 3 falhas seguidas param; no
+  maximo 6 s antes do jogo, o resto em segundo plano so com a leitora ociosa (jogo sem
+  pedir nada ha 2 s). Sense 2 (nao pronta) / 6 (atencao): espera TEST UNIT READY (ate
+  15 s) e repete, sem trocar de metodo.
+- Disco 2: "g046.fix is listed in IPL.TXT but not on the disc": a BIOS HLE do NeoCD
+  comparava nomes diferenciando maiusculas (disco: G046.FIX). Remendo na compilacao:
+  rv-jogo/remendos/neocd_nomes_sem_caixa.py (mknucleos.sh aplica).
+- A BIOS HLE e incompleta: com BIOS original em RETROVOLT/bios/neocd/ o NeoCD e mais
+  compativel.
+- menu_desce padrao 18 (autor: 20 ficou baixo; quem ja tem o cfg muda la).
+- RetroTV funcionou no Pi (LOG: previas, tela cheia, troca de canal, volume salvo).
