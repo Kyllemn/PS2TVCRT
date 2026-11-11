@@ -600,6 +600,17 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   Agora: blit do FBO do nucleo para 1 de 2 texturas proprias (reduzindo) + glFlush; le
   com ReadPixels a outra (quadro anterior, ja pronto). Vsync: atraso > 1 quadro
   ressincroniza (antes > 3: corria ate 3 quadros seguidos = "aceleracao").
+- **PAUSADO AQUI (Dreamcast / Wacky Races), para continuar:**
+  - Estado: leitora resolvida (copia do disco para a memoria termina em ~100 s; depois
+    max 0 ms). Opcoes do Flycast que pesavam: Texture Upscaling (xBRZ) 2 -> 1 (desligado)
+    e Anisotropic 4 -> desligado ("melhorou muito"). GLES melhor que Vulkan neste jogo
+    (imagem 9-11 ms x 12-13 ms nos trechos 1280x480; 640 = 3,6-4 ms).
+  - Proximo (precisa #compilar): (1) FBO do tamanho usado (hoje 1280x1280 quadrado porque
+    max_width = max_height; tiles a toa na V3D); (2) reducao para 640 tambem no Vulkan;
+    (3) medicao "esperando a GPU" x "desenho"; (4) opcoes do nucleo no menu com o nome do
+    valor (hoje mostra o numero: texupscale 1 = disabled); (5) troca VULKAN/GLES no menu
+    do jogo reiniciando o jogo (em OPCOES > VIDEO ja existe, Python).
+  - Padroes novos do Flycast no rv_app (instalacao nova): texupscale 1, anisotropic off.
 - TV sem som depois de ~5 s (efeito da troca nova): a saida de som HDMI e de um programa
   so; o mpv abria com a previa ainda tocando e ficava sem som. Agora abre com --aid=no e
   liga o som (aid auto) depois que a previa fecha. 1o build do Flycast "16 KB" nao valeu:
