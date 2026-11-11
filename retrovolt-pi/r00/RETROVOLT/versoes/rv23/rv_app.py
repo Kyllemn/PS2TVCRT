@@ -307,6 +307,7 @@ def topo_direita(c, wifi, y0=3):
     hora = time.strftime('%H:%M')
     yy = y0 + (F.ch * (2 if F.ch <= 10 else 1) - F.ch) // 2
     c.rtext(W - 12, yy, hora, IVORY)
+    c.rtext(W - 12, yy + F.ch + 2, 'LTB', SLATE)    # iniciais do autor, fixas abaixo da hora
     if wifi is False:        # tela sem wi-fi no topo
         return
     nome = (wifi or 'SEM WI-FI')[:14].upper()
@@ -1759,9 +1760,9 @@ class App:
                 cabecalho(c, 'OPCOES', self.wifi, 'A ENTRA')
                 y = max(56, 30 + F.ch + 14)
                 lista = self.opcoes()
-                espaco = H - 14 - F.ch - y
-                passo_op = max(F.ch + 3, min(F.ch + 9, espaco // len(lista)))
-                cabem = max(1, espaco // passo_op)
+                sobra = H - 14 - F.ch - y      # (nao chamar de espaco: e a funcao do INFO)
+                passo_op = max(F.ch + 3, min(F.ch + 9, sobra // len(lista)))
+                cabem = max(1, sobra // passo_op)
                 ini = 0                       # fonte alta no tubo: a lista rola com a selecao
                 if cabem < len(lista):
                     ini = max(0, min(len(lista) - cabem, self.sel['OPCOES'] - cabem // 2))
@@ -1860,6 +1861,7 @@ class App:
                 c.text(24, y, k, SLATE)
                 c.text(24 + 9 * F.cw, y, v.upper(), IVORY)
                 y += F.ch + 3
+            c.text(24, y + 6, 'CRIADO POR LEONARDO TORRES', ORANGE)
         if self.aviso and time.monotonic() < self.aviso[1]:
             # aviso: canto inferior esquerdo, fundo laranja, letra azul, cantos arredondados
             txt, _, ini = self.aviso
