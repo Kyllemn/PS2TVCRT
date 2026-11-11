@@ -596,6 +596,10 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   lista de arquivos) para as vagas vazias do cache; blocos so de zeros (enchimento do
   CD-R) liberam a vaga; para quando acaba o disco ou a memoria. Cache padrao 512 MB
   (256 gravado no cfg antigo sobe para 512).
+- PBO na V3D nao e assincrono (Mesa copia pela CPU e espera o quadro atual: 9-11 ms).
+  Agora: blit do FBO do nucleo para 1 de 2 texturas proprias (reduzindo) + glFlush; le
+  com ReadPixels a outra (quadro anterior, ja pronto). Vsync: atraso > 1 quadro
+  ressincroniza (antes > 3: corria ate 3 quadros seguidos = "aceleracao").
 - TV sem som depois de ~5 s (efeito da troca nova): a saida de som HDMI e de um programa
   so; o mpv abria com a previa ainda tocando e ficava sem som. Agora abre com --aid=no e
   liga o som (aid auto) depois que a previa fecha. 1o build do Flycast "16 KB" nao valeu:
