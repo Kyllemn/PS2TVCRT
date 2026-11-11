@@ -462,8 +462,9 @@ class TelaCheia:
             '{\\an1\\pos(%d,%d)\\fs46\\bord2\\shad0\\1c&HFFFFFF&\\3c&H000000&}%s%s / %s'
             % (x0, y - 18, '|| ' if pausado else '', hms(pos), hms(dur)),
         ]
+        # sem 'z' (mpv mais antigo do Raspberry Pi OS recusa o comando inteiro com ele)
         self._comando({'name': 'osd-overlay', 'id': 7, 'format': 'ass-events', 'data': '\n'.join(ev),
-                       'res_x': 1920, 'res_y': 1080, 'z': 5})
+                       'res_x': 1920, 'res_y': 1080})
 
     def esconde_barra(self):
         self._comando({'name': 'osd-overlay', 'id': 7, 'format': 'none', 'data': ''})

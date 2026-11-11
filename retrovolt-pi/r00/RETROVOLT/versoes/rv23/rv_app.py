@@ -3201,6 +3201,11 @@ class App:
                                  '--osd-bar-h=4', '--osd-bar-w=90', '--osd-font-size=%d' % (40 if self.fb.tubo else 46),
                                  '--osd-border-size=3', '--osd-color=#FFFFFF', '--osd-border-color=#000000',
                                  '--osd-on-seek=no',
+                                 # avancar sem esperar: guarda bem mais do video (para frente e
+                                 # para tras) e pula para o quadro-chave mais perto (sem decodificar
+                                 # ate o ponto exato, que no Pi leva segundos)
+                                 '--demuxer-max-bytes=150MiB', '--demuxer-max-back-bytes=50MiB',
+                                 '--demuxer-readahead-secs=60', '--cache-secs=120', '--hr-seek=no',
                                  '--script-opts=ytdl_hook-ytdl_path=' + youtube.ytdlp()])
 
     def yt_sai(self, aviso=None):
