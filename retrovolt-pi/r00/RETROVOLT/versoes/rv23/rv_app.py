@@ -110,6 +110,7 @@ CFG_PADRAO = [
     ('video_altura', '1.000', 'altura da imagem (1.000 = todas as linhas; 0.950 = 95%)'),
     ('SOM', None, None),
     ('volume', '80', 'volume geral dos jogos, 0 a 100'),
+    ('saturn_nucleo', 'BEETLE', 'Saturno: BEETLE (padrao, o do ReplayOS) ou YABASANSHIRO (reserva, pela GPU)'),
     ('leitora_cache_saturn', '512', 'Saturno: MB de memoria com o disco (lido pelo jogo e copiado em 2o plano)'),
     ('leitora_cache_dreamcast', '512', 'Dreamcast: MB de memoria com o disco (lido pelo jogo e copiado em 2o plano; menos picotes)'),
     ('tubo_480i', 'SIM', 'tubo: jogo em 480i sai em 480i de verdade (SIM) ou sempre 240p (NAO)'),
@@ -848,8 +849,9 @@ SISTEMAS = {
     # Dreamcast: Flycast precisa de placa de video (OpenGL/Vulkan) -> fase GPU do rv-jogo.
     # Disco: CD-R gravado (selfboot, 2 sessoes) a leitora le; GD-ROM original nao.
     'dreamcast': ('DREAMCAST', 'flycast_libretro.so', True),
-    # Saturno: YabaSanshiro (GLES 3 pela GPU, SH2 recompilado). Disco prensado ou CD-R comum.
-    'saturn': ('SATURN', 'yabasanshiro_libretro.so', True),
+    # Saturno: Beetle Saturn v1.32 (o mesmo do ReplayOS; desenho por CPU, JIT aarch64 nos DSPs).
+    # Reserva: YabaSanshiro (GLES), em OPCOES > VIDEO > NUCLEO SATURNO
+    'saturn': ('SATURN', 'mednafen_saturn_libretro.so', True),
     '3do': ('3DO', None, True),
     'atari2600': ('ATARI 2600', None, False), 'nes': ('NES', None, False),
     'n64': ('NINTENDO 64', None, False),
@@ -890,8 +892,15 @@ OPCOES_PADRAO = {
     # Dreamcast: resolucao nativa (640x480); no tubo cada linha vai para a TV
     'flycast_libretro.so': {'reicast_internal_resolution': '640x480', 'reicast_texupscale': '1',
                             'reicast_anisotropic_filtering': 'off'},
-    # Saturno: SH2 recompilado e resolucao original (o resto pesa na GPU do Pi)
-    'yabasanshiro_libretro.so': {'yabasanshiro_sh2coretype': 'dynarec', 'yabasanshiro_resolution_mode': 'original'},
+    # Saturno (Beetle): sincronia Fast 8 (~15%), JIT nos 2 DSPs, sem entrada no meio do quadro
+    # (custa CPU), entrelacado em Bob (480i real no tubo; sem pente no LCD)
+    'mednafen_saturn_libretro.so': {'beetle_saturn_sh2_interleave': '8', 'beetle_saturn_cpucache_emumode': 'auto',
+                                    'beetle_saturn_jit_scu': 'enabled', 'beetle_saturn_jit_scsp': 'enabled',
+                                    'beetle_saturn_midsync': 'disabled', 'beetle_saturn_deinterlacer': 'bob'},
+    # Saturno reserva: SH2 recompilado, resolucao original, SEM auto-frameskip (ele espera em
+    # laco ocupando um nucleo inteiro e briga com o vsync do rv-jogo)
+    'yabasanshiro_libretro.so': {'yabasanshiro_sh2coretype': 'dynarec', 'yabasanshiro_resolution_mode': 'original',
+                                 'yabasanshiro_frameskip': 'disabled'},
 }
 # Sega CD: uma BIOS por regiao do disco (o nucleo escolhe pela regiao gravada no disco)
 BIOS_SEGACD = {'U': ('bios_CD_U.bin', 'AMERICANO'), 'E': ('bios_CD_E.bin', 'EUROPEU'),
@@ -1508,6 +1517,8 @@ class App:
         sistema = APELIDO.get(sistema, sistema)
         self.ultimo_jogo = (sistema, arquivo, cd)
         nucleo = SISTEMAS.get(sistema, (None, None))[1]
+        if sistema == 'saturn' and self.cfg.get('saturn_nucleo', 'BEETLE').upper() == 'YABASANSHIRO':
+            nucleo = 'yabasanshiro_libretro.so'
         if not nucleo or not os.path.exists(os.path.join(PASTA, 'nucleos', nucleo)):
             self.mostra_aviso('%s: NUCLEO AINDA NAO INSTALADO' % NOME_SISTEMA.get(sistema, '?'))
             return
@@ -1561,7 +1572,8 @@ class App:
             # mudar no menu do jogo vale so para ele; o resto vem do flycast.opt
             cmd += ['--opcoes-jogo', os.path.join(self.base, 'config', 'nucleos', 'flycast', save + '.opt')]
         if sistema == 'saturn':   # opcoes por jogo, como no Dreamcast
-            cmd += ['--opcoes-jogo', os.path.join(self.base, 'config', 'nucleos', 'yabasanshiro', save + '.opt')]
+            cmd += ['--opcoes-jogo', os.path.join(self.base, 'config', 'nucleos', nucleo.replace('_libretro.so', ''),
+                                                  save + '.opt')]
         if cd and sistema == 'saturn':
             # disco comum (1 sessao). Cache + copia para a memoria em 2o plano, como no Dreamcast
             cmd += ['--cd-cache', str(num(self.cfg, 'leitora_cache_saturn', int, 2, 1024))]
@@ -2216,6 +2228,7 @@ class App:
             itens.append(('modo', 'RESOLUCAO', self.cfg.get('video_modo', 'AUTO').upper()))
         if not self.fb.tubo:                      # no tubo nao ha efeitos
             itens.append(('filtro', 'FILTRO', self.cfg.get('video_filtro', 'NENHUM').upper()))
+        itens.append(('satnuc', 'NUCLEO SATURNO', 'YABASANSHIRO' if self.cfg.get('saturn_nucleo', 'BEETLE').upper() == 'YABASANSHIRO' else 'BEETLE'))
         itens.append(('gpu', 'GPU DREAMCAST', 'GLES' if self.cfg.get('dreamcast_gpu', 'VULKAN').upper() == 'GLES' else 'VULKAN'))
         return itens
 
@@ -2594,6 +2607,9 @@ class App:
                  'SEM IMAGEM? SEGURE SELECT 5 S', 'PARA TROCAR TUBO/LCD.']
         if not self.fb.tubo:
             ajuda += ['RESOLUCAO NOVA SEM IMAGEM? ESPERE', '30 S QUE ELA VOLTA SOZINHA.']
+        if self.itens_video()[min(getattr(self, 'video_sel', 0), len(self.itens_video()) - 1)][0] == 'satnuc':
+            ajuda = ['NUCLEO SATURNO: BEETLE (PADRAO,', 'MAIS FIEL) OU YABASANSHIRO (RESERVA', 'PARA JOGO QUE NAO ANDE NO BEETLE).',
+                     'VALE NO PROXIMO JOGO QUE ABRIR.']
         if self.itens_video()[min(getattr(self, 'video_sel', 0), len(self.itens_video()) - 1)][0] == 'gpu':
             ajuda = ['GPU DREAMCAST: VULKAN OU GLES.', 'VALE NO PROXIMO JOGO QUE ABRIR',
                      '(O JOGO COMECA DO ZERO COM A', 'GPU NOVA: SALVE ANTES DE SAIR).']
@@ -2631,6 +2647,8 @@ class App:
                 lst, ck = self.FILTROS, 'video_filtro'
             elif k == 'gpu':
                 lst, ck = ['VULKAN', 'GLES'], 'dreamcast_gpu'
+            elif k == 'satnuc':
+                lst, ck = ['BEETLE', 'YABASANSHIRO'], 'saturn_nucleo'
             else:
                 if not getattr(self, '_modos', None):
                     ms = video.modos_lcd()

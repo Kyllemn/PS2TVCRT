@@ -62,7 +62,16 @@ TC
   cmake --build build -j"$(nproc)" >/dev/null )
 aarch64-linux-gnu-strip -o "$DEST/flycast_libretro.so" "$T/flycast/build/flycast_libretro.so"
 echo "flycast $(cd "$T/flycast" && git log -1 --format=%h)"
-# Saturno: YabaSanshiro (o mesmo do ReplayOS no Pi 5): recompilador SH2 para aarch64 e
+# Saturno (principal): Beetle Saturn v1.32 (o do ReplayOS): desenho por CPU, JIT aarch64 nos
+# DSPs (SCU e SCSP), memoria do JIT alinhada em 64 KB (vale com as paginas de 16 KB do Pi 5).
+# Remendo: filestream_vfs_init (sem ele le o arquivo real e nao ve o CD virtual da leitora).
+git clone -q --depth 1 https://github.com/libretro/beetle-saturn-libretro "$T/bsat"
+python3 "$AQUI/remendos/beetle_saturn_vfs.py" "$T/bsat"
+( cd "$T/bsat" && make platform=unix CC="aarch64-linux-gnu-gcc -mcpu=cortex-a76" CXX="aarch64-linux-gnu-g++ -mcpu=cortex-a76" \
+       AR=aarch64-linux-gnu-ar HAVE_CDROM=0 WANT_JIT=1 SILENT=1 -j"$(nproc)" >/dev/null )
+aarch64-linux-gnu-strip -o "$DEST/mednafen_saturn_libretro.so" "$T/bsat/mednafen_saturn_libretro.so"
+echo "beetle-saturn $(cd "$T/bsat" && git log -1 --format=%h)"
+# Saturno (reserva): YabaSanshiro: recompilador SH2 para aarch64 e
 # desenho pela GPU em GLES 3 (platform=rpi5 ja liga -mcpu=cortex-a76, DYNAREC_DEVMIYAX e
 # USE_AARCH64_DRC). BIOS de verdade obrigatoria (sega_101.bin ou mpr-17933.bin).
 # Remendo: disco pelo VFS (CD virtual da leitora).

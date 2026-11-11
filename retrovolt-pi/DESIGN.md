@@ -600,7 +600,16 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   Agora: blit do FBO do nucleo para 1 de 2 texturas proprias (reduzindo) + glFlush; le
   com ReadPixels a outra (quadro anterior, ja pronto). Vsync: atraso > 1 quadro
   ressincroniza (antes > 3: corria ate 3 quadros seguidos = "aceleracao").
-- Saturno: YabaSanshiro (libretro/yabause, ramo yabasanshiro), platform=rpi5 (cortex-a76,
+- Saturno PRINCIPAL: Beetle Saturn v1.32.1 (libretro/beetle-saturn-libretro; o ReplayOS
+  anuncia "Saturn core v1.32.1 + ST-V" = a versao do Mednafen deste fork). Desenho por CPU
+  (sem os problemas de GPU do Dreamcast), JIT aarch64 nos DSPs SCU/SCSP (memoria do JIT em
+  64 KB: ok com paginas de 16 KB), sincronia SH-2 "Fast 8" (~15%), cache por banco de dados.
+  Remendo remendos/beetle_saturn_vfs.py (filestream_vfs_init). Padroes: interleave 8,
+  midsync off, deinterlacer bob. OPCOES > VIDEO > NUCLEO SATURNO troca para o YabaSanshiro.
+  YabaSanshiro (reserva) revisado: auto-frameskip ocupa um nucleo esperando em laco (padrao
+  disabled); thread do SCSP com prioridade -20 presa nos nucleos 0-1; save state desligado
+  pelo proprio nucleo.
+- Saturno reserva: YabaSanshiro (libretro/yabause, ramo yabasanshiro), platform=rpi5 (cortex-a76,
   recompilador SH2 aarch64, GLES 3). Remendo remendos/yaba_vfs.py: cdbase.c com
   file_stream_transforms.h (a linha existia comentada por causa do Windows; o arquivo e CRLF,
   o remendo preserva) + filestream_vfs_init no retro_set_environment: sem isso ele abre o disco
