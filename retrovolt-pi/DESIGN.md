@@ -769,3 +769,20 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   ao sair). APPS > KODI: kodi-standalone (GBM, sem area de trabalho), rodado como um jogo; o
   menu espera ele fechar (Desligar > Sair) e volta para APPS. instalar.sh: kodi,
   kodi-peripheral-joystick, kodi-inputstream-adaptive (opcionais).
+- Kodi (estado em 2026-11-11, pelo autor): abre pelo RetroVolt como o usuario rv (runuser;
+  como root nao abria). Controle 8BitDo (receptor 2dc8:3106, driver "linux" do Kodi, 11 botoes
+  / 8 eixos, ordem do xpad) com mapa pronto no perfil Default, gravado pelo rv_app antes de
+  abrir (o mapa no perfil Xbox 360 deixava os menus sem resposta) -> FUNCIONOU. Controle pelo
+  celular (Kore): usuario kodi, porta 8080. Addons kodi-peripheral-joystick e
+  kodi-inputstream-adaptive instalados.
+- Netflix no Kodi (addon CastagnaIT, plugin.video.netflix): o README diz que o desenvolvimento
+  esta suspenso; no Linux/Pi pode ficar em SD ou nao tocar. Passos: apt python3-pycryptodome;
+  repository.castagnait-2.0.1.zip (github.com/castagnait/repository.castagnait, raw/kodi) na
+  raiz do pendrive; Kodi: Fontes desconhecidas -> Instalar de zip (/media/rvusb) -> CastagnaIT
+  Repository -> Netflix; Widevine pelo InputStream Helper. Login por e-mail/senha FALHOU;
+  proximo: chave de autenticacao (NFAuthenticationKey no PC com Chrome/Brave -> arquivo
+  NFAuthentication.key + PIN; no addon escolher Authentication key, pedir senha e PIN; depois
+  apagar o .key do pendrive). Se travar no play: kernel=kernel8.img (paginas 4 KB) no
+  config.txt (nao confirmado no README). Nunca guardar senha/chave/PIN aqui nem no git.
+- Ideia em aberto: addon "RetroVolt" no Kodi (fecha o Kodi, roda o disco com o rv-jogo, volta).
+  Recomendado manter o RetroVolt como centro.
