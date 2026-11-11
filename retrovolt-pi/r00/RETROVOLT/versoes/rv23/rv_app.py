@@ -3083,13 +3083,12 @@ class App:
         m = caps.get(vid)
         if m is None and vid not in caps:
             caps[vid] = None                         # pedido feito
-            if len(caps) > 60:
+            if len(caps) > 40:                       # na memoria do menu: no maximo 40 capas
                 caps.clear()
                 caps[vid] = None
 
             def tarefa():
-                caps[vid] = youtube.capa(vid, bw * e, bh * e, exe_rv_jogo(),
-                                         os.path.join(self.base, 'imagens', '.cache')) or False
+                caps[vid] = youtube.capa(vid, bw * e, bh * e, exe_rv_jogo()) or False
                 self.fila.put('_img')
             threading.Thread(target=tarefa, daemon=True).start()
         if m and self.esc:
@@ -3109,6 +3108,8 @@ class App:
         yt = self.yt
         if a == 'B':
             self.tela = 'menu'
+            self.__dict__.pop('yt_capas', None)        # saiu do YouTube: capas fora da RAM
+            youtube.limpa_capas(tudo=True)
             return
         if yt['ocupado'] or not youtube.ytdlp():
             return

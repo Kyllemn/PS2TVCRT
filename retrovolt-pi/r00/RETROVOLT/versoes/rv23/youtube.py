@@ -89,11 +89,57 @@ def atualiza(timeout=120):
     return True, 'YT-DLP EM DIA' if 'up to date' in ult.lower() else 'YT-DLP ATUALIZADO'
 
 
-def capa(vid, w, h, exe, cache_dir, timeout=15):
+# capas na RAM (/run e tmpfs): nada no cartao/pendrive; apagadas ao sair do YouTube e no
+# desligar. Teto de 24 MB: passou, apaga as mais antigas (dia inteiro no YouTube nao enche)
+CAPAS = '/run/retrovolt/yt'
+CAPAS_MAX = 24 * 1048576
+
+
+def limpa_capas(tudo=False):
+    try:
+        arqs = [os.path.join(CAPAS, n) for n in os.listdir(CAPAS)]
+    except OSError:
+        return
+    if tudo:
+        for a in arqs:
+            try:
+                os.remove(a)
+            except OSError:
+                pass
+        return
+    info = []
+    for a in arqs:
+        try:
+            st = os.stat(a)
+            info.append((st.st_mtime, st.st_size, a))
+        except OSError:
+            pass
+    total = sum(t for _, t, _ in info)
+    for _, t, a in sorted(info):          # mais antigas primeiro
+        if total <= CAPAS_MAX * 3 // 4:   # desce ate 75% do teto
+            break
+        try:
+            os.remove(a)
+            total -= t
+        except OSError:
+            pass
+
+
+def _tamanho_capas():
+    try:
+        return sum(os.path.getsize(os.path.join(CAPAS, n)) for n in os.listdir(CAPAS))
+    except OSError:
+        return 0
+
+
+def capa(vid, w, h, exe, cache_dir=CAPAS, timeout=15):
     """capa do video (hqdefault 480x360, 4:3) reduzida para w x h pelo conversor do rv-jogo:
-    (w, h, bytes RGB) ou None"""
+    (w, h, bytes RGB) ou None. Fica em /run (RAM), com teto."""
     import urllib.request
+    cache_dir = CAPAS
     os.makedirs(cache_dir, exist_ok=True)
+    if _tamanho_capas() > CAPAS_MAX:
+        limpa_capas()
     jpg = os.path.join(cache_dir, 'yt_%s.jpg' % vid)
     rgb = os.path.join(cache_dir, 'yt_%s_%dx%d.rgb' % (vid, w, h))
     if not os.path.exists(rgb):
