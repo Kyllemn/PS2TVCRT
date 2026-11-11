@@ -3135,6 +3135,19 @@ class App:
             print('kodi: nao abriu:', ex, flush=True)
         self.leitora.pausa.clear()
         print('kodi: fechou (codigo %s, %.0f s)' % (r, time.monotonic() - t0), flush=True)
+        # o que o Kodi achou de controle (addon, driver, botoes): vai sempre para o LOG
+        import re
+        for k in ([os.path.join(u[1], '.kodi/temp/kodi.log')] if u else []) + [os.path.expanduser('~/.kodi/temp/kodi.log')]:
+            try:
+                ls = open(k, errors='replace').read().splitlines()
+            except OSError:
+                continue
+            achou = [l for l in ls if re.search(r'joystick|peripheral|controller|8bitdo|buttonmap|udev|evdev|game\.controller',
+                                                 l, re.I)]
+            print('kodi.log: %d linhas sobre controle (ultimas abaixo)' % len(achou), flush=True)
+            for l in achou[-40:]:
+                print('kodi.log: %s' % l[:220], flush=True)
+            break
         self.ent.segurando.clear()
         self._pendentes()                  # teclas apertadas dentro do Kodi nao valem aqui
         self.tela = 'menu'
