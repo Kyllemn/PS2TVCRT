@@ -600,6 +600,14 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   Agora: blit do FBO do nucleo para 1 de 2 texturas proprias (reduzindo) + glFlush; le
   com ReadPixels a outra (quadro anterior, ja pronto). Vsync: atraso > 1 quadro
   ressincroniza (antes > 3: corria ate 3 quadros seguidos = "aceleracao").
+- Saturno: YabaSanshiro (libretro/yabause, ramo yabasanshiro), platform=rpi5 (cortex-a76,
+  recompilador SH2 aarch64, GLES 3). Remendo remendos/yaba_vfs.py: cdbase.c com
+  file_stream_transforms.h (a linha existia comentada por causa do Windows; o arquivo e CRLF,
+  o remendo preserva) + filestream_vfs_init no retro_set_environment: sem isso ele abre o disco
+  com fopen e nao ve o CD virtual. BIOS real obrigatoria: saturn_bios.bin, sega_101.bin ou
+  mpr-17933.bin em RETROVOLT/bios/saturn. Disco: 1 sessao comum; --cd-cache
+  (leitora_cache_saturn, 512) liga a copia para a memoria. Opcoes por jogo em
+  config/nucleos/yabasanshiro/<codigo>.opt. Padrao: dynarec + resolucao original.
 - **PAUSADO AQUI (Dreamcast / Wacky Races), para continuar:**
   - Estado: leitora resolvida (copia do disco para a memoria termina em ~100 s; depois
     max 0 ms). Opcoes do Flycast que pesavam: Texture Upscaling (xBRZ) 2 -> 1 (desligado)

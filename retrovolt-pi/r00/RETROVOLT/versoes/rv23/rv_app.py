@@ -110,6 +110,7 @@ CFG_PADRAO = [
     ('video_altura', '1.000', 'altura da imagem (1.000 = todas as linhas; 0.950 = 95%)'),
     ('SOM', None, None),
     ('volume', '80', 'volume geral dos jogos, 0 a 100'),
+    ('leitora_cache_saturn', '512', 'Saturno: MB de memoria com o disco (lido pelo jogo e copiado em 2o plano)'),
     ('leitora_cache_dreamcast', '512', 'Dreamcast: MB de memoria com o disco (lido pelo jogo e copiado em 2o plano; menos picotes)'),
     ('tubo_480i', 'SIM', 'tubo: jogo em 480i sai em 480i de verdade (SIM) ou sempre 240p (NAO)'),
     ('dreamcast_gpu', 'VULKAN', 'Dreamcast: VULKAN (padrao) ou GLES (reserva, se o Vulkan der problema)'),
@@ -847,7 +848,8 @@ SISTEMAS = {
     # Dreamcast: Flycast precisa de placa de video (OpenGL/Vulkan) -> fase GPU do rv-jogo.
     # Disco: CD-R gravado (selfboot, 2 sessoes) a leitora le; GD-ROM original nao.
     'dreamcast': ('DREAMCAST', 'flycast_libretro.so', True),
-    'saturn': ('SATURN', None, True),
+    # Saturno: YabaSanshiro (GLES 3 pela GPU, SH2 recompilado). Disco prensado ou CD-R comum.
+    'saturn': ('SATURN', 'yabasanshiro_libretro.so', True),
     '3do': ('3DO', None, True),
     'atari2600': ('ATARI 2600', None, False), 'nes': ('NES', None, False),
     'n64': ('NINTENDO 64', None, False),
@@ -867,7 +869,11 @@ EXT_JOGO = {
     'sg1000': ('.sg',),
     'snes': ('.sfc', '.smc', '.fig', '.swc', '.bs'),
     'dreamcast': ('.cdi', '.gdi', '.chd', '.cue', '.m3u'),
+    'saturn': ('.cue', '.chd', '.iso', '.ccd', '.mds', '.m3u'),
 }
+# Saturno: o nucleo procura saturn_bios.bin, sega_101.bin (japonesa) ou mpr-17933.bin
+# (americana/europeia); qualquer uma serve
+BIOS_SATURNO = ('saturn_bios.bin', 'sega_101.bin', 'mpr-17933.bin')
 # PC Engine: uma lista so (cartoes e CDs). "pcenginecd" e o nome do disco na leitora e
 # da pasta antiga roms/pcenginecd, que entra na mesma lista.
 APELIDO = {'pcenginecd': 'pcengine'}
@@ -882,7 +888,10 @@ OPCOES_PADRAO = {
     # BIOS que encurta a espera de leitura
     'neocd_libretro.so': {'neocd_region': 'USA', 'neocd_cdspeedhack': 'On'},
     # Dreamcast: resolucao nativa (640x480); no tubo cada linha vai para a TV
-    'flycast_libretro.so': {'reicast_internal_resolution': '640x480'},
+    'flycast_libretro.so': {'reicast_internal_resolution': '640x480', 'reicast_texupscale': '1',
+                            'reicast_anisotropic_filtering': 'off'},
+    # Saturno: SH2 recompilado e resolucao original (o resto pesa na GPU do Pi)
+    'yabasanshiro_libretro.so': {'yabasanshiro_sh2coretype': 'dynarec', 'yabasanshiro_resolution_mode': 'original'},
 }
 # Sega CD: uma BIOS por regiao do disco (o nucleo escolhe pela regiao gravada no disco)
 BIOS_SEGACD = {'U': ('bios_CD_U.bin', 'AMERICANO'), 'E': ('bios_CD_E.bin', 'EUROPEU'),
@@ -894,7 +903,8 @@ BIOS_SEGACD = {'U': ('bios_CD_U.bin', 'AMERICANO'), 'E': ('bios_CD_E.bin', 'EURO
 # Nomes exatos que os nucleos procuram (no cartao a caixa conta; no pendrive nao):
 BIOS_NOMES = ['bios_CD_U.bin', 'bios_CD_E.bin', 'bios_CD_J.bin', 'bios_MD.bin', 'bios_U.sms', 'bios_E.sms',
               'bios_J.sms', 'bios.gg', 'syscard3.pce', 'syscard2.pce', 'syscard1.pce', 'gexpress.pce',
-              'scph1001.bin', 'scph5500.bin', 'scph5501.bin', 'scph5502.bin', 'scph7001.bin', 'scph101.bin']
+              'scph1001.bin', 'scph5500.bin', 'scph5501.bin', 'scph5502.bin', 'scph7001.bin', 'scph101.bin',
+              'saturn_bios.bin', 'sega_101.bin', 'mpr-17933.bin']
 PASTA_BIOS_ANTIGA = {'neogeocd': 'neocd'}       # a R19 criou bios/neocd
 
 
@@ -965,6 +975,10 @@ def bios_falta(base_rv, sistema, info, e_cd):
         # regiao desconhecida (ex.: .chd): basta uma delas
         if not any(bios_tem(arqs, n) for n, _ in BIOS_SEGACD.values()):
             return 'FALTA A BIOS DO SEGA CD (BIOS_CD_U.BIN, _E OU _J) EM %s' % onde
+        return None
+    if sistema == 'saturn':
+        if not any(bios_tem(arqs, n) for n in BIOS_SATURNO):
+            return 'FALTA A BIOS DO SATURNO (SEGA_101.BIN OU MPR-17933.BIN) EM %s' % onde
         return None
     precisa = BIOS_OBRIGATORIA.get(sistema)
     if precisa and e_cd and not bios_tem(arqs, precisa):
@@ -1546,6 +1560,11 @@ class App:
             # opcoes por jogo (ex.: Gunbird 2 em 1280x960 sem pontinhos, 3D em 640x480): o que
             # mudar no menu do jogo vale so para ele; o resto vem do flycast.opt
             cmd += ['--opcoes-jogo', os.path.join(self.base, 'config', 'nucleos', 'flycast', save + '.opt')]
+        if sistema == 'saturn':   # opcoes por jogo, como no Dreamcast
+            cmd += ['--opcoes-jogo', os.path.join(self.base, 'config', 'nucleos', 'yabasanshiro', save + '.opt')]
+        if cd and sistema == 'saturn':
+            # disco comum (1 sessao). Cache + copia para a memoria em 2o plano, como no Dreamcast
+            cmd += ['--cd-cache', str(num(self.cfg, 'leitora_cache_saturn', int, 2, 1024))]
         if cd and sistema == 'dreamcast':
             # CD-R em 2 sessoes: uma faixa por arquivo. Cache grande: o Dreamcast volta toda hora
             # aos mesmos arquivos e cada busca nova na leitora para o jogo ~100 ms
