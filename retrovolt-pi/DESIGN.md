@@ -578,6 +578,11 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   Compilado junto: opcoes do nucleo por jogo no Dreamcast (--opcoes-jogo
   config/nucleos/flycast/<save>.opt: grava so o que difere do flycast.opt/padrao) e
   temperatura + MHz da CPU na linha "picos" do LOG ("REDUZIDA" = o Pi segurando por calor).
+- Wacky Races mais lento (51-57 q/s, antes 58-59; igual em GLES e Vulkan): o desenho do
+  rv-jogo cresceu (32 bits + 480 linhas no LCD + 1280 de largura). Compilado: linha da tela
+  montada 1 vez so com os pontos usados e copiada nas repetidas (efeito so onde muda),
+  leitura BGRA direta no GLES (sem trocar cor), e no LOG "media por quadro: nucleo X +
+  rv-jogo (imagem) Y = Z ms (limite 16,7)" para separar quem pesa.
 - TV sem som depois de ~5 s (efeito da troca nova): a saida de som HDMI e de um programa
   so; o mpv abria com a previa ainda tocando e ficava sem som. Agora abre com --aid=no e
   liga o som (aid auto) depois que a previa fecha. 1o build do Flycast "16 KB" nao valeu:

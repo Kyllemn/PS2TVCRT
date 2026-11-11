@@ -2909,7 +2909,17 @@ static void quadro_foto(void)
 	fclose(f);
 	LOG("quadro do jogo gravado em /run/retrovolt/gpu_menu.ppm (%ux%u)", ult_w, ult_h);
 }
+/* tempo do rv-jogo dentro de cada quadro (copia da GPU + desenho), para separar do nucleo */
+static double t_meu_soma, t_run_soma;
+static long n_medidos;
+static void video_cb_real(const void *data, unsigned w, unsigned h, size_t pitch);
 static void video_cb(const void *data, unsigned w, unsigned h, size_t pitch)
+{
+	double t0 = agora();
+	video_cb_real(data, w, h, pitch);
+	t_meu_soma += agora() - t0;
+}
+static void video_cb_real(const void *data, unsigned w, unsigned h, size_t pitch)
 {
 	if (!data) /* repetir quadro: o fb.back ja tem a imagem */
 		return;
@@ -5067,6 +5077,8 @@ int main(int argc, char **argv)
 		}
 		osd_desenha();
 		double t_run = agora() - tq;
+		t_run_soma += t_run;
+		n_medidos++;
 		if (t_run > pico_run) pico_run = t_run;
 		static int n_lentos;
 		if (agora() - tq > 0.5 && n_lentos++ < 20)
@@ -5096,6 +5108,12 @@ int main(int argc, char **argv)
 				    cd_n_acertos_pf, cd_n_adiante, cd_n_fixos_usados, r_cnt * 100 / RING, som_vazio, vs_ressinc);
 			LOG("picos: controles %.1f ms, nucleo %.1f ms, copia %.1f ms; %s", pico_ctrl * 1e3, pico_run * 1e3,
 			    pico_copia * 1e3, calor_txt());
+			if (n_medidos)
+				LOG("media por quadro: nucleo %.1f ms + rv-jogo (imagem) %.1f ms = %.1f ms (limite %.1f ms)",
+				    (t_run_soma - t_meu_soma) * 1e3 / n_medidos, t_meu_soma * 1e3 / n_medidos,
+				    t_run_soma * 1e3 / n_medidos, 1e3 / (tela_hz > 0 ? tela_hz : 60));
+			t_run_soma = t_meu_soma = 0;
+			n_medidos = 0;
 			pico_ctrl = pico_run = pico_copia = 0;
 			t_ult = t;
 			cd_t_max = 0;
