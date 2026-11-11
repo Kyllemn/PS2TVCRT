@@ -1398,7 +1398,7 @@ def cabecalho(c, aba, wifi, rodape_d):
             c.rect(x, 30 + F.ch + 2, len(a) * F.cw, 2, ORANGE)
         x += (len(a) + 3) * F.cw
     c.rect(16, 30 + F.ch + 8, W - 32, 1, LINE)
-    c.text(16, H - 4 - F.ch, 'L1/R1 ABAS', SLATE)
+    c.text(16, H - 4 - F.ch, 'L1/R1 ABAS  START FUNDO', SLATE)
     c.rtext(W - 12, H - 4 - F.ch, rodape_d, SLATE)
 
 
@@ -2141,6 +2141,10 @@ class App:
             if a == 'B':
                 print('opcoes: %s cancelado' % self.contagem[0], flush=True)
                 self.contagem = None
+            return
+        if a == 'START' and not self.confirma and len(imagens.fundos(self.base)) > 1:
+            self.carrega_fundo()           # START no menu: sorteia outro fundo
+            self.mostra_aviso('FUNDO TROCADO')
             return
         if self.confirma:
             if a == 'A':
