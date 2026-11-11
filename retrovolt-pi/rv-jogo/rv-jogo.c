@@ -1388,6 +1388,7 @@ static inline uint32_t px_conv(const uint8_t *src, int x, int fmt)
 static int ult_x0 = -99999, ult_y0, ult_cw, ult_dh;
 static int *xmap;
 static int xmap_w = -1, xmap_cw = -1;
+static uint32_t *linha_pronta;
 static uint32_t *linha_tmp;
 
 /* desenha a imagem (w x h) no fb.back, ja com a convergencia.
@@ -1435,14 +1436,31 @@ static void desenha_base(const void *data, unsigned w, unsigned h, size_t pitch,
 		xmap_w = w; xmap_cw = cw;
 		free(linha_tmp);
 		linha_tmp = malloc(sizeof(uint32_t) * (w + 1));
+		free(linha_pronta);
+		linha_pronta = malloc(sizeof(uint32_t) * (cw + 1));
 	}
 	int bpp = fb.bpp / 8;
 	int i0 = x0 < 0 ? -x0 : 0;
 	int i1 = x0 + cw > fb.w ? fb.w - x0 : cw;
+	/* desempenho (Dreamcast 1280x480 no LCD): a linha da tela e montada UMA vez (so os
+	 * pontos que aparecem) e copiada para as linhas repetidas; efeito so onde muda */
+	bool reduz = cw <= (int)w;               /* imagem mais larga que a area: so os usados */
+	bool direto = fmt == RETRO_PIXEL_FORMAT_XRGB8888 && bpp == 4;
 	for (int j = 0; j < eh; j++) {
 		const uint8_t *src = (const uint8_t *)data + (size_t)j * passo * pitch;
-		for (unsigned x = 0; x < w; x++)
-			linha_tmp[x] = px_conv(src, x, fmt);
+		if (direto) {
+			const uint32_t *s32 = (const uint32_t *)src;
+			for (int i = i0; i < i1; i++)
+				linha_pronta[i] = s32[xmap[i]];
+		} else if (reduz) {
+			for (int i = i0; i < i1; i++)
+				linha_pronta[i] = px_conv(src, xmap[i], fmt);
+		} else {
+			for (unsigned x = 0; x < w; x++)
+				linha_tmp[x] = px_conv(src, x, fmt);
+			for (int i = i0; i < i1; i++)
+				linha_pronta[i] = linha_tmp[xmap[i]];
+		}
 		/* linhas da tela desta linha do jogo (sempre lp no tubo/ORIGINAL; 3 ou 4 em TELA CHEIA) */
 		int ya = (int)((int64_t)j * dh / eh), yb = (int)((int64_t)(j + 1) * dh / eh);
 		int lpj = yb - ya;
@@ -1457,10 +1475,19 @@ static void desenha_base(const void *data, unsigned w, unsigned h, size_t pitch,
 			int ef = (efeitos && !tubo && lp >= 2 && !sem_filtro && filtro < F_AMPLIA) ? filtro : 0;
 			int linha_esc = (ef == 1 || ef == 3) && k == lpj - 1 ? 2 : (ef == 2 && k == lpj - 1) ? 1 : 0;
 			bool grade = ef == 3;
+			if (!linha_esc && !grade) { /* linha sem efeito: copia a linha pronta */
+				if (bpp == 2) {
+					uint16_t *o = (uint16_t *)d;
+					for (int i = i0; i < i1; i++)
+						o[i] = (uint16_t)linha_pronta[i];
+				} else
+					memcpy((uint32_t *)d + i0, linha_pronta + i0, (size_t)(i1 - i0) * 4);
+				continue;
+			}
 			if (bpp == 2) {
 				uint16_t *o = (uint16_t *)d;
 				for (int i = i0; i < i1; i++) {
-					uint16_t p = linha_tmp[xmap[i]];
+					uint16_t p = linha_pronta[i];
 					if (linha_esc == 2)
 						p = (p >> 1) & 0x7BEF;
 					else if (linha_esc == 1)
@@ -1472,7 +1499,7 @@ static void desenha_base(const void *data, unsigned w, unsigned h, size_t pitch,
 			} else {
 				uint32_t *o = (uint32_t *)d;
 				for (int i = i0; i < i1; i++) {
-					uint32_t p = linha_tmp[xmap[i]];
+					uint32_t p = linha_pronta[i];
 					if (linha_esc == 2)
 						p = (p >> 1) & 0x7F7F7F;
 					else if (linha_esc == 1)
@@ -2046,6 +2073,8 @@ typedef intptr_t EGLAttrib;
 #define GL_PACK_ROW_LENGTH 0x0D02
 #define GL_RENDERER 0x1F01
 #define GL_VERSION 0x1F02
+#define GL_EXTENSIONS 0x1F03
+#define GL_BGRA_EXT 0x80E1
 
 static struct {
 	void *hegl, *hgles, *hgbm;
@@ -2056,6 +2085,7 @@ static struct {
 	unsigned fbo, tex, rb;
 	unsigned w, h;
 	bool ativo;           /* o nucleo pediu GPU e o contexto existe */
+	bool bgra;            /* GL_EXT_read_format_bgra: le ja no formato da tela (sem trocar cor) */
 	struct retro_hw_render_callback cb;
 	uint32_t *q;          /* quadro lido da GPU, ja em XRGB8888 de cima para baixo */
 	uint32_t *tmp;
@@ -2205,6 +2235,8 @@ static bool gl_cria_contexto(void)
 	}
 	LOG("gpu: %s / %s", gl.GetString ? (const char *)gl.GetString(GL_RENDERER) : "?",
 	    gl.GetString ? (const char *)gl.GetString(GL_VERSION) : "?");
+	const char *gx = gl.GetString ? (const char *)gl.GetString(GL_EXTENSIONS) : NULL;
+	gl.bgra = gx && strstr(gx, "GL_EXT_read_format_bgra");
 	return true;
 }
 
@@ -2340,6 +2372,14 @@ static const uint32_t *gl_le_quadro(unsigned w, unsigned h)
 		gl.BindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 	gl.PixelStorei(GL_PACK_ALIGNMENT, 4);
 	gl.PixelStorei(GL_PACK_ROW_LENGTH, 0);
+	bool vira = gl.cb.bottom_left_origin;
+	if (gl.bgra && !vira) { /* BGRA = XRGB8888 na memoria: direto, sem converter */
+		gl.ReadPixels(0, 0, w, h, GL_BGRA_EXT, GL_UNSIGNED_BYTE, gl.q);
+		gl.BindFramebuffer(GL_READ_FRAMEBUFFER, rfb);
+		if (pbo)
+			gl.BindBuffer(GL_PIXEL_PACK_BUFFER, pbo);
+		return gl.q;
+	}
 	gl.ReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, gl.tmp);
 	gl.BindFramebuffer(GL_READ_FRAMEBUFFER, rfb);
 	if (pbo)
