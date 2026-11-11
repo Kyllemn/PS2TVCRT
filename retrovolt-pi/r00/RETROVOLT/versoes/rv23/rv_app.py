@@ -3179,8 +3179,13 @@ class App:
         self.yt_tela.volume = self.volume()
         print('youtube: tocando um video', flush=True)
         self.yt_tela.abre(youtube.url(vid), titulo,
-                          '%s\nA: PAUSA   <- ->: 10 S   CIMA/BAIXO: VOLUME   B: VOLTAR' % titulo,
+                          '%s\nA: PAUSA   <- ->: 10 S   LT/RT: 1 MIN   SELECT: TEMPO   B: VOLTAR' % titulo,
                           extra=['--ytdl=yes', '--ytdl-format=' + youtube.formato(self.fb.tubo),
+                                 # barra e tempo grandes e legiveis (tambem no tubo); a mensagem
+                                 # do seek mostra "tempo / total (porcentagem)"
+                                 '--osd-bar-h=4', '--osd-bar-w=90', '--osd-font-size=%d' % (40 if self.fb.tubo else 46),
+                                 '--osd-border-size=3', '--osd-color=#FFFFFF', '--osd-border-color=#000000',
+                                 '--osd-on-seek=msg-bar',
                                  '--script-opts=ytdl_hook-ytdl_path=' + youtube.ytdlp()])
 
     def yt_sai(self, aviso=None):
@@ -3193,14 +3198,19 @@ class App:
 
     def acao_yt_cheia(self, a):
         tc = self.yt_tela
-        if a in ('B', 'START', 'SELECT'):
+        if a in ('B', 'START'):
             self.yt_sai()
-        elif a == 'A':
-            tc._comando(['cycle', 'pause'])
-        elif a in ('ESQ', 'DIR'):
-            tc._comando(['seek', 10 if a == 'DIR' else -10])
+        elif a == 'A':                      # pausa/continua mostrando a barra e o tempo
+            tc._comando(['osd-msg-bar', 'cycle', 'pause'])
+        elif a == 'SELECT':                 # so mostra onde esta (barra + tempo/total)
+            tc._comando(['show-progress'])
+            tc._comando(['show-text', '${time-pos} / ${duration}  (${percent-pos}%)', 3000])
+        elif a in ('ESQ', 'DIR'):           # osd-msg-bar: barra do video + "tempo / total"
+            tc._comando(['osd-msg-bar', 'seek', 10 if a == 'DIR' else -10])
+            tc._comando(['show-text', '${time-pos} / ${duration}  (${percent-pos}%)', 2500])
         elif a in ('L2', 'R2'):
-            tc._comando(['seek', 60 if a == 'R2' else -60])
+            tc._comando(['osd-msg-bar', 'seek', 60 if a == 'R2' else -60])
+            tc._comando(['show-text', '${time-pos} / ${duration}  (${percent-pos}%)', 2500])
         elif a in ('CIMA', 'BAIXO'):
             v = max(0, min(100, self.volume() + (5 if a == 'CIMA' else -5)))
             self.cfg['volume'] = str(v)
