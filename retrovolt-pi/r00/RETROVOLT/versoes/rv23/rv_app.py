@@ -2197,6 +2197,7 @@ class App:
             itens.append(('modo', 'RESOLUCAO', self.cfg.get('video_modo', 'AUTO').upper()))
         if not self.fb.tubo:                      # no tubo nao ha efeitos
             itens.append(('filtro', 'FILTRO', self.cfg.get('video_filtro', 'NENHUM').upper()))
+        itens.append(('gpu', 'GPU DREAMCAST', 'GLES' if self.cfg.get('dreamcast_gpu', 'VULKAN').upper() == 'GLES' else 'VULKAN'))
         return itens
 
     # ---------------------------------------------------------- RetroTV
@@ -2574,6 +2575,9 @@ class App:
                  'SEM IMAGEM? SEGURE SELECT 5 S', 'PARA TROCAR TUBO/LCD.']
         if not self.fb.tubo:
             ajuda += ['RESOLUCAO NOVA SEM IMAGEM? ESPERE', '30 S QUE ELA VOLTA SOZINHA.']
+        if self.itens_video()[min(getattr(self, 'video_sel', 0), len(self.itens_video()) - 1)][0] == 'gpu':
+            ajuda = ['GPU DREAMCAST: VULKAN OU GLES.', 'VALE NO PROXIMO JOGO QUE ABRIR',
+                     '(O JOGO COMECA DO ZERO COM A', 'GPU NOVA: SALVE ANTES DE SAIR).']
         passo = min(F.ch + 3, (H - 16 - (y + 4)) // len(ajuda))
         for n, l in enumerate(ajuda):
             c.text(24, y + 4 + n * passo, l, SLATE)
@@ -2606,6 +2610,8 @@ class App:
                 lst, ck = self.SAIDAS, 'video_saida'
             elif k == 'filtro':
                 lst, ck = self.FILTROS, 'video_filtro'
+            elif k == 'gpu':
+                lst, ck = ['VULKAN', 'GLES'], 'dreamcast_gpu'
             else:
                 if not getattr(self, '_modos', None):
                     ms = video.modos_lcd()
