@@ -392,13 +392,42 @@ class FB:
 
     # efeitos do menu no LCD (OPCOES > VIDEO > EFEITO DO MENU): (luz da ultima linha de cada
     # bloco, luz da ultima coluna). O menu e ampliado s vezes: cada ponto vira um bloco s x s.
-    EFEITOS_MENU = {'NENHUM': (1.0, 1.0), 'SCANLINES LEVE': (0.85, 1.0), 'SCANLINES FORTE': (0.62, 1.0),
-                    'CRT': (0.72, 0.82), 'DOT MATRIX': (0.62, 0.62)}
+    # Luz em 1/8: 7 = 87,5%, 6 = 75%, 5 = 62,5%, 4 = 50% (contas de deslocar bits, linha inteira).
+    EFEITOS_MENU = {'NENHUM': (8, 8), 'SCANLINES LEVE': (7, 8), 'SCANLINES FORTE': (5, 8),
+                    'CRT': (6, 7), 'DOT MATRIX': (5, 5)}
     efeito = 'NENHUM'
+
+    def _mascaras(self, n):
+        """mascaras do tamanho de uma linha (n bytes) para escurecer todos os pontos de uma vez"""
+        bpp = self.bpp // 8
+        if bpp == 2:
+            m1, m2, m3, cheio = 0x7BEF, 0x39E7, 0x18E3, 0xFFFF
+        else:
+            m1, m2, m3, cheio = 0x7F7F7F, 0x3F3F3F, 0x1F1F1F, 0xFFFFFFFF
+        k = n // bpp
+
+        def rep(v):
+            return int.from_bytes(v.to_bytes(bpp, 'little') * k, 'little')
+        return rep(m1), rep(m2), rep(m3), rep(cheio)
+
+    @staticmethod
+    def _escurece(v, f, M):
+        m1, m2, m3, _ = M
+        if f == 7:
+            return v - ((v >> 3) & m3)
+        if f == 6:
+            return v - ((v >> 2) & m2)
+        if f == 5:
+            return ((v >> 1) & m1) + ((v >> 3) & m3)
+        if f == 4:
+            return (v >> 1) & m1
+        return v
 
     def show(self, canvas, conv):
         """conv = (posicao_x, posicao_y, largura, altura). Fora da imagem: preto.
-        A tela inteira e montada fora do framebuffer e copiada de uma vez (sem piscar)."""
+        A tela inteira e montada fora do framebuffer e copiada de uma vez (sem piscar).
+        As linhas prontas ficam guardadas entre um desenho e outro: apertar um botao so
+        refaz as linhas que mudaram (com imagem de fundo cada linha custa caro em Python)."""
         bpp = self.bpp // 8
         preto = self.pixel((0, 0, 0))
         HT, topo = canvas.ht, canvas.topo                 # linhas da tela (com o topo que desce)
@@ -416,15 +445,18 @@ class FB:
             cw, ch = W * s, HT * s
             x0, y0 = (self.w - cw) // 2, (self.h - ch) // 2
         cont = [((i + 1) * cw) // W - (i * cw) // W for i in range(W)]
-        luz_l, luz_c = (1.0, 1.0) if self.tubo or s < 2 else self.EFEITOS_MENU.get(self.efeito, (1.0, 1.0))
-
-        def esc(c, f):
-            return (int(c[0] * f), int(c[1] * f), int(c[2] * f))
-        cache = {}
-        linhas = {}
-        por_y = {}
+        fl, fc = (8, 8) if self.tubo or s < 2 else self.EFEITOS_MENU.get(self.efeito, (8, 8))
         corte_e = max(0, -x0) * bpp
         dest_x = max(0, x0)
+        geo = (W, cw, x0, self.w, self.bpp, fl, fc)
+        if getattr(self, '_geo_cache', None) != geo or len(self._linhas_cache) > 3000 or len(self._cor_cache) > 200000:
+            self._geo_cache = geo
+            self._linhas_cache = {}      # linha logica (cores) -> bytes da linha da tela
+            self._efeito_cache = {}      # (cores, escura) -> bytes com o efeito
+            self._cor_cache = {}
+            self._masc = None
+        linhas, cache, efc = self._linhas_cache, self._cor_cache, self._efeito_cache
+        por_y = {}
         linha_preta = preto * (self.stride // bpp)
         frame = bytearray(linha_preta * self.h)
         for j in range(ch):
@@ -432,36 +464,47 @@ class FB:
             if not 0 <= yy < self.h:
                 continue
             y = (2 * j + 1) * HT // (2 * ch)                # linha logica (centro): 1a e ultima sempre aparecem
-            escura = luz_l < 1.0 and not self.tubo and j % s == s - 1   # ultima linha do bloco
+            escura = fl < 8 and j % s == s - 1                # ultima linha do bloco (efeito)
             row = por_y.get((y, escura))
-            if row is not None:
-                off = yy * self.stride + dest_x * bpp
-                frame[off:off + len(row)] = row
-                continue
-            linha = canvas.acima[y * W:(y + 1) * W] if y < topo else canvas.px[(y - topo) * W:(y - topo + 1) * W]
-            cam = canvas.camada.px[y * W:(y + 1) * W] if canvas.camada is not None else None
-            if cam and any(v is not None for v in cam):
-                linha = [a if a is not None else b for a, b in zip(cam, linha)]
-            chave = tuple(linha)
-            row = linhas.get((chave, escura))
             if row is None:
-                parts = []
-                fl = luz_l if escura else 1.0
-                for x in range(W):
-                    k = (chave[x], cont[x], fl)
-                    p = cache.get(k)
-                    if p is None:
-                        cor = esc(chave[x], fl) if fl < 1.0 else chave[x]
-                        if luz_c < 1.0 and cont[x] >= 2:   # ultima coluna do bloco mais escura
-                            p = self.pixel(cor) * (cont[x] - 1) + self.pixel(esc(cor, luz_c))
-                        else:
-                            p = self.pixel(cor) * cont[x]
-                        cache[k] = p
-                    parts.append(p)
-                row = b''.join(parts)[corte_e:]
-                row = row[:max(0, (self.w - dest_x) * bpp)]
-                linhas[(chave, escura)] = row
-            por_y[(y, escura)] = row
+                linha = canvas.acima[y * W:(y + 1) * W] if y < topo else canvas.px[(y - topo) * W:(y - topo + 1) * W]
+                cam = canvas.camada.px[y * W:(y + 1) * W] if canvas.camada is not None else None
+                if cam and any(v is not None for v in cam):
+                    linha = [a if a is not None else b for a, b in zip(cam, linha)]
+                chave = tuple(linha)
+                row = linhas.get(chave)
+                if row is None:
+                    parts = []
+                    for x in range(W):
+                        k = (chave[x], cont[x])
+                        p = cache.get(k)
+                        if p is None:
+                            p = cache[k] = self.pixel(chave[x]) * cont[x]
+                        parts.append(p)
+                    row = b''.join(parts)[corte_e:]
+                    row = row[:max(0, (self.w - dest_x) * bpp)]
+                    linhas[chave] = row
+                if escura or fc < 8:
+                    ke = (chave, escura)
+                    r2 = efc.get(ke)
+                    if r2 is None:
+                        if self._masc is None or self._masc[0] != len(row):
+                            M = self._mascaras(len(row))
+                            sel = 0
+                            if fc < 8:   # pontos da ultima coluna de cada bloco s
+                                um = (1 << (8 * bpp)) - 1
+                                for i in range(s - 1, len(row) // bpp, s):
+                                    sel |= um << (8 * bpp * i)
+                            self._masc = (len(row), M, sel)
+                        _, M, sel = self._masc
+                        v = int.from_bytes(row, 'little')
+                        if escura:
+                            v = self._escurece(v, fl, M)
+                        if fc < 8:
+                            v = (v & ~sel) | (self._escurece(v, fc, M) & sel)
+                        r2 = efc[ke] = v.to_bytes(len(row), 'little')
+                    row = r2
+                por_y[(y, escura)] = row
             off = yy * self.stride + dest_x * bpp
             frame[off:off + len(row)] = row
         if not self.tubo:

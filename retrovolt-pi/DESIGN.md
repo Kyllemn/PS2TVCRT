@@ -754,3 +754,8 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   62%); ultima linha/coluna de cada bloco s x s do menu ampliado; cacheado por cor/linha.
   Jogos: filtro novo DOT MATRIX (indice 8, depois do XBR): ultima linha e ultima coluna de
   cada PONTO DO JOGO a 50% (coluna segue o xmap: certa mesmo com escala nao inteira).
+- Menu lento (pedido do autor: cliques arrastados): o show() refazia TODAS as linhas a cada
+  tecla, ponto por ponto em Python; com imagem de fundo cada linha e unica (133 ms no PC) e o
+  efeito do menu dobrava/triplicava (425 ms). Agora: linhas prontas guardadas entre desenhos
+  (so as que mudaram sao refeitas: 10-15 ms) e o efeito e aplicado na linha inteira de uma vez
+  com inteiro grande (deslocar bits + mascara repetida; 87,5/75/62,5/50%), sem numpy.
