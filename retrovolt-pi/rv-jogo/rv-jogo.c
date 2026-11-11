@@ -219,6 +219,12 @@ static int cd_nfixos, cd_cap_fixos;
 static int64_t *cd_pre_pend; /* blocos de comeco de musica ainda nao lidos (vao em segundo plano) */
 static int cd_pre_npend, cd_pre_prox, cd_pre_falhas;
 static volatile double cd_ult_pedido; /* ultima leitura pedida pelo jogo */
+/* copia do disco para a memoria (cache grande, Dreamcast): com a leitora livre, le em
+ * ordem a partir do ponto mais baixo que o jogo ja leu e guarda nas vagas vazias. As
+ * falas e efeitos ficam espalhados pelo disco (cada busca ~100 ms com o jogo parado);
+ * depois de copiados, saem da memoria. O jogo tem sempre a vez. */
+static int64_t cd_jogo_min = -1;
+static long cd_n_copiados, cd_n_vazios;
 static long cd_n_fixos_usados;
 
 /* faixas do disco (para saber se um setor e de audio) */
@@ -551,6 +557,11 @@ static int64_t cd_ler(int64_t pos, uint8_t *s, int64_t len)
 			continue;
 		}
 		if (k < 0) {
+			/* fora o comeco de cada faixa (IP.BIN e a lista de arquivos, lidos no boot):
+			 * no CD-R o enchimento costuma vir antes e os arquivos do jogo no fim */
+			int f = cd_faixa(b0);
+			if (cd_fx[f].dados && b0 >= cd_fx[f].lba + 2048 && (cd_jogo_min < 0 || b0 < cd_jogo_min))
+				cd_jogo_min = b0;
 			k = cd_vaga();
 			if (k < 0) {
 				pthread_cond_wait(&cd_cv, &cd_mx);
@@ -610,6 +621,79 @@ static void *cd_adiante_thread(void *x)
 		}
 	}
 	pthread_mutex_unlock(&cd_mx);
+	return NULL;
+}
+
+/* bloco so de zeros (enchimento do CD-R): nao vale a vaga */
+static bool cd_bloco_vazio(int64_t b0, const uint8_t *d)
+{
+	int off = cd_fx[cd_faixa(b0)].modo == 1 ? 16 : 24;
+	for (int i = 0; i < BLOCO; i++) {
+		const uint8_t *u = d + (size_t)i * SETOR + off;
+		for (int j = 0; j < 2048; j++)
+			if (u[j])
+				return false;
+	}
+	return true;
+}
+
+static bool cd_lba_existe(int64_t lba);
+static void *cd_copia_thread(void *x)
+{
+	(void)x;
+	int64_t total = cd_tam / SETOR, prox = -1;
+	double t0 = 0;
+	long marca = 0;
+	while (!g_sair) {
+		/* o jogo leu ha pouco: espera ele sossegar (menu aberto: jogo parado, pode) */
+		if (!cd_em_menu && agora() - cd_ult_pedido < 0.4) {
+			usleep(30000);
+			continue;
+		}
+		pthread_mutex_lock(&cd_mx);
+		if (cd_jogo_min < 0) {
+			pthread_mutex_unlock(&cd_mx);
+			usleep(30000);
+			continue;
+		}
+		if (prox < 0) {
+			prox = cd_jogo_min;
+			t0 = agora();
+			LOG("cd: copiando o disco para a memoria em 2o plano (a partir do lba %lld)", (long long)prox);
+		}
+		while (prox < total && (cd_acha(prox) >= 0 || cd_fixo_acha(prox) || !cd_fx[cd_faixa(prox)].dados ||
+		                        !cd_lba_existe(prox)))
+			prox += BLOCO;
+		int k = -1;
+		for (int i = 0; i < ncache; i++)
+			if (cd_cache[i].lba < 0 && !cd_cache[i].lendo) {
+				k = i;
+				break;
+			}
+		if (prox >= total || k < 0) {
+			LOG("cd: copia para a memoria %s: %ld blocos (%.0f MB) em %.0f s, %ld vazios descartados",
+			    k < 0 ? "parou (memoria cheia)" : "terminou", cd_n_copiados,
+			    cd_n_copiados * (double)BLOCO * SETOR / 1048576, agora() - t0, cd_n_vazios);
+			pthread_mutex_unlock(&cd_mx);
+			return NULL;
+		}
+		int64_t b0 = prox;
+		prox += BLOCO;
+		cd_cache[k].uso = cd_relogio; /* idade de "agora", sem passar na frente do jogo */
+		cd_cache[k].adiantado = false;
+		cd_carrega(k, b0);
+		if (cd_cache[k].lba == b0 && cd_bloco_vazio(b0, cd_cache[k].d)) {
+			cd_cache[k].lba = -1; /* enchimento: libera a vaga */
+			cd_n_vazios++;
+		} else
+			cd_n_copiados++;
+		if (cd_n_copiados - marca >= 1783) { /* ~64 MB */
+			marca = cd_n_copiados;
+			LOG("cd: copia para a memoria: %.0f MB (%.0f s)", cd_n_copiados * (double)BLOCO * SETOR / 1048576,
+			    agora() - t0);
+		}
+		pthread_mutex_unlock(&cd_mx);
+	}
 	return NULL;
 }
 
@@ -2151,6 +2235,7 @@ static struct {
 	unsigned (*ClientWaitSync)(void *, unsigned, uint64_t);
 	void (*DeleteSync)(void *);
 	unsigned char (*IsEnabled)(unsigned);
+	void (*Flush)(void);
 	void (*Enable)(unsigned);
 	void (*Disable)(unsigned);
 } gl = {.gbm_fd = -1};
@@ -2259,7 +2344,7 @@ static bool gl_cria_contexto(void)
 	GLF(TexImage2D); GLF(TexParameteri); GLF(PixelStorei); GLF(ReadPixels); GLF(GetIntegerv); GLF(BindBuffer);
 	GLF(GetString); GLF(BlitFramebuffer); GLF(GenBuffers); GLF(DeleteBuffers); GLF(BufferData);
 	GLF(MapBufferRange); GLF(UnmapBuffer); GLF(FenceSync); GLF(ClientWaitSync); GLF(DeleteSync);
-	GLF(IsEnabled); GLF(Enable); GLF(Disable);
+	GLF(IsEnabled); GLF(Enable); GLF(Disable); GLF(Flush);
 #undef GLF
 	if (!gl.ReadPixels || !gl.GenFramebuffers || !gl.TexImage2D) {
 		LOG("gpu: ERRO: GLES incompleto");
@@ -2271,7 +2356,7 @@ static bool gl_cria_contexto(void)
 	gl.bgra = gx && strstr(gx, "GL_EXT_read_format_bgra");
 	gl.assinc = gl.BlitFramebuffer && gl.GenBuffers && gl.BufferData && gl.MapBufferRange && gl.UnmapBuffer &&
 	            gl.FenceSync && gl.ClientWaitSync && gl.DeleteSync && gl.IsEnabled && gl.Enable && gl.Disable &&
-	            gl.DeleteBuffers;
+	            gl.DeleteBuffers && gl.Flush;
 	LOG("gpu: leitura do quadro %s", gl.assinc ? "em 2o plano (+1 quadro), reduzida a largura do console" : "direta");
 	return true;
 }
@@ -2447,14 +2532,14 @@ static const uint32_t *gl_le_quadro(unsigned w, unsigned h)
 }
 
 /* tamanho que vai para a memoria: o Dreamcast nunca manda mais que ~720 de largura nem
- * ~576 linhas para a TV; 900 de folga para a tela larga 853 (quando o jogo desenha 1280 de largura o proprio console reduz
+ * ~576 linhas para a TV (quando o jogo desenha 1280 de largura o proprio console reduz
  * pela metade, e resolucao interna maior tambem e reduzida); a GPU reduz pela metade
- * (filtro linear = media de 2 pontos) ate caber */
+ * (filtro linear = media de 2 pontos) enquanto a metade ainda tiver 640x480 ou mais */
 static void gl_reduzido(unsigned w, unsigned h, unsigned *ow, unsigned *oh)
 {
-	while (w > 900) /* 853 = tela larga (16:9) fica como esta */
+	while (w >= 1280) /* 1280 -> 640, 1600 -> 800, 1920 -> 960; 853 (tela larga) fica */
 		w /= 2;
-	while (h > 576)
+	while (h >= 960) /* 960 -> 480; 720 fica */
 		h /= 2;
 	*ow = w;
 	*oh = h;
@@ -2532,6 +2617,9 @@ static const uint32_t *gl_le_assinc(unsigned *pw, unsigned *ph)
 	if (gl.sinc[k])
 		gl.DeleteSync(gl.sinc[k]);
 	gl.sinc[k] = gl.FenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+	/* a GPU do Pi so comeca o quadro quando recebe os comandos: sem isto ela so ia
+	 * desenhar quando o rv-jogo fosse buscar o quadro (e o rv-jogo esperava do mesmo jeito) */
+	gl.Flush();
 	gl.pw[k] = ow;
 	gl.ph[k] = oh;
 	gl.vez = k ^ 1;
@@ -5149,6 +5237,10 @@ int main(int argc, char **argv)
 	if (cd_fd >= 0) {
 		pthread_t tp;
 		pthread_create(&tp, NULL, cd_adiante_thread, NULL);
+		if (ncache > NCACHE) { /* --cd-cache (Dreamcast) */
+			pthread_t tc;
+			pthread_create(&tc, NULL, cd_copia_thread, NULL);
+		}
 	}
 	volume_aplica();
 	volume_ini = volume;

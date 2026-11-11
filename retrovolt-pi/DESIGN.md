@@ -587,6 +587,15 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   quadro) e a GPU reduz pela metade (blit linear) o que passar de 900 de largura ou 576 linhas
   (Dreamcast com hscale desenha 1280 e o console reduz; 853 da tela larga fica). Wacky Races
   em 1280x480 gastava 10-13 ms esperando a GPU. Vale para todos os jogos, sem ajuste por jogo.
+- GLES 2o plano corrigido: faltava glFlush depois do FenceSync (a V3D so comeca o quadro
+  quando recebe os comandos; sem isso o rv-jogo esperava a GPU inteira na hora de buscar).
+  Reducao: metade enquanto der >= 1280 de largura / >= 960 linhas (1920x720 -> 960x720).
+- Falas engasgando (Dreamcast): cada busca nova na leitora ~100 ms com o nucleo parado.
+  cd_copia_thread: com o jogo 0,4 s sem ler (ou menu aberto), copia o disco em ordem a
+  partir do lba mais baixo que o jogo leu (fora as 2048 primeiras de cada faixa: IP.BIN e
+  lista de arquivos) para as vagas vazias do cache; blocos so de zeros (enchimento do
+  CD-R) liberam a vaga; para quando acaba o disco ou a memoria. Cache padrao 512 MB
+  (256 gravado no cfg antigo sobe para 512).
 - TV sem som depois de ~5 s (efeito da troca nova): a saida de som HDMI e de um programa
   so; o mpv abria com a previa ainda tocando e ficava sem som. Agora abre com --aid=no e
   liga o som (aid auto) depois que a previa fecha. 1o build do Flycast "16 KB" nao valeu:

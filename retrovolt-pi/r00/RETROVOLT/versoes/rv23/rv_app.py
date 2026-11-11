@@ -110,7 +110,7 @@ CFG_PADRAO = [
     ('video_altura', '1.000', 'altura da imagem (1.000 = todas as linhas; 0.950 = 95%)'),
     ('SOM', None, None),
     ('volume', '80', 'volume geral dos jogos, 0 a 100'),
-    ('leitora_cache_dreamcast', '256', 'Dreamcast: MB de memoria guardando o que ja foi lido do disco (menos picotes)'),
+    ('leitora_cache_dreamcast', '512', 'Dreamcast: MB de memoria com o disco (lido pelo jogo e copiado em 2o plano; menos picotes)'),
     ('tubo_480i', 'SIM', 'tubo: jogo em 480i sai em 480i de verdade (SIM) ou sempre 240p (NAO)'),
     ('dreamcast_gpu', 'VULKAN', 'Dreamcast: VULKAN (padrao) ou GLES (reserva, se o Vulkan der problema)'),
     ('tv_brilho', '0', 'RetroTV: brilho da imagem, -50 a 50 (LT/RT na tela cheia)'),
@@ -1549,7 +1549,10 @@ class App:
         if cd and sistema == 'dreamcast':
             # CD-R em 2 sessoes: uma faixa por arquivo. Cache grande: o Dreamcast volta toda hora
             # aos mesmos arquivos e cada busca nova na leitora para o jogo ~100 ms
-            cmd += ['--cd-faixas', '1', '--cd-cache', str(num(self.cfg, 'leitora_cache_dreamcast', int, 2, 600))]
+            mb = num(self.cfg, 'leitora_cache_dreamcast', int, 2, 1024)
+            if mb == 256:  # padrao antigo gravado no cfg: sobe para o novo
+                mb = 512
+            cmd += ['--cd-faixas', '1', '--cd-cache', str(mb)]
         if self.cfg.get('audio_dispositivo'):
             cmd += ['--audio', self.cfg['audio_dispositivo']]
         self.carregando(nome)
