@@ -3016,6 +3016,56 @@ class App:
             self.wifi_conecta(self.tec['rede'], self.senha)
 
     # ---------------------------------------------------------- APPS > KODI
+    KODI_SENHA = 'retrovolt'      # do controle pelo celular (app Kore), so na rede de casa
+
+    def prepara_kodi(self):
+        """antes de abrir: (1) liga os addons de controle e de streaming (o Kodi do apt deixa
+        desligado o que veio do sistema); (2) liga o controle pelo celular (servidor web +
+        controle remoto de outros aparelhos), para usar o app Kore como controle/teclado"""
+        import glob
+        import sqlite3
+        import xml.etree.ElementTree as ET
+        casa = os.path.expanduser('~/.kodi/userdata')
+        for db in glob.glob(os.path.join(casa, 'Database', 'Addons*.db')):
+            try:
+                con = sqlite3.connect(db, timeout=3)
+                n = con.execute("UPDATE installed SET enabled=1 WHERE enabled=0 AND addonID IN "
+                                "('peripheral.joystick','inputstream.adaptive','inputstream.ffmpegdirect')").rowcount
+                con.commit()
+                con.close()
+                if n:
+                    print('kodi: %d addon(s) de controle/streaming ligados' % n, flush=True)
+            except Exception as ex:
+                print('kodi: addons nao ligados (%s)' % ex, flush=True)
+        quer = {'services.webserver': 'true', 'services.webserverport': '8080',
+                'services.webserverauthentication': 'true', 'services.webserverusername': 'kodi',
+                'services.webserverpassword': self.KODI_SENHA, 'services.esenabled': 'true',
+                'services.esallinterfaces': 'true', 'services.zeroconf': 'true'}
+        arq = os.path.join(casa, 'guisettings.xml')
+        try:
+            if os.path.exists(arq):
+                arv = ET.parse(arq)
+                raiz = arv.getroot()
+            else:
+                os.makedirs(casa, exist_ok=True)
+                raiz = ET.Element('settings', version='2')
+                arv = ET.ElementTree(raiz)
+            mudou = False
+            atuais = {e.get('id'): e for e in raiz.findall('setting')}
+            for k, v in quer.items():
+                e = atuais.get(k)
+                if e is None:
+                    e = ET.SubElement(raiz, 'setting', id=k)
+                if e.text != v or 'default' in e.attrib:
+                    e.text = v
+                    e.attrib.pop('default', None)
+                    mudou = True
+            if mudou:
+                arv.write(arq, encoding='utf-8', xml_declaration=False)
+                print('kodi: controle pelo celular ligado (app Kore)', flush=True)
+        except Exception as ex:
+            print('kodi: guisettings nao ajustado (%s)' % ex, flush=True)
+
     def abre_kodi(self):
         """Kodi direto na tela (GBM, sem area de trabalho), como um jogo: o menu espera ele
         fechar (no Kodi: menu Desligar > Sair) e volta para APPS"""
@@ -3028,6 +3078,7 @@ class App:
         c.ctext(H // 2 - F.ch, 'ABRINDO O KODI...', ORANGE)
         c.ctext(H // 2 + 6, 'PARA VOLTAR: DESLIGAR > SAIR', SLATE)
         self.fb.show(c, self.conv)
+        self.prepara_kodi()
         cmd = [exe] if exe.endswith('standalone') else [exe, '--standalone', '--windowing=gbm']
         print('kodi: %s' % ' '.join(cmd), flush=True)
         copia_log()
