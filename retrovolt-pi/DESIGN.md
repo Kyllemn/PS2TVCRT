@@ -749,3 +749,8 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   Neo Geo CD, PC Engine CD (lista propria: roms/pcenginecd + INICIAR CD), PC Engine (so .pce),
   Super Nintendo, Mega Drive, Master System; outros depois, se tiverem jogos. Listas circulares:
   passou do fim volta ao comeco (jogos, TV; o resto ja era).
+- Efeito do menu principal (so LCD, OPCOES > VIDEO > EFEITO DO MENU): NENHUM, SCANLINES
+  LEVE (85%), SCANLINES FORTE (62%), CRT (linha 72% + coluna 82%), DOT MATRIX (linha e coluna
+  62%); ultima linha/coluna de cada bloco s x s do menu ampliado; cacheado por cor/linha.
+  Jogos: filtro novo DOT MATRIX (indice 8, depois do XBR): ultima linha e ultima coluna de
+  cada PONTO DO JOGO a 50% (coluna segue o xmap: certa mesmo com escala nao inteira).

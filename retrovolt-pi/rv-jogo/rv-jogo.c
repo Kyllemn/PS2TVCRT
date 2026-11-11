@@ -63,9 +63,12 @@ static double agora(void)
 static const char *a_nucleo, *a_jogo, *a_cd, *a_bios = ".", *a_saves = ".", *a_nome = "jogo";
 static const char *a_audio, *a_opcoes, *a_fonte = "6X10", *a_save, *a_states, *a_conv_arq;
 static int filtro; /* LCD: 0 nenhum, 1 scanlines, 2 scanlines leves, 3 CRT */
-static const char *FILTROS[] = {"NENHUM", "SCANLINES", "SCANLINES LEVES", "CRT", "SUAVE", "SCALE2X", "SCALE3X", "XBR"};
-#define N_FILTROS 8
-#define F_AMPLIA 4 /* daqui para frente: ampliadores (imagem intermediaria maior) */
+static const char *FILTROS[] = {"NENHUM", "SCANLINES", "SCANLINES LEVES", "CRT", "SUAVE", "SCALE2X", "SCALE3X", "XBR",
+                                "DOT MATRIX"};
+#define N_FILTROS 9
+#define F_AMPLIA 4 /* 4 a 7: ampliadores (imagem intermediaria maior) */
+#define F_DOT 8    /* DOT MATRIX: efeito de linha/coluna como os de 1 a 3 (sem ampliador) */
+#define F_EH_AMPLIA(f) ((f) >= F_AMPLIA && (f) < F_DOT)
 static const char *a_filtro_arq;
 static bool sem_filtro; /* menu do jogo: nunca com filtro */
 static int imagem;       /* LCD: 0 = ORIGINAL (ampliacao inteira, nitida), 1 = TELA CHEIA (enche a altura) */
@@ -1558,10 +1561,13 @@ static void desenha_base(const void *data, unsigned w, unsigned h, size_t pitch,
 			/* efeitos (so no LCD, com a imagem ampliada 2x ou mais):
 			 * scanlines = ultima linha de cada grupo mais escura (50% ou 25%);
 			 * CRT = scanlines 50% + grade de fosforo (1 coluna em 3 com 25% menos luz) */
-			int ef = (efeitos && !tubo && lp >= 2 && !sem_filtro && filtro < F_AMPLIA) ? filtro : 0;
-			int linha_esc = (ef == 1 || ef == 3) && k == lpj - 1 ? 2 : (ef == 2 && k == lpj - 1) ? 1 : 0;
+			int ef = (efeitos && !tubo && lp >= 2 && !sem_filtro && !F_EH_AMPLIA(filtro)) ? filtro : 0;
+			/* DOT MATRIX: ultima linha E ultima coluna de cada ponto do jogo a 50% (a coluna
+			 * segue os pontos do jogo, entao fica certa mesmo com escala nao inteira) */
+			int linha_esc = (ef == 1 || ef == 3 || ef == F_DOT) && k == lpj - 1 ? 2 : (ef == 2 && k == lpj - 1) ? 1 : 0;
 			bool grade = ef == 3;
-			if (!linha_esc && !grade) { /* linha sem efeito: copia a linha pronta */
+			bool pontos = ef == F_DOT;
+			if (!linha_esc && !grade && !pontos) { /* linha sem efeito: copia a linha pronta */
 				if (bpp == 2) {
 					uint16_t *o = (uint16_t *)d;
 					for (int i = i0; i < i1; i++)
@@ -1580,6 +1586,8 @@ static void desenha_base(const void *data, unsigned w, unsigned h, size_t pitch,
 						p -= (p >> 2) & 0x39E7;
 					if (grade && (x0 + i) % 3 == 2)
 						p -= (p >> 2) & 0x39E7;
+					if (pontos && linha_esc != 2 && (i + 1 >= cw || xmap[i + 1] != xmap[i]))
+						p = (p >> 1) & 0x7BEF;
 					o[i] = p;
 				}
 			} else {
@@ -1592,6 +1600,8 @@ static void desenha_base(const void *data, unsigned w, unsigned h, size_t pitch,
 						p -= (p >> 2) & 0x3F3F3F;
 					if (grade && (x0 + i) % 3 == 2)
 						p -= (p >> 2) & 0x3F3F3F;
+					if (pontos && linha_esc != 2 && (i + 1 >= cw || xmap[i + 1] != xmap[i]))
+						p = (p >> 1) & 0x7F7F7F;
 					o[i] = p;
 				}
 			}
@@ -1755,7 +1765,7 @@ static void amp_suave(const uint32_t *S, unsigned w, unsigned h, uint32_t *O, in
 static void desenha(const void *data, unsigned w, unsigned h, size_t pitch, int fmt, double aspecto)
 {
 	/* ampliadores so no LCD, em jogo de baixa resolucao; senao o desenho normal */
-	if (tubo || sem_filtro || filtro < F_AMPLIA || w > 400 || h > 300 || !w || !h) {
+	if (tubo || sem_filtro || !F_EH_AMPLIA(filtro) || w > 400 || h > 300 || !w || !h) {
 		desenha_base(data, w, h, pitch, fmt, aspecto, 0, true);
 		return;
 	}

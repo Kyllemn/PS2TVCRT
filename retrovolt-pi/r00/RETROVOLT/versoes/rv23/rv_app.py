@@ -114,6 +114,7 @@ CFG_PADRAO = [
     ('leitora_cache_dreamcast', '512', 'Dreamcast: MB de memoria com o disco (lido pelo jogo e copiado em 2o plano; menos picotes)'),
     ('tubo_480i', 'SIM', 'tubo: jogo em 480i sai em 480i de verdade (SIM) ou sempre 240p (NAO)'),
     ('dreamcast_gpu', 'VULKAN', 'Dreamcast: VULKAN (padrao) ou GLES (reserva, se o Vulkan der problema)'),
+    ('menu_efeito', 'NENHUM', 'so no LCD: efeito no menu principal: NENHUM, SCANLINES LEVE, SCANLINES FORTE, CRT ou DOT MATRIX'),
     ('tv_brilho', '0', 'RetroTV: brilho da imagem, -50 a 50 (LT/RT na tela cheia)'),
     ('tv_troca_rapida', 'SIM', 'RetroTV: SIM = tela cheia abre por tras da previa (sem tela preta); NAO = jeito antigo'),
     ('LEITORA', None, None),
@@ -125,7 +126,7 @@ CFG_PADRAO = [
     ('video_saida', 'AUTO', 'AUTO detecta pela EDID; TUBO ou LCD forca (so na tela em que foi escolhido)'),
     ('video_saida_tela', '', 'tela onde TUBO/LCD foi escolhido (preenchido sozinho; outra tela = detecta)'),
     ('video_modo', 'AUTO', 'resolucao do LCD: AUTO (nativa do monitor) ou LARGURAXALTURA, ex.: 1280X720'),
-    ('video_filtro', 'NENHUM', 'so no LCD: NENHUM, SCANLINES, SCANLINES LEVES, CRT, SUAVE, SCALE2X, SCALE3X ou XBR (padrao; cada nucleo pode ter o seu)'),
+    ('video_filtro', 'NENHUM', 'so no LCD: NENHUM, SCANLINES, SCANLINES LEVES, CRT, SUAVE, SCALE2X, SCALE3X, XBR ou DOT MATRIX (padrao; cada nucleo pode ter o seu)'),
     ('MENU', None, None),
     ('fonte', '5X7', 'fonte do menu: ' + ', '.join(f[0] for f in FONTES_LISTA)),
     ('menu_desce', '18', 'quanto o menu (nome RETROVOLT, relogio, abas) desce, em pontos do menu (0 a 60)'),
@@ -389,6 +390,12 @@ class FB:
             return bytes((v & 0xff, v >> 8))
         return bytes((b, g, r, 0))
 
+    # efeitos do menu no LCD (OPCOES > VIDEO > EFEITO DO MENU): (luz da ultima linha de cada
+    # bloco, luz da ultima coluna). O menu e ampliado s vezes: cada ponto vira um bloco s x s.
+    EFEITOS_MENU = {'NENHUM': (1.0, 1.0), 'SCANLINES LEVE': (0.85, 1.0), 'SCANLINES FORTE': (0.62, 1.0),
+                    'CRT': (0.72, 0.82), 'DOT MATRIX': (0.62, 0.62)}
+    efeito = 'NENHUM'
+
     def show(self, canvas, conv):
         """conv = (posicao_x, posicao_y, largura, altura). Fora da imagem: preto.
         A tela inteira e montada fora do framebuffer e copiada de uma vez (sem piscar)."""
@@ -409,6 +416,10 @@ class FB:
             cw, ch = W * s, HT * s
             x0, y0 = (self.w - cw) // 2, (self.h - ch) // 2
         cont = [((i + 1) * cw) // W - (i * cw) // W for i in range(W)]
+        luz_l, luz_c = (1.0, 1.0) if self.tubo or s < 2 else self.EFEITOS_MENU.get(self.efeito, (1.0, 1.0))
+
+        def esc(c, f):
+            return (int(c[0] * f), int(c[1] * f), int(c[2] * f))
         cache = {}
         linhas = {}
         por_y = {}
@@ -421,7 +432,8 @@ class FB:
             if not 0 <= yy < self.h:
                 continue
             y = (2 * j + 1) * HT // (2 * ch)                # linha logica (centro): 1a e ultima sempre aparecem
-            row = por_y.get(y)
+            escura = luz_l < 1.0 and not self.tubo and j % s == s - 1   # ultima linha do bloco
+            row = por_y.get((y, escura))
             if row is not None:
                 off = yy * self.stride + dest_x * bpp
                 frame[off:off + len(row)] = row
@@ -431,19 +443,25 @@ class FB:
             if cam and any(v is not None for v in cam):
                 linha = [a if a is not None else b for a, b in zip(cam, linha)]
             chave = tuple(linha)
-            row = linhas.get(chave)
+            row = linhas.get((chave, escura))
             if row is None:
                 parts = []
+                fl = luz_l if escura else 1.0
                 for x in range(W):
-                    k = (chave[x], cont[x])
+                    k = (chave[x], cont[x], fl)
                     p = cache.get(k)
                     if p is None:
-                        p = cache[k] = self.pixel(chave[x]) * cont[x]
+                        cor = esc(chave[x], fl) if fl < 1.0 else chave[x]
+                        if luz_c < 1.0 and cont[x] >= 2:   # ultima coluna do bloco mais escura
+                            p = self.pixel(cor) * (cont[x] - 1) + self.pixel(esc(cor, luz_c))
+                        else:
+                            p = self.pixel(cor) * cont[x]
+                        cache[k] = p
                     parts.append(p)
                 row = b''.join(parts)[corte_e:]
                 row = row[:max(0, (self.w - dest_x) * bpp)]
-                linhas[chave] = row
-            por_y[y] = row
+                linhas[(chave, escura)] = row
+            por_y[(y, escura)] = row
             off = yy * self.stride + dest_x * bpp
             frame[off:off + len(row)] = row
         if not self.tubo:
@@ -1444,6 +1462,7 @@ class App:
             W = self.fb.w // esc
             print('tela: %dx%d, menu %dx%d ampliado %dx' % (self.fb.w, self.fb.h, W, H, esc), flush=True)
         self.cfg = cfg_ler()
+        self.fb.efeito = self.cfg.get('menu_efeito', 'NENHUM').upper()
         self.conv = [num(self.cfg, 'video_posicao_x', int, -300, 300),
                      num(self.cfg, 'video_posicao_y', int, -20, 20),
                      num(self.cfg, 'video_largura', float, 0.70, 1.10),
@@ -2237,7 +2256,7 @@ class App:
 
     # ---------------------------------------------------------- video
     SAIDAS = ['AUTO', 'TUBO', 'LCD']
-    FILTROS = ['NENHUM', 'SCANLINES', 'SCANLINES LEVES', 'CRT', 'SUAVE', 'SCALE2X', 'SCALE3X', 'XBR']
+    FILTROS = ['NENHUM', 'SCANLINES', 'SCANLINES LEVES', 'CRT', 'SUAVE', 'SCALE2X', 'SCALE3X', 'XBR', 'DOT MATRIX']
 
     def itens_video(self):
         """(chave, nome, valor) dos itens de OPCOES > VIDEO"""
@@ -2246,6 +2265,7 @@ class App:
             itens.append(('modo', 'RESOLUCAO', self.cfg.get('video_modo', 'AUTO').upper()))
         if not self.fb.tubo:                      # no tubo nao ha efeitos
             itens.append(('filtro', 'FILTRO', self.cfg.get('video_filtro', 'NENHUM').upper()))
+            itens.append(('mefeito', 'EFEITO DO MENU', self.cfg.get('menu_efeito', 'NENHUM').upper()))
         itens.append(('gpu', 'GPU DREAMCAST', 'GLES' if self.cfg.get('dreamcast_gpu', 'VULKAN').upper() == 'GLES' else 'VULKAN'))
         return itens
 
@@ -2666,6 +2686,8 @@ class App:
                 lst, ck = self.FILTROS, 'video_filtro'
             elif k == 'gpu':
                 lst, ck = ['VULKAN', 'GLES'], 'dreamcast_gpu'
+            elif k == 'mefeito':
+                lst, ck = list(self.fb.EFEITOS_MENU), 'menu_efeito'
             else:
                 if not getattr(self, '_modos', None):
                     ms = video.modos_lcd()
@@ -2679,6 +2701,8 @@ class App:
             v = self.cfg.get(ck, lst[0]).upper()
             v = lst[(lst.index(v) + d) % len(lst)] if v in lst else lst[0]
             self.cfg[ck] = v
+            if k == 'mefeito':
+                self.fb.efeito = v
             if k != 'modo':
                 cfg_gravar(self.cfg)
         elif a == 'A' and k in ('saida', 'modo'):
