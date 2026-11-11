@@ -41,6 +41,11 @@ for p in $PACOTES; do
 done
 [ -n "$faltaram" ] && say "AVISO: nao instalou:$faltaram (a R00 funciona sem eles; anote no log)"
 command -v python3 >/dev/null || falha "python3 nao instalou"
+# Kodi (APPS): videos, musica, IPTV e addons (Netflix etc.). Opcional e grande: se nao
+# instalar, o RetroVolt so avisa no menu.
+for p in kodi kodi-peripheral-joystick kodi-inputstream-adaptive; do
+	DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$p" >> "$LOG" 2>&1 || say "AVISO: $p nao instalou"
+done
 # YouTube (APPS): yt-dlp oficial (o do apt fica velho e o YouTube para de abrir); se atualiza
 # sozinho pelo menu (APPS > YOUTUBE > ATUALIZAR YT-DLP)
 if [ ! -x /usr/local/bin/yt-dlp ]; then

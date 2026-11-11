@@ -765,3 +765,7 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   tubo). Busca com o teclado da tela (o mesmo da senha do Wi-Fi, tec['modo']). Controles:
   A pausa, <- -> 10 s, LT/RT 60 s, cima/baixo volume, B volta. ATUALIZAR YT-DLP = yt-dlp -U.
   instalar.sh baixa o yt-dlp_linux_aarch64. Proximo: KODI (Netflix, midia).
+- YouTube sem login (decisao do autor). Capas na RAM (/run/retrovolt/yt, teto 24 MB, apagadas
+  ao sair). APPS > KODI: kodi-standalone (GBM, sem area de trabalho), rodado como um jogo; o
+  menu espera ele fechar (Desligar > Sair) e volta para APPS. instalar.sh: kodi,
+  kodi-peripheral-joystick, kodi-inputstream-adaptive (opcionais).

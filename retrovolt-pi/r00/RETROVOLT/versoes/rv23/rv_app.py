@@ -1424,7 +1424,7 @@ class Leitora(threading.Thread):
 
 # ---------------------------------------------------------------- telas
 ABAS = ['DISCO', 'JOGOS', 'TV', 'APPS', 'OPCOES']
-APPS = ['YOUTUBE']
+APPS = ['YOUTUBE', 'KODI']
 OPCOES = ['VOLUME', 'VIDEO', 'CONVERGENCIA', 'FONTE', 'WI-FI', 'PASTAS DE JOGOS', 'TESTE DO CONTROLE', 'INFO', 'REINICIAR', 'DESLIGAR']
 TECLAS = {False: ['1234567890', 'qwertyuiop', 'asdfghjkl@', 'zxcvbnm.-_'],
           True: ['!#$%&*()+=', 'QWERTYUIOP', 'ASDFGHJKL?', 'ZXCVBNM,:/']}
@@ -2287,6 +2287,8 @@ class App:
             elif a == 'A' and APPS[n] == 'YOUTUBE':
                 self.tela = 'youtube'
                 self.__dict__.setdefault('yt', {'termo': '', 'res': [], 'sel': 0, 'msg': '', 'ocupado': False})
+            elif a == 'A' and APPS[n] == 'KODI':
+                self.abre_kodi()
         elif self.aba == 'OPCOES':
             if self.opcoes()[self.sel['OPCOES']] == 'VOLUME' and a in ('ESQ', 'DIR'):
                 v = max(0, min(100, self.volume() + (5 if a == 'DIR' else -5)))
@@ -3006,6 +3008,42 @@ class App:
                 self.yt_busca(termo)
         else:
             self.wifi_conecta(self.tec['rede'], self.senha)
+
+    # ---------------------------------------------------------- APPS > KODI
+    def abre_kodi(self):
+        """Kodi direto na tela (GBM, sem area de trabalho), como um jogo: o menu espera ele
+        fechar (no Kodi: menu Desligar > Sair) e volta para APPS"""
+        exe = shutil.which('kodi-standalone') or shutil.which('kodi')
+        if not exe:
+            self.mostra_aviso('FALTA O KODI. NO PUTTY: SUDO APT INSTALL KODI')
+            return
+        c = Canvas()
+        cabecalho(c, 'APPS', self.wifi, '')
+        c.ctext(H // 2 - F.ch, 'ABRINDO O KODI...', ORANGE)
+        c.ctext(H // 2 + 6, 'PARA VOLTAR: DESLIGAR > SAIR', SLATE)
+        self.fb.show(c, self.conv)
+        cmd = [exe] if exe.endswith('standalone') else [exe, '--standalone', '--windowing=gbm']
+        print('kodi: %s' % ' '.join(cmd), flush=True)
+        copia_log()
+        self.leitora.pausa.set()
+        t0 = time.monotonic()
+        try:
+            p = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+            r = p.returncode
+            if r not in (0, 64, 65, 66):
+                for l in (p.stderr or '').strip().splitlines()[-5:]:
+                    print('kodi: %s' % l[:200], flush=True)
+        except OSError as ex:
+            r = -1
+            print('kodi: nao abriu:', ex, flush=True)
+        self.leitora.pausa.clear()
+        print('kodi: fechou (codigo %s, %.0f s)' % (r, time.monotonic() - t0), flush=True)
+        self.ent.segurando.clear()
+        self._pendentes()                  # teclas apertadas dentro do Kodi nao valem aqui
+        self.tela = 'menu'
+        self.aba = 'APPS'
+        if r not in (0, 64, 65, 66) and time.monotonic() - t0 < 10:
+            self.mostra_aviso('O KODI NAO ABRIU (CODIGO %s). VEJA O LOG.TXT' % r)
 
     # ---------------------------------------------------------- APPS > YOUTUBE
     def yt_itens(self):
