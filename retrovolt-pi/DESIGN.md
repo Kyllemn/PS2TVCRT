@@ -583,6 +583,10 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   montada 1 vez so com os pontos usados e copiada nas repetidas (efeito so onde muda),
   leitura BGRA direta no GLES (sem trocar cor), e no LOG "media por quadro: nucleo X +
   rv-jogo (imagem) Y = Z ms (limite 16,7)" para separar quem pesa.
+- GLES: leitura do quadro em 2o plano (PBO + fence, 2 vezes; devolve o quadro anterior, +1
+  quadro) e a GPU reduz pela metade (blit linear) o que passar de 900 de largura ou 576 linhas
+  (Dreamcast com hscale desenha 1280 e o console reduz; 853 da tela larga fica). Wacky Races
+  em 1280x480 gastava 10-13 ms esperando a GPU. Vale para todos os jogos, sem ajuste por jogo.
 - TV sem som depois de ~5 s (efeito da troca nova): a saida de som HDMI e de um programa
   so; o mpv abria com a previa ainda tocando e ficava sem som. Agora abre com --aid=no e
   liga o som (aid auto) depois que a previa fecha. 1o build do Flycast "16 KB" nao valeu:

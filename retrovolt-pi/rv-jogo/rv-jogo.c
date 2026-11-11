@@ -2075,6 +2075,15 @@ typedef intptr_t EGLAttrib;
 #define GL_VERSION 0x1F02
 #define GL_EXTENSIONS 0x1F03
 #define GL_BGRA_EXT 0x80E1
+#define GL_DRAW_FRAMEBUFFER 0x8CA9
+#define GL_DRAW_FRAMEBUFFER_BINDING 0x8CA6
+#define GL_SCISSOR_TEST 0x0C11
+#define GL_COLOR_BUFFER_BIT 0x00004000
+#define GL_LINEAR 0x2601
+#define GL_STREAM_READ 0x88E1
+#define GL_MAP_READ_BIT 0x0001
+#define GL_SYNC_GPU_COMMANDS_COMPLETE 0x9117
+#define GL_SYNC_FLUSH_COMMANDS_BIT 0x00000001
 
 static struct {
 	void *hegl, *hgles, *hgbm;
@@ -2090,6 +2099,15 @@ static struct {
 	uint32_t *q;          /* quadro lido da GPU, ja em XRGB8888 de cima para baixo */
 	uint32_t *tmp;
 	size_t cap;
+	/* leitura em 2o plano: a GPU reduz (se o jogo desenhou largo demais) num FBO pequeno,
+	 * copia para um PBO e o rv-jogo pega o quadro ANTERIOR, que ja esta pronto (sem esperar) */
+	bool assinc;
+	unsigned fbo2, tex2, w2, h2;  /* FBO reduzido */
+	unsigned pbo[2];
+	size_t pbo_cap[2];
+	unsigned pw[2], ph[2];        /* tamanho guardado em cada PBO (0 = vazio) */
+	void *sinc[2];
+	int vez;
 	/* EGL */
 	EGLDisplay (*GetPlatformDisplay)(EGLenum, void *, const EGLAttrib *);
 	EGLDisplay (*GetPlatformDisplayEXT)(EGLenum, void *, const EGLint *);
@@ -2123,6 +2141,18 @@ static struct {
 	void (*GetIntegerv)(unsigned, int *);
 	void (*BindBuffer)(unsigned, unsigned);
 	const unsigned char *(*GetString)(unsigned);
+	void (*BlitFramebuffer)(int, int, int, int, int, int, int, int, unsigned, unsigned);
+	void (*GenBuffers)(int, unsigned *);
+	void (*DeleteBuffers)(int, const unsigned *);
+	void (*BufferData)(unsigned, intptr_t, const void *, unsigned);
+	void *(*MapBufferRange)(unsigned, intptr_t, intptr_t, unsigned);
+	unsigned char (*UnmapBuffer)(unsigned);
+	void *(*FenceSync)(unsigned, unsigned);
+	unsigned (*ClientWaitSync)(void *, unsigned, uint64_t);
+	void (*DeleteSync)(void *);
+	unsigned char (*IsEnabled)(unsigned);
+	void (*Enable)(unsigned);
+	void (*Disable)(unsigned);
 } gl = {.gbm_fd = -1};
 
 static retro_proc_address_t gl_proc(const char *n)
@@ -2227,7 +2257,9 @@ static bool gl_cria_contexto(void)
 	GLF(BindRenderbuffer); GLF(RenderbufferStorage); GLF(FramebufferRenderbuffer); GLF(CheckFramebufferStatus);
 	GLF(DeleteFramebuffers); GLF(DeleteRenderbuffers); GLF(GenTextures); GLF(DeleteTextures); GLF(BindTexture);
 	GLF(TexImage2D); GLF(TexParameteri); GLF(PixelStorei); GLF(ReadPixels); GLF(GetIntegerv); GLF(BindBuffer);
-	GLF(GetString);
+	GLF(GetString); GLF(BlitFramebuffer); GLF(GenBuffers); GLF(DeleteBuffers); GLF(BufferData);
+	GLF(MapBufferRange); GLF(UnmapBuffer); GLF(FenceSync); GLF(ClientWaitSync); GLF(DeleteSync);
+	GLF(IsEnabled); GLF(Enable); GLF(Disable);
 #undef GLF
 	if (!gl.ReadPixels || !gl.GenFramebuffers || !gl.TexImage2D) {
 		LOG("gpu: ERRO: GLES incompleto");
@@ -2237,6 +2269,10 @@ static bool gl_cria_contexto(void)
 	    gl.GetString ? (const char *)gl.GetString(GL_VERSION) : "?");
 	const char *gx = gl.GetString ? (const char *)gl.GetString(GL_EXTENSIONS) : NULL;
 	gl.bgra = gx && strstr(gx, "GL_EXT_read_format_bgra");
+	gl.assinc = gl.BlitFramebuffer && gl.GenBuffers && gl.BufferData && gl.MapBufferRange && gl.UnmapBuffer &&
+	            gl.FenceSync && gl.ClientWaitSync && gl.DeleteSync && gl.IsEnabled && gl.Enable && gl.Disable &&
+	            gl.DeleteBuffers;
+	LOG("gpu: leitura do quadro %s", gl.assinc ? "em 2o plano (+1 quadro), reduzida a largura do console" : "direta");
 	return true;
 }
 
@@ -2331,6 +2367,19 @@ static void gl_fim(void)
 		return;
 	if (gl.cb.context_destroy)
 		gl.cb.context_destroy();
+	for (int k = 0; k < 2; k++) {
+		if (gl.sinc[k])
+			gl.DeleteSync(gl.sinc[k]);
+		if (gl.pbo[k])
+			gl.DeleteBuffers(1, &gl.pbo[k]);
+		gl.sinc[k] = NULL;
+		gl.pbo[k] = 0;
+	}
+	if (gl.fbo2) {
+		gl.DeleteFramebuffers(1, &gl.fbo2);
+		gl.DeleteTextures(1, &gl.tex2);
+		gl.fbo2 = gl.tex2 = 0;
+	}
 	gl.ativo = false;
 }
 
@@ -2395,6 +2444,139 @@ static const uint32_t *gl_le_quadro(unsigned w, unsigned h)
 		}
 	}
 	return gl.q;
+}
+
+/* tamanho que vai para a memoria: o Dreamcast nunca manda mais que ~720 de largura nem
+ * ~576 linhas para a TV; 900 de folga para a tela larga 853 (quando o jogo desenha 1280 de largura o proprio console reduz
+ * pela metade, e resolucao interna maior tambem e reduzida); a GPU reduz pela metade
+ * (filtro linear = media de 2 pontos) ate caber */
+static void gl_reduzido(unsigned w, unsigned h, unsigned *ow, unsigned *oh)
+{
+	while (w > 900) /* 853 = tela larga (16:9) fica como esta */
+		w /= 2;
+	while (h > 576)
+		h /= 2;
+	*ow = w;
+	*oh = h;
+}
+
+static bool gl_fbo2(unsigned w, unsigned h)
+{
+	if (gl.fbo2 && w <= gl.w2 && h <= gl.h2)
+		return true;
+	if (w < gl.w2) w = gl.w2;
+	if (h < gl.h2) h = gl.h2;
+	if (!gl.fbo2) {
+		gl.GenTextures(1, &gl.tex2);
+		gl.GenFramebuffers(1, &gl.fbo2);
+	}
+	int tex = 0, dfb = 0;
+	gl.GetIntegerv(GL_TEXTURE_BINDING_2D, &tex);
+	gl.GetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &dfb);
+	gl.BindTexture(GL_TEXTURE_2D, gl.tex2);
+	gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+	gl.BindTexture(GL_TEXTURE_2D, tex);
+	gl.BindFramebuffer(GL_DRAW_FRAMEBUFFER, gl.fbo2);
+	gl.FramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gl.tex2, 0);
+	unsigned st = gl.CheckFramebufferStatus(GL_DRAW_FRAMEBUFFER);
+	gl.BindFramebuffer(GL_DRAW_FRAMEBUFFER, dfb);
+	if (st != GL_FRAMEBUFFER_COMPLETE) {
+		LOG("gpu: ERRO: FBO reduzido %ux%u incompleto (0x%x): leitura direta", w, h, st);
+		gl.assinc = false;
+		return false;
+	}
+	gl.w2 = w;
+	gl.h2 = h;
+	return true;
+}
+
+/* quadro N: a GPU reduz e copia para o PBO da vez (sem esperar); devolve o quadro N-1,
+ * que a GPU ja terminou. NULL no 1o quadro. w e h viram o tamanho do quadro devolvido. */
+static const uint32_t *gl_le_assinc(unsigned *pw, unsigned *ph)
+{
+	unsigned w = *pw, h = *ph, ow, oh;
+	if (w > gl.w) w = gl.w;
+	if (h > gl.h) h = gl.h;
+	gl_reduzido(w, h, &ow, &oh);
+	bool reduz = ow != w || oh != h;
+	if (reduz && !gl_fbo2(ow, oh))
+		return NULL;
+	int rfb = 0, dfb = 0, pbo = 0;
+	gl.GetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &rfb);
+	gl.GetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &dfb);
+	gl.GetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING, &pbo);
+	bool tesoura = gl.IsEnabled(GL_SCISSOR_TEST);
+	gl.BindFramebuffer(GL_READ_FRAMEBUFFER, gl.fbo);
+	if (reduz) {
+		if (tesoura)
+			gl.Disable(GL_SCISSOR_TEST);
+		gl.BindFramebuffer(GL_DRAW_FRAMEBUFFER, gl.fbo2);
+		gl.BlitFramebuffer(0, 0, w, h, 0, 0, ow, oh, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+		gl.BindFramebuffer(GL_READ_FRAMEBUFFER, gl.fbo2);
+	}
+	/* manda a copia deste quadro */
+	int k = gl.vez;
+	size_t tam = (size_t)ow * oh * 4;
+	if (!gl.pbo[k])
+		gl.GenBuffers(1, &gl.pbo[k]);
+	gl.BindBuffer(GL_PIXEL_PACK_BUFFER, gl.pbo[k]);
+	if (tam > gl.pbo_cap[k]) {
+		gl.BufferData(GL_PIXEL_PACK_BUFFER, tam, NULL, GL_STREAM_READ);
+		gl.pbo_cap[k] = tam;
+	}
+	gl.PixelStorei(GL_PACK_ALIGNMENT, 4);
+	gl.PixelStorei(GL_PACK_ROW_LENGTH, 0);
+	gl.ReadPixels(0, 0, ow, oh, gl.bgra ? GL_BGRA_EXT : GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+	if (gl.sinc[k])
+		gl.DeleteSync(gl.sinc[k]);
+	gl.sinc[k] = gl.FenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+	gl.pw[k] = ow;
+	gl.ph[k] = oh;
+	gl.vez = k ^ 1;
+	/* pega o anterior */
+	int a = k ^ 1;
+	const uint32_t *res = NULL;
+	if (gl.pw[a] && gl.sinc[a]) {
+		unsigned aw = gl.pw[a], ah = gl.ph[a];
+		size_t n = (size_t)aw * ah;
+		if (n > gl.cap) {
+			free(gl.q);
+			free(gl.tmp);
+			gl.q = malloc(n * 4);
+			gl.tmp = NULL;
+			gl.cap = n;
+		}
+		gl.ClientWaitSync(gl.sinc[a], GL_SYNC_FLUSH_COMMANDS_BIT, 100000000ull); /* ja pronto; teto 100 ms */
+		gl.BindBuffer(GL_PIXEL_PACK_BUFFER, gl.pbo[a]);
+		const uint32_t *m = gl.MapBufferRange(GL_PIXEL_PACK_BUFFER, 0, n * 4, GL_MAP_READ_BIT);
+		if (m && gl.q) {
+			bool vira = gl.cb.bottom_left_origin;
+			for (unsigned y = 0; y < ah; y++) {
+				const uint32_t *o = m + (size_t)(vira ? ah - 1 - y : y) * aw;
+				uint32_t *d = gl.q + (size_t)y * aw;
+				if (gl.bgra)
+					memcpy(d, o, (size_t)aw * 4);
+				else
+					for (unsigned x = 0; x < aw; x++) {
+						uint32_t p = o[x];
+						d[x] = (p & 0xff) << 16 | (p & 0xff00) | (p >> 16 & 0xff);
+					}
+			}
+			res = gl.q;
+			*pw = aw;
+			*ph = ah;
+		}
+		if (m)
+			gl.UnmapBuffer(GL_PIXEL_PACK_BUFFER);
+	}
+	gl.BindBuffer(GL_PIXEL_PACK_BUFFER, pbo);
+	gl.BindFramebuffer(GL_READ_FRAMEBUFFER, rfb);
+	gl.BindFramebuffer(GL_DRAW_FRAMEBUFFER, dfb);
+	if (reduz && tesoura)
+		gl.Enable(GL_SCISSOR_TEST);
+	return res;
 }
 
 /* diagnostico: uma vez por tamanho informado (2 s depois de mudar), le o FBO INTEIRO,
@@ -2936,9 +3118,15 @@ static void video_cb_real(const void *data, unsigned w, unsigned h, size_t pitch
 		if (w > gl.w || h > gl.h)
 			gl_aumenta(w, h);
 		gl_foto(w, h);
-		data = gl_le_quadro(w, h);
-		if (w > gl.w) w = gl.w;
-		if (h > gl.h) h = gl.h;
+		if (gl.assinc) {
+			data = gl_le_assinc(&w, &h);
+			if (!data)
+				return;
+		} else {
+			data = gl_le_quadro(w, h);
+			if (w > gl.w) w = gl.w;
+			if (h > gl.h) h = gl.h;
+		}
 		pitch = (size_t)w * 4;
 		fmt = RETRO_PIXEL_FORMAT_XRGB8888;
 	}
