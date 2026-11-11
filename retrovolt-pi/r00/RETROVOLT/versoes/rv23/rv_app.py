@@ -3049,18 +3049,17 @@ class App:
             return
         itens = self.yt_itens()
         sel = min(yt['sel'], len(itens) - 1)
+        x0, by0, bw, bh = self.tv_caixa()            # capa no lugar da previa da TV
         y0, passo = 54, F.ch + 6
         cabem = max(1, (H - 22 - 2 * F.ch - y0) // passo)
         ini = max(0, min(sel - cabem // 2, len(itens) - cabem))
         y = y0
-        larg = (W - 60) // F.cw
+        larg = max(8, (x0 - 24 - 12) // F.cw - 3)       # titulo ate a capa (o -> ocupa 3)
         for n in range(ini, min(len(itens), ini + cabem)):
             k, v = itens[n]
             on = n == sel
             if k == 'video':
-                dur = v[3]
-                tit = v[1].upper()[:max(4, larg - len(dur) - 2)]
-                item(c, 24, y, tit, on, dur or None)
+                item(c, 24, y, v[1].upper()[:larg], on)
             elif k == 'buscar':
                 item(c, 24, y, 'BUSCAR' + ((': ' + yt['termo'].upper())[:larg - 8] if yt['termo'] else ''), on)
             else:
@@ -3069,8 +3068,42 @@ class App:
         if yt['msg']:
             c.text(24, H - 18 - 2 * F.ch, yt['msg'][:44], ORANGE if yt['ocupado'] else SLATE)
         k, v = itens[sel]
-        if k == 'video' and v[2]:
-            c.text(24, H - 14 - F.ch - 2, v[2].upper()[:44], SLATE)
+        if k == 'video':
+            self.yt_desenha_capa(c, v[0], x0, by0, bw, bh)
+            cabe = bw // F.cw
+            if v[3]:
+                c.text(x0, by0 + bh + 6, v[3], ORANGE)
+            if v[2]:
+                c.text(x0, by0 + bh + 10 + F.ch, v[2].upper()[:cabe], SLATE)
+
+    def yt_desenha_capa(self, c, vid, x0, y0, bw, bh):
+        """capa baixada em 2o plano (so a do video marcado); moldura vazia enquanto chega"""
+        caps = self.__dict__.setdefault('yt_capas', {})
+        e = max(1, self.esc or 1)
+        m = caps.get(vid)
+        if m is None and vid not in caps:
+            caps[vid] = None                         # pedido feito
+            if len(caps) > 60:
+                caps.clear()
+                caps[vid] = None
+
+            def tarefa():
+                caps[vid] = youtube.capa(vid, bw * e, bh * e, exe_rv_jogo(),
+                                         os.path.join(self.base, 'imagens', '.cache')) or False
+                self.fila.put('_img')
+            threading.Thread(target=tarefa, daemon=True).start()
+        if m and self.esc:
+            c.extras.append((x0, y0, bw, bh, m, False))
+        elif m and not self.esc:                     # tubo: desenha os pontos direto
+            w, h, rgb = m
+            for yy in range(min(h, bh)):
+                for xx in range(min(w, bw)):
+                    o = (yy * w + xx) * 3
+                    c.px[(y0 + yy) * W + x0 + xx] = (rgb[o], rgb[o + 1], rgb[o + 2])
+        else:
+            c.rect(x0, y0, bw, bh, (20, 26, 52))
+            txt = 'CARREGANDO...' if m is None else 'SEM CAPA'
+            c.text(x0 + (bw - len(txt) * F.cw) // 2, y0 + bh // 2 - F.ch // 2, txt, SLATE)
 
     def acao_youtube(self, a):
         yt = self.yt

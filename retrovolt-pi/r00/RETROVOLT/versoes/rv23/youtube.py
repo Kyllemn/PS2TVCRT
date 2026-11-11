@@ -87,3 +87,37 @@ def atualiza(timeout=120):
     if r.returncode:
         return False, 'NAO ATUALIZOU (INTERNET?)'
     return True, 'YT-DLP EM DIA' if 'up to date' in ult.lower() else 'YT-DLP ATUALIZADO'
+
+
+def capa(vid, w, h, exe, cache_dir, timeout=15):
+    """capa do video (hqdefault 480x360, 4:3) reduzida para w x h pelo conversor do rv-jogo:
+    (w, h, bytes RGB) ou None"""
+    import urllib.request
+    os.makedirs(cache_dir, exist_ok=True)
+    jpg = os.path.join(cache_dir, 'yt_%s.jpg' % vid)
+    rgb = os.path.join(cache_dir, 'yt_%s_%dx%d.rgb' % (vid, w, h))
+    if not os.path.exists(rgb):
+        if not os.path.exists(jpg):
+            try:
+                req = urllib.request.Request('https://i.ytimg.com/vi/%s/hqdefault.jpg' % vid,
+                                             headers={'User-Agent': 'Mozilla/5.0'})
+                d = urllib.request.urlopen(req, timeout=timeout).read()
+            except Exception:
+                return None
+            with open(jpg + '.tmp', 'wb') as f:
+                f.write(d)
+            os.replace(jpg + '.tmp', jpg)
+        try:
+            r = subprocess.run([exe, '--fundo', jpg, rgb, str(w), str(h)], capture_output=True, timeout=20)
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        if r.returncode:
+            return None
+    try:
+        d = open(rgb, 'rb').read()
+    except OSError:
+        return None
+    ww, hh = d[0] | d[1] << 8, d[2] | d[3] << 8
+    if len(d) != 4 + ww * hh * 3:
+        return None
+    return ww, hh, d[4:]
