@@ -605,7 +605,7 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   (sem os problemas de GPU do Dreamcast), JIT aarch64 nos DSPs SCU/SCSP (memoria do JIT em
   64 KB: ok com paginas de 16 KB), sincronia SH-2 "Fast 8" (~15%), cache por banco de dados.
   Remendo remendos/beetle_saturn_vfs.py (filestream_vfs_init). Padroes: interleave 8,
-  midsync off, deinterlacer bob. OPCOES > VIDEO > NUCLEO SATURNO troca para o YabaSanshiro.
+  midsync off, deinterlacer bob. YabaSanshiro removido (pedido do autor: cores trocadas e tela preta, nao vale o tempo).
   YabaSanshiro (reserva) revisado: auto-frameskip ocupa um nucleo esperando em laco (padrao
   disabled); thread do SCSP com prioridade -20 presa nos nucleos 0-1; save state desligado
   pelo proprio nucleo.
@@ -743,3 +743,9 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
     neogeo.zip. Compilacao pesada (~20 min).
   * Dreamcast: Flycast (dynarec aarch64, GLES 3.1/Vulkan) - referencia no Pi; depende da
     fase GPU do rv-jogo.
+
+- Menu (pedido do autor): sair do jogo volta para a LISTA do sistema (nunca para DISCO; disco
+  novo pergunta por cima da aba atual). Ordem do JOGOS: PlayStation, Dreamcast, Saturno, Sega CD,
+  Neo Geo CD, PC Engine CD (lista propria: roms/pcenginecd + INICIAR CD), PC Engine (so .pce),
+  Super Nintendo, Mega Drive, Master System; outros depois, se tiverem jogos. Listas circulares:
+  passou do fim volta ao comeco (jogos, TV; o resto ja era).

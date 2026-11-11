@@ -110,7 +110,6 @@ CFG_PADRAO = [
     ('video_altura', '1.000', 'altura da imagem (1.000 = todas as linhas; 0.950 = 95%)'),
     ('SOM', None, None),
     ('volume', '80', 'volume geral dos jogos, 0 a 100'),
-    ('saturn_nucleo', 'BEETLE', 'Saturno: BEETLE (padrao, o do ReplayOS) ou YABASANSHIRO (reserva, pela GPU)'),
     ('leitora_cache_saturn', '512', 'Saturno: MB de memoria com o disco (lido pelo jogo e copiado em 2o plano)'),
     ('leitora_cache_dreamcast', '512', 'Dreamcast: MB de memoria com o disco (lido pelo jogo e copiado em 2o plano; menos picotes)'),
     ('tubo_480i', 'SIM', 'tubo: jogo em 480i sai em 480i de verdade (SIM) ou sempre 240p (NAO)'),
@@ -838,7 +837,7 @@ SISTEMAS = {
     'ps1': ('PLAYSTATION', 'pcsx_rearmed_libretro.so', True),
     'segacd': ('SEGA CD', 'genesis_plus_gx_libretro.so', True),
     'neogeocd': ('NEO GEO CD', 'neocd_libretro.so', True),
-    'pcengine': ('PC ENGINE', 'mednafen_pce_fast_libretro.so', True),
+    'pcengine': ('PC ENGINE', 'mednafen_pce_fast_libretro.so', False),
     'pcenginecd': ('PC ENGINE CD', 'mednafen_pce_fast_libretro.so', True),
     'megadrive': ('MEGA DRIVE', 'genesis_plus_gx_libretro.so', False),
     '32x': ('32X', 'picodrive_libretro.so', False),
@@ -849,8 +848,7 @@ SISTEMAS = {
     # Dreamcast: Flycast precisa de placa de video (OpenGL/Vulkan) -> fase GPU do rv-jogo.
     # Disco: CD-R gravado (selfboot, 2 sessoes) a leitora le; GD-ROM original nao.
     'dreamcast': ('DREAMCAST', 'flycast_libretro.so', True),
-    # Saturno: Beetle Saturn v1.32 (o mesmo do ReplayOS; desenho por CPU, JIT aarch64 nos DSPs).
-    # Reserva: YabaSanshiro (GLES), em OPCOES > VIDEO > NUCLEO SATURNO
+    # Saturno: Beetle Saturn v1.32 (o mesmo do ReplayOS; desenho por CPU, JIT aarch64 nos DSPs)
     'saturn': ('SATURN', 'mednafen_saturn_libretro.so', True),
     '3do': ('3DO', None, True),
     'atari2600': ('ATARI 2600', None, False), 'nes': ('NES', None, False),
@@ -861,7 +859,8 @@ SISTEMAS = {
 }
 EXT_JOGO = {
     'ps1': ('.cue', '.chd', '.pbp', '.m3u', '.iso', '.img', '.bin', '.exe', '.mdf', '.toc', '.cbn'),
-    'pcengine': ('.pce', '.cue', '.chd', '.ccd', '.toc', '.m3u'),
+    'pcengine': ('.pce',),
+    'pcenginecd': ('.cue', '.chd', '.ccd', '.toc', '.m3u'),
     'segacd': ('.cue', '.chd', '.iso', '.m3u'),
     'neogeocd': ('.cue', '.chd'),
     'megadrive': ('.md', '.gen', '.smd', '.bin', '.68k', '.sgd', '.mdx', '.bms'),
@@ -876,10 +875,13 @@ EXT_JOGO = {
 # Saturno: o nucleo procura saturn_bios.bin, sega_101.bin (japonesa) ou mpr-17933.bin
 # (americana/europeia); qualquer uma serve
 BIOS_SATURNO = ('saturn_bios.bin', 'sega_101.bin', 'mpr-17933.bin')
-# PC Engine: uma lista so (cartoes e CDs). "pcenginecd" e o nome do disco na leitora e
-# da pasta antiga roms/pcenginecd, que entra na mesma lista.
+# PC Engine CD: lista propria no menu (roms/pcenginecd + INICIAR CD); PC Engine so cartuchos
+# (.pce). No jogo o CD usa o sistema pcengine (mesma BIOS, saves e states de antes).
 APELIDO = {'pcenginecd': 'pcengine'}
-PASTAS_EXTRAS = {'pcengine': ['pcenginecd']}
+PASTAS_EXTRAS = {}
+# ordem do menu JOGOS (de cima para baixo); o que nao estiver aqui vem depois, se tiver jogos
+ORDEM_JOGOS = ['ps1', 'dreamcast', 'saturn', 'segacd', 'neogeocd', 'pcenginecd', 'pcengine', 'snes',
+               'megadrive', 'mastersystem']
 EXT_CD = ('.cue', '.chd', '.ccd', '.m3u', '.iso', '.img', '.bin', '.pbp')
 # BIOS que o sistema precisa (sem ela o jogo nem abre): nome do arquivo em RETROVOLT/bios/
 BIOS_OBRIGATORIA = {'pcengine': 'syscard3.pce'}   # so para jogos de CD
@@ -897,10 +899,6 @@ OPCOES_PADRAO = {
     'mednafen_saturn_libretro.so': {'beetle_saturn_sh2_interleave': '8', 'beetle_saturn_cpucache_emumode': 'auto',
                                     'beetle_saturn_jit_scu': 'enabled', 'beetle_saturn_jit_scsp': 'enabled',
                                     'beetle_saturn_midsync': 'disabled', 'beetle_saturn_deinterlacer': 'bob'},
-    # Saturno reserva: SH2 recompilado, resolucao original, SEM auto-frameskip (ele espera em
-    # laco ocupando um nucleo inteiro e briga com o vsync do rv-jogo)
-    'yabasanshiro_libretro.so': {'yabasanshiro_sh2coretype': 'dynarec', 'yabasanshiro_resolution_mode': 'original',
-                                 'yabasanshiro_frameskip': 'disabled'},
 }
 # Sega CD: uma BIOS por regiao do disco (o nucleo escolhe pela regiao gravada no disco)
 BIOS_SEGACD = {'U': ('bios_CD_U.bin', 'AMERICANO'), 'E': ('bios_CD_E.bin', 'EUROPEU'),
@@ -967,7 +965,7 @@ def bios_pasta_nucleo(base_rv, sistema):
         if sistema == 'saturn':
             # o Beetle escolhe a BIOS pelo NOME da regiao do jogo (sega_101 = Japao,
             # mpr-17933 = EUA/Europa) e nao confere o conteudo: com uma so, as outras viram
-            # atalho para ela (o Yaba aceita qualquer uma)
+            # atalho para ela
             tem = [os.path.join(alvo, n) for n in BIOS_SATURNO if os.path.lexists(os.path.join(alvo, n))]
             if tem:
                 for n in BIOS_SATURNO:
@@ -1493,15 +1491,13 @@ class App:
     def sistemas_com_jogos(self):
         out = []
         cd = self.leitora.info if self.leitora.estado == 'ok' else None
-        for s in SISTEMAS:
-            if s in APELIDO:                 # pcenginecd entra na lista do PC Engine
-                continue
+        for s in ORDEM_JOGOS + [x for x in SISTEMAS if x not in ORDEM_JOGOS]:
             if SISTEMAS[s][1] and SISTEMAS[s][2] and os.path.exists(os.path.join(PASTA, 'nucleos', SISTEMAS[s][1])):
                 out.append(s)                # sistema de CD com nucleo no pacote: sempre (INICIAR CD)
                 continue
             tem = bool(lista_jogos(self.base, s)) if s in EXT_JOGO else False
             if not tem and s in EXT_JOGO:
-                tem = bool(cd and APELIDO.get(cd.get('sistema'), cd.get('sistema')) == s)
+                tem = bool(cd and cd.get('sistema') == s)
             if not tem and s not in EXT_JOGO:
                 try:
                     tem = any(not n.startswith('.') for n in os.listdir(os.path.join(self.base, 'roms', s)))
@@ -1523,11 +1519,10 @@ class App:
         return itens
 
     def jogar(self, sistema, arquivo=None, cd=False):
+        lista_sis = sistema if sistema in SISTEMAS else APELIDO.get(sistema, sistema)   # lista do menu JOGOS
         sistema = APELIDO.get(sistema, sistema)
         self.ultimo_jogo = (sistema, arquivo, cd)
         nucleo = SISTEMAS.get(sistema, (None, None))[1]
-        if sistema == 'saturn' and self.cfg.get('saturn_nucleo', 'BEETLE').upper() == 'YABASANSHIRO':
-            nucleo = 'yabasanshiro_libretro.so'
         if not nucleo or not os.path.exists(os.path.join(PASTA, 'nucleos', nucleo)):
             self.mostra_aviso('%s: NUCLEO AINDA NAO INSTALADO' % NOME_SISTEMA.get(sistema, '?'))
             return
@@ -1620,21 +1615,20 @@ class App:
         self.ent.segurando.clear()
         self._pendentes()
         copia_log()
-        if r == 10:            # VOLTAR PARA A LISTA: lista deste sistema, cursor no jogo
+        if r in (0, 10):       # SAIR / VOLTAR PARA A LISTA: lista deste sistema, cursor no jogo
             self.tela = 'menu'
             self.aba = 'JOGOS'
-            self.sistema = sistema
-            self.jogos = lista_jogos(self.base, sistema)
+            self.sistema = lista_sis
+            ordem = self.sistemas_com_jogos()
+            if lista_sis in ordem:
+                self.sel['SIS'] = ordem.index(lista_sis)
+            self.jogos = lista_jogos(self.base, lista_sis)
             itens = self.itens_pasta()
             self.sel['JOGOS'] = 0
             for n, (k, v) in enumerate(itens):
                 if (cd and k == 'cd') or (not cd and k == 'arq' and v == arquivo):
                     self.sel['JOGOS'] = n
                     break
-        elif r == 0:           # SAIR DO JOGO: menu principal
-            self.tela = 'menu'
-            self.aba = 'DISCO'
-            self.sistema = None
         else:
             self.mostra_aviso('O JOGO NAO ABRIU (CODIGO %s). VEJA O LOG.TXT' % r)
 
@@ -2089,7 +2083,7 @@ class App:
         for n in range(ini, min(len(itens), ini + cabem)):
             k, v = itens[n]
             if k == 'cd':
-                ok = bool(cd and APELIDO.get(cd.get('sistema'), cd.get('sistema')) == self.sistema)
+                ok = bool(cd and cd.get('sistema') == self.sistema)
                 valor = None
                 if not ok:
                     valor = {'lendo': 'LENDO...', 'sem_leitora': 'SEM LEITORA', 'procurando': '...'}.get(self.leitora.estado, 'SEM DISCO')
@@ -2171,12 +2165,20 @@ class App:
             if a in ('CIMA', 'BAIXO', 'ESQ', 'DIR'):
                 d = -1 if a in ('CIMA', 'ESQ') else 1
                 passos = 1 if a in ('CIMA', 'BAIXO') else 10
-                for _ in range(passos):
+                for i in range(passos):
                     n = sel + d
                     while 0 <= n < len(itens) and itens[n][0] == 'vazio':
                         n += d
                     if 0 <= n < len(itens):
                         sel = n
+                    elif i == 0 and itens:     # passou do fim/comeco: da a volta
+                        n = 0 if d > 0 else len(itens) - 1
+                        while itens[n][0] == 'vazio':
+                            n += d
+                        sel = n
+                        break
+                    else:
+                        break
                 self.sel['JOGOS'] = sel
             elif a == 'B':
                 self.sistema = None
@@ -2184,7 +2186,7 @@ class App:
                 k, v = itens[sel]
                 if k == 'cd':
                     cd = self.leitora.info if self.leitora.estado == 'ok' else None
-                    if cd and APELIDO.get(cd.get('sistema'), cd.get('sistema')) == self.sistema:
+                    if cd and cd.get('sistema') == self.sistema:
                         self.jogar(self.sistema, cd=True)
                     elif cd:
                         self.mostra_aviso('O DISCO NA LEITORA E DE %s' % NOME_SISTEMA.get(cd.get('sistema'), 'OUTRO SISTEMA'))
@@ -2237,7 +2239,6 @@ class App:
             itens.append(('modo', 'RESOLUCAO', self.cfg.get('video_modo', 'AUTO').upper()))
         if not self.fb.tubo:                      # no tubo nao ha efeitos
             itens.append(('filtro', 'FILTRO', self.cfg.get('video_filtro', 'NENHUM').upper()))
-        itens.append(('satnuc', 'NUCLEO SATURNO', 'YABASANSHIRO' if self.cfg.get('saturn_nucleo', 'BEETLE').upper() == 'YABASANSHIRO' else 'BEETLE'))
         itens.append(('gpu', 'GPU DREAMCAST', 'GLES' if self.cfg.get('dreamcast_gpu', 'VULKAN').upper() == 'GLES' else 'VULKAN'))
         return itens
 
@@ -2496,7 +2497,12 @@ class App:
                     st['sel'] = atual if st['sel'] != atual else max([i for i in inicios if i < atual] or [0])
             else:
                 d = (1 if a in ('BAIXO', 'DIR') else -1) * (10 if a in ('ESQ', 'DIR') else 1)
-                st['sel'] = max(0, min(len(canais) - 1, st['sel'] + d))
+                if not canais:
+                    pass
+                elif abs(d) == 1 or st['sel'] in (0, len(canais) - 1) and not 0 <= st['sel'] + d < len(canais):
+                    st['sel'] = (st['sel'] + d) % len(canais)     # da a volta na lista
+                else:
+                    st['sel'] = max(0, min(len(canais) - 1, st['sel'] + d))
         elif a == 'A':
             if getattr(self, 'tv_pre', 0):
                 pass                                 # tela cheia ja abrindo por tras
@@ -2616,9 +2622,6 @@ class App:
                  'SEM IMAGEM? SEGURE SELECT 5 S', 'PARA TROCAR TUBO/LCD.']
         if not self.fb.tubo:
             ajuda += ['RESOLUCAO NOVA SEM IMAGEM? ESPERE', '30 S QUE ELA VOLTA SOZINHA.']
-        if self.itens_video()[min(getattr(self, 'video_sel', 0), len(self.itens_video()) - 1)][0] == 'satnuc':
-            ajuda = ['NUCLEO SATURNO: BEETLE (PADRAO,', 'MAIS FIEL) OU YABASANSHIRO (RESERVA', 'PARA JOGO QUE NAO ANDE NO BEETLE).',
-                     'VALE NO PROXIMO JOGO QUE ABRIR.']
         if self.itens_video()[min(getattr(self, 'video_sel', 0), len(self.itens_video()) - 1)][0] == 'gpu':
             ajuda = ['GPU DREAMCAST: VULKAN OU GLES.', 'VALE NO PROXIMO JOGO QUE ABRIR',
                      '(O JOGO COMECA DO ZERO COM A', 'GPU NOVA: SALVE ANTES DE SAIR).']
@@ -2656,8 +2659,6 @@ class App:
                 lst, ck = self.FILTROS, 'video_filtro'
             elif k == 'gpu':
                 lst, ck = ['VULKAN', 'GLES'], 'dreamcast_gpu'
-            elif k == 'satnuc':
-                lst, ck = ['BEETLE', 'YABASANSHIRO'], 'saturn_nucleo'
             else:
                 if not getattr(self, '_modos', None):
                     ms = video.modos_lcd()
@@ -3094,8 +3095,7 @@ class App:
         if self.tela != 'menu' or self.confirma:
             self.mostra_aviso('DISCO: %s' % (i.get('nome') or NOME_SISTEMA.get(sis, '?')))
             return
-        self.aba = 'DISCO'
-        if sis in SISTEMAS:      # pergunta antes de abrir (A SIM / B NAO)
+        if sis in SISTEMAS:      # pergunta antes de abrir (por cima da aba atual) (A SIM / B NAO)
             self.pergunta_disco = i
         elif sis == 'audio':
             self.mostra_aviso('CD DE AUDIO')

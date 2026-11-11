@@ -73,14 +73,4 @@ git clone -q --depth 1 https://github.com/libretro/beetle-saturn-libretro "$T/bs
        AR=aarch64-linux-gnu-ar HAVE_CDROM=0 WANT_JIT=1 SILENT=1 -j"$(nproc)" >/dev/null )
 aarch64-linux-gnu-strip -o "$DEST/mednafen_saturn_libretro.so" "$T/bsat/mednafen_saturn_libretro.so"
 echo "beetle-saturn $(cd "$T/bsat" && git log -1 --format=%h)"
-# Saturno (reserva): YabaSanshiro: recompilador SH2 para aarch64 e
-# desenho pela GPU em GLES 3 (platform=rpi5 ja liga -mcpu=cortex-a76, DYNAREC_DEVMIYAX e
-# USE_AARCH64_DRC). BIOS de verdade obrigatoria (sega_101.bin ou mpr-17933.bin).
-# Remendo: disco pelo VFS (CD virtual da leitora).
-git clone -q --depth 1 -b yabasanshiro https://github.com/libretro/yabause "$T/yaba"
-python3 "$AQUI/remendos/yaba_vfs.py" "$T/yaba"
-( cd "$T/yaba/yabause/src/libretro" && make platform=rpi5 CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++ \
-       AR=aarch64-linux-gnu-ar -j"$(nproc)" >/dev/null )
-aarch64-linux-gnu-strip -o "$DEST/yabasanshiro_libretro.so" "$T/yaba/yabause/src/libretro/yabasanshiro_libretro.so"
-echo "yabasanshiro $(cd "$T/yaba" && git log -1 --format=%h)"
 rm -rf "$T"
