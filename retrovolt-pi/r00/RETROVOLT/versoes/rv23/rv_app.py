@@ -3018,14 +3018,25 @@ class App:
     # ---------------------------------------------------------- APPS > KODI
     KODI_SENHA = 'retrovolt'      # do controle pelo celular (app Kore), so na rede de casa
 
-    def prepara_kodi(self):
+    @staticmethod
+    def usuario_kodi():
+        """o usuario normal do Pi (uid 1000, ex.: rv): o Kodi roda como ele, igual pelo PuTTY.
+        Como root ele nao abria (outra pasta de configuracao, sem a sessao do usuario)."""
+        import pwd
+        try:
+            u = pwd.getpwuid(1000)
+            return u.pw_name, u.pw_dir, u.pw_uid, u.pw_gid
+        except KeyError:
+            return None
+
+    def prepara_kodi(self, casa_usuario=None):
         """antes de abrir: (1) liga os addons de controle e de streaming (o Kodi do apt deixa
         desligado o que veio do sistema); (2) liga o controle pelo celular (servidor web +
         controle remoto de outros aparelhos), para usar o app Kore como controle/teclado"""
         import glob
         import sqlite3
         import xml.etree.ElementTree as ET
-        casa = os.path.expanduser('~/.kodi/userdata')
+        casa = os.path.join(casa_usuario or os.path.expanduser('~'), '.kodi', 'userdata')
         for db in glob.glob(os.path.join(casa, 'Database', 'Addons*.db')):
             try:
                 con = sqlite3.connect(db, timeout=3)
@@ -3078,20 +3089,40 @@ class App:
         c.ctext(H // 2 - F.ch, 'ABRINDO O KODI...', ORANGE)
         c.ctext(H // 2 + 6, 'PARA VOLTAR: DESLIGAR > SAIR', SLATE)
         self.fb.show(c, self.conv)
-        self.prepara_kodi()
         cmd = [exe] if exe.endswith('standalone') else [exe, '--standalone', '--windowing=gbm']
+        env = None
+        u = self.usuario_kodi() if os.geteuid() == 0 else None
+        if u:
+            nome, casa, uid, gid = u
+            self.prepara_kodi(casa)
+            cmd = ['runuser', '-u', nome, '--'] + cmd
+            env = dict(os.environ, HOME=casa, USER=nome, LOGNAME=nome,
+                       XDG_RUNTIME_DIR='/run/user/%d' % uid)
+            os.makedirs('/run/user/%d' % uid, exist_ok=True)
+            try:
+                os.chown('/run/user/%d' % uid, uid, gid)
+                os.chmod('/run/user/%d' % uid, 0o700)
+            except OSError:
+                pass
+            for k in ('.kodi',):                  # o que o root criou antes passa para o usuario
+                p0 = os.path.join(casa, k)
+                if os.path.isdir(p0):
+                    subprocess.run(['chown', '-R', '%d:%d' % (uid, gid), p0], capture_output=True)
+        else:
+            self.prepara_kodi()
         print('kodi: %s' % ' '.join(cmd), flush=True)
         copia_log()
         self.leitora.pausa.set()
         t0 = time.monotonic()
         try:
-            p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
             r = p.returncode
             if r not in (0, 64, 65, 66) or time.monotonic() - t0 < 10:
                 # fechou logo: o motivo vai para o LOG (e o fim do log do proprio Kodi)
                 for l in (p.stdout or '').strip().splitlines()[-12:]:
                     print('kodi: %s' % l[:200], flush=True)
-                for k in ('/root/.kodi/temp/kodi.log', os.path.expanduser('~/.kodi/temp/kodi.log')):
+                for k in ([os.path.join(u[1], '.kodi/temp/kodi.log')] if u else []) + \
+                        ['/root/.kodi/temp/kodi.log', os.path.expanduser('~/.kodi/temp/kodi.log')]:
                     try:
                         for l in open(k, errors='replace').read().splitlines()[-25:]:
                             if 'ERROR' in l or 'FATAL' in l or 'error' in l:
