@@ -3029,6 +3029,53 @@ class App:
         except KeyError:
             return None
 
+    # mapa pronto do 8BitDo para o Kodi (driver "linux" = /dev/input/js*, ordem do xpad:
+    # botoes 0 A 1 B 2 X 3 Y 4 LB 5 RB 6 SELECT 7 START 8 HOME 9 L3 10 R3; eixos 0/1 analogico
+    # esquerdo, 2 LT, 3/4 analogico direito, 5 RT, 6/7 direcional). Perfil "Default", que e o
+    # que os menus do Kodi usam (no perfil Xbox 360 os menus ficam sem resposta).
+    KODI_MAPA = '''<?xml version="1.0" ?>
+<!-- RETROVOLT: mapa do 8BitDo (gravado pelo RetroVolt; apague para configurar no Kodi) -->
+<buttonmap>
+    <device name="8BitDo Ultimate Wireless / Pro 2 Wired Controller" provider="linux" buttoncount="11" axiscount="8">
+        <configuration>
+            <axis index="2" center="-1" range="2" />
+            <axis index="5" center="-1" range="2" />
+        </configuration>
+        <controller id="game.controller.default">
+            <feature name="a" button="0" />
+            <feature name="b" button="1" />
+            <feature name="x" button="2" />
+            <feature name="y" button="3" />
+            <feature name="leftbumper" button="4" />
+            <feature name="rightbumper" button="5" />
+            <feature name="back" button="6" />
+            <feature name="start" button="7" />
+            <feature name="guide" button="8" />
+            <feature name="leftthumb" button="9" />
+            <feature name="rightthumb" button="10" />
+            <feature name="lefttrigger" axis="+2" />
+            <feature name="righttrigger" axis="+5" />
+            <feature name="up" axis="-7" />
+            <feature name="down" axis="+7" />
+            <feature name="left" axis="-6" />
+            <feature name="right" axis="+6" />
+            <feature name="leftstick">
+                <up axis="-1" />
+                <down axis="+1" />
+                <right axis="+0" />
+                <left axis="-0" />
+            </feature>
+            <feature name="rightstick">
+                <up axis="-4" />
+                <down axis="+4" />
+                <right axis="+3" />
+                <left axis="-3" />
+            </feature>
+        </controller>
+    </device>
+</buttonmap>
+'''
+
     def prepara_kodi(self, casa_usuario=None):
         """antes de abrir: (1) liga os addons de controle e de streaming (o Kodi do apt deixa
         desligado o que veio do sistema); (2) liga o controle pelo celular (servidor web +
@@ -3048,6 +3095,34 @@ class App:
                     print('kodi: %d addon(s) de controle/streaming ligados' % n, flush=True)
             except Exception as ex:
                 print('kodi: addons nao ligados (%s)' % ex, flush=True)
+        # mapa do 8BitDo: grava o nosso; um mapa feito no Kodi para esse controle (ex.: no perfil
+        # Xbox 360, com conflito) fica guardado como .bak
+        pasta = os.path.join(casa, 'addon_data', 'peripheral.joystick', 'resources', 'buttonmaps', 'xml', 'linux')
+        try:
+            os.makedirs(pasta, exist_ok=True)
+            nosso = os.path.join(pasta, '8BitDo_Ultimate_Wireless___Pro_2_Wired_Controller_11b_8a.xml')
+            for n in os.listdir(pasta):
+                c = os.path.join(pasta, n)
+                if n.endswith('.xml') and c != nosso:
+                    try:
+                        txt = open(c, errors='replace').read()
+                    except OSError:
+                        continue
+                    if '8BitDo Ultimate Wireless / Pro 2 Wired Controller' in txt and 'RETROVOLT' not in txt:
+                        os.replace(c, c + '.bak')
+                        print('kodi: mapa antigo do 8BitDo guardado como %s.bak' % n, flush=True)
+            atual = open(nosso, errors='replace').read() if os.path.exists(nosso) else ''
+            if atual and 'RETROVOLT' not in atual:     # feito no Kodi com o mesmo nome
+                os.replace(nosso, nosso + '.bak')
+                print('kodi: mapa antigo do 8BitDo guardado como .bak', flush=True)
+                atual = ''
+            if True:
+                if atual != self.KODI_MAPA:
+                    with open(nosso, 'w') as f:
+                        f.write(self.KODI_MAPA)
+                    print('kodi: mapa do 8BitDo gravado', flush=True)
+        except OSError as ex:
+            print('kodi: mapa do controle nao gravado (%s)' % ex, flush=True)
         quer = {'services.webserver': 'true', 'services.webserverport': '8080',
                 'services.webserverauthentication': 'true', 'services.webserverusername': 'kodi',
                 'services.webserverpassword': self.KODI_SENHA, 'services.esenabled': 'true',
