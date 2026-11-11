@@ -64,10 +64,12 @@ aarch64-linux-gnu-strip -o "$DEST/flycast_libretro.so" "$T/flycast/build/flycast
 echo "flycast $(cd "$T/flycast" && git log -1 --format=%h)"
 # Saturno (principal): Beetle Saturn v1.32 (o do ReplayOS): desenho por CPU, JIT aarch64 nos
 # DSPs (SCU e SCSP), memoria do JIT alinhada em 64 KB (vale com as paginas de 16 KB do Pi 5).
-# Remendo: filestream_vfs_init (sem ele le o arquivo real e nao ve o CD virtual da leitora).
+# VFS_HYBRID_SANDBOXED=1: o VFS "hibrido" dele so passa ao frontend caminhos "xxx://"; o
+# disco.cue existe de verdade e abre, mas o disco.bin so existe no CD virtual ("Failed to open
+# CD"). Assim, o que falhar no arquivo real vai para o rv-jogo.
 git clone -q --depth 1 https://github.com/libretro/beetle-saturn-libretro "$T/bsat"
-python3 "$AQUI/remendos/beetle_saturn_vfs.py" "$T/bsat"
-( cd "$T/bsat" && make platform=unix CC="aarch64-linux-gnu-gcc -mcpu=cortex-a76" CXX="aarch64-linux-gnu-g++ -mcpu=cortex-a76" \
+( cd "$T/bsat" && make platform=unix CC="aarch64-linux-gnu-gcc -mcpu=cortex-a76 -DVFS_HYBRID_SANDBOXED=1" \
+       CXX="aarch64-linux-gnu-g++ -mcpu=cortex-a76 -DVFS_HYBRID_SANDBOXED=1" \
        AR=aarch64-linux-gnu-ar HAVE_CDROM=0 WANT_JIT=1 SILENT=1 -j"$(nproc)" >/dev/null )
 aarch64-linux-gnu-strip -o "$DEST/mednafen_saturn_libretro.so" "$T/bsat/mednafen_saturn_libretro.so"
 echo "beetle-saturn $(cd "$T/bsat" && git log -1 --format=%h)"

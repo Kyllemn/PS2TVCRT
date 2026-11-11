@@ -964,6 +964,15 @@ def bios_pasta_nucleo(base_rv, sistema):
             certo = exatos.get(n.lower())
             if certo and certo != n:
                 os.symlink(p, os.path.join(alvo, certo))
+        if sistema == 'saturn':
+            # o Beetle escolhe a BIOS pelo NOME da regiao do jogo (sega_101 = Japao,
+            # mpr-17933 = EUA/Europa) e nao confere o conteudo: com uma so, as outras viram
+            # atalho para ela (o Yaba aceita qualquer uma)
+            tem = [os.path.join(alvo, n) for n in BIOS_SATURNO if os.path.lexists(os.path.join(alvo, n))]
+            if tem:
+                for n in BIOS_SATURNO:
+                    if not os.path.lexists(os.path.join(alvo, n)):
+                        os.symlink(os.path.realpath(tem[0]), os.path.join(alvo, n))
         return destino
     except OSError as ex:
         print('bios: nao montou %s (%s); usando a pasta do pendrive' % (destino, ex), flush=True)
