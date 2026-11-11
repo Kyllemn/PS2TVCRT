@@ -31,7 +31,7 @@ done
 say "baixando a lista de pacotes (precisa de internet)..."
 apt-get update >> "$LOG" 2>&1 || falha "sem internet (apt-get update falhou)"
 # base de hoje + o que as proximas versoes vao usar (video, som, controles, FFmpeg 7 do RetroTV)
-PACOTES="python3 edid-decode exfatprogs dosfstools alsa-utils i2c-tools wireless-tools
+PACOTES="python3 curl edid-decode exfatprogs dosfstools alsa-utils i2c-tools wireless-tools
  libsdl2-2.0-0 libdrm2 libgbm1 libegl1 libgles2 libgomp1 libvulkan1 mesa-vulkan-drivers libasound2t64 libevdev2 libudev1 python3-evdev
  libavcodec61 libavformat61 libavutil59 libswscale8 libswresample5 ffmpeg mpv"
 faltaram=""
@@ -41,6 +41,13 @@ for p in $PACOTES; do
 done
 [ -n "$faltaram" ] && say "AVISO: nao instalou:$faltaram (a R00 funciona sem eles; anote no log)"
 command -v python3 >/dev/null || falha "python3 nao instalou"
+# YouTube (APPS): yt-dlp oficial (o do apt fica velho e o YouTube para de abrir); se atualiza
+# sozinho pelo menu (APPS > YOUTUBE > ATUALIZAR YT-DLP)
+if [ ! -x /usr/local/bin/yt-dlp ]; then
+	say "instalando o yt-dlp"
+	curl -fsSL -o /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux_aarch64 \
+		>> "$LOG" 2>&1 && chmod 755 /usr/local/bin/yt-dlp || say "AVISO: yt-dlp nao baixou (sem internet?)"
+fi
 
 # 3. arquivos do RetroVolt
 say "copiando o RetroVolt para o cartao"

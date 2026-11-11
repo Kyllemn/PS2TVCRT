@@ -312,7 +312,7 @@ class TelaCheia:
         self.proc = None
         self.com_mpv = bool(shutil.which('mpv'))
 
-    def abre(self, url, nome='', msg='', sem_audio=False):
+    def abre(self, url, nome='', msg='', sem_audio=False, extra=None):
         """sem_audio: abre sem som (a previa ainda segura a saida de som, que so aceita um
         programa por vez); liga_audio() quando a previa fechar"""
         self.fecha()
@@ -326,11 +326,12 @@ class TelaCheia:
                    '--no-osc', '--input-ipc-server=' + SOCK, '--volume=%d' % self.volume,
                    '--osd-level=1', '--osd-duration=3000', '--keep-open=no', '--cache=yes',
                    '--demuxer-max-bytes=32MiB', '--force-media-title=' + (nome or url),
-                   '--user-agent=' + http_de(url)[0], '--brightness=%d' % self.brilho,
-                   # inicio rapido: le pouco do canal para descobrir o formato
-                   '--demuxer-lavf-analyzeduration=1']
-            if http_de(url)[1]:
-                cmd += ['--referrer=' + http_de(url)[1]]
+                   '--brightness=%d' % self.brilho]
+            if 'youtube.com/' not in url:      # YouTube: o yt-dlp (ytdl_hook do mpv) cuida disso
+                # inicio rapido: le pouco do canal para descobrir o formato
+                cmd += ['--user-agent=' + http_de(url)[0], '--demuxer-lavf-analyzeduration=1']
+                if http_de(url)[1]:
+                    cmd += ['--referrer=' + http_de(url)[1]]
             if msg:      # aparece quando o canal comeca (o socket ainda nao existe aqui)
                 cmd += ['--osd-playing-msg=' + msg.replace('\n', '   '), '--osd-playing-msg-duration=4000']
             if self.tubo:
@@ -341,6 +342,7 @@ class TelaCheia:
                 cmd += ['--audio-device=alsa/' + self.audio_dev]
             if sem_audio:
                 cmd += ['--aid=no']
+            cmd += list(extra or [])
             cmd += [url]
         else:
             # sem mpv: ffmpeg direto no framebuffer (tela inteira; no tubo, esticada)

@@ -34,6 +34,7 @@ import disco
 import shutil
 import imagens
 import tv
+import youtube
 import video
 import wifi
 
@@ -1422,7 +1423,8 @@ class Leitora(threading.Thread):
 
 
 # ---------------------------------------------------------------- telas
-ABAS = ['DISCO', 'JOGOS', 'TV', 'OPCOES']
+ABAS = ['DISCO', 'JOGOS', 'TV', 'APPS', 'OPCOES']
+APPS = ['YOUTUBE']
 OPCOES = ['VOLUME', 'VIDEO', 'CONVERGENCIA', 'FONTE', 'WI-FI', 'PASTAS DE JOGOS', 'TESTE DO CONTROLE', 'INFO', 'REINICIAR', 'DESLIGAR']
 TECLAS = {False: ['1234567890', 'qwertyuiop', 'asdfghjkl@', 'zxcvbnm.-_'],
           True: ['!#$%&*()+=', 'QWERTYUIOP', 'ASDFGHJKL?', 'ZXCVBNM,:/']}
@@ -1756,6 +1758,12 @@ class App:
                 self.desenha_jogos(c)
             elif self.aba == 'TV':
                 self.desenha_tv(c)
+            elif self.aba == 'APPS':
+                cabecalho(c, 'APPS', self.wifi, 'A ENTRA')
+                y = max(56, 30 + F.ch + 14)
+                for n, nome in enumerate(APPS):
+                    item(c, 24, y, nome, n == self.sel.get('APPS', 0))
+                    y += F.ch + 9
             else:
                 cabecalho(c, 'OPCOES', self.wifi, 'A ENTRA')
                 y = max(56, 30 + F.ch + 14)
@@ -1810,6 +1818,8 @@ class App:
             self.desenha_wifi(c)
         elif t == 'teclado':
             self.desenha_teclado(c)
+        elif t == 'youtube':
+            self.desenha_youtube(c)
         elif t == 'pastas':
             self.desenha_pastas(c)
         elif t == 'fonte':
@@ -1934,7 +1944,8 @@ class App:
             c.text(24, H - 26 - F.ch, txt[:44], ORANGE)
 
     def desenha_teclado(self, c):
-        moldura(c, 'SENHA', 'START CONECTA  B APAGA')
+        busca = self.tec.get('modo') == 'youtube'
+        moldura(c, 'BUSCA' if busca else 'SENHA', 'START BUSCA  B APAGA' if busca else 'START CONECTA  B APAGA')
         c.text(24, 54, (self.tec['rede'] or '')[:30], ORANGE)
         c.rect(24, 58 + F.ch, W - 48, F.ch + 6, (20, 26, 52))
         c.text(28, 61 + F.ch, self.senha[-36:] + '_', IVORY)
@@ -2269,6 +2280,13 @@ class App:
                         self.mostra_aviso('COLOQUE UM DISCO NA LEITORA')
                 elif k == 'arq':
                     self.jogar(self.sistema, arquivo=v)
+        elif self.aba == 'APPS':
+            n = self.sel.get('APPS', 0)
+            if a in ('CIMA', 'BAIXO'):
+                self.sel['APPS'] = (n + (1 if a == 'BAIXO' else -1)) % len(APPS)
+            elif a == 'A' and APPS[n] == 'YOUTUBE':
+                self.tela = 'youtube'
+                self.__dict__.setdefault('yt', {'termo': '', 'res': [], 'sel': 0, 'msg': '', 'ocupado': False})
         elif self.aba == 'OPCOES':
             if self.opcoes()[self.sel['OPCOES']] == 'VOLUME' and a in ('ESQ', 'DIR'):
                 v = max(0, min(100, self.volume() + (5 if a == 'DIR' else -5)))
@@ -2539,6 +2557,11 @@ class App:
             if pv.quadros and time.monotonic() - self.tv_previa_ini >= (3 if rapida else 5):
                 self.tv_tela_cheia(cedo=rapida)     # rapida: toma a tela uns 2 s depois, ja com imagem
                 return False
+        if self.tela == 'yt_cheia' and not self.yt_tela.rodando():
+            err = self.yt_tela.erro()
+            print('youtube: video terminou %s' % err[:200], flush=True)
+            self.yt_sai('VIDEO TERMINOU' if not err.strip() else 'O VIDEO NAO ABRIU (ATUALIZE O YT-DLP)')
+            return True
         if self.tela == 'tv_cheia' and not self.tv_cheia.rodando():
             err = self.tv_cheia.erro()
             print('tv: reproducao terminou %s' % err[:200], flush=True)
@@ -2916,7 +2939,7 @@ class App:
                 self.wifi_conecta(nome, None)
             else:
                 self.senha = ''
-                self.tec.update(x=0, y=1, maius=False, rede=nome)
+                self.tec.update(x=0, y=1, maius=False, rede=nome, modo='wifi')
                 self.tela = 'teclado'
                 self.ent.modo_texto = True
 
@@ -2939,7 +2962,7 @@ class App:
             return
         if a in ('_ok', 'START'):
             if self.senha:
-                self.wifi_conecta(t['rede'], self.senha)
+                self.teclado_ok()
             return
         if a == 'Y':
             t['maius'] = not t['maius']
@@ -2964,14 +2987,154 @@ class App:
                 elif k == 'APAGAR':
                     self.senha = self.senha[:-1]
                 elif k == 'OK' and self.senha:
-                    self.wifi_conecta(t['rede'], self.senha)
+                    self.teclado_ok()
         if t['y'] == len(linhas):
             t['x'] = min(t['x'], len(TECLAS_FIM) - 1)
 
     def sai_teclado(self):
         self.senha = ''
         self.ent.modo_texto = False
-        self.tela = 'wifi'
+        self.tela = 'youtube' if self.tec.get('modo') == 'youtube' else 'wifi'
+
+    def teclado_ok(self):
+        if self.tec.get('modo') == 'youtube':
+            termo = self.senha.strip()
+            self.senha = ''
+            self.ent.modo_texto = False
+            self.tela = 'youtube'
+            if termo:
+                self.yt_busca(termo)
+        else:
+            self.wifi_conecta(self.tec['rede'], self.senha)
+
+    # ---------------------------------------------------------- APPS > YOUTUBE
+    def yt_itens(self):
+        return [('buscar', 'BUSCAR')] + [('video', v) for v in self.yt['res']] + [('atualiza', 'ATUALIZAR YT-DLP')]
+
+    def yt_busca(self, termo):
+        yt = self.yt
+        yt.update(termo=termo, msg='BUSCANDO...', ocupado=True)
+        print('youtube: busca', flush=True)       # o termo nao vai para o LOG
+
+        def tarefa():
+            try:
+                yt['res'] = youtube.busca(termo)
+                yt['sel'] = 1 if yt['res'] else 0
+                yt['msg'] = '%d VIDEOS' % len(yt['res']) if yt['res'] else 'NADA ENCONTRADO'
+            except RuntimeError as ex:
+                yt['msg'] = str(ex)
+            finally:
+                yt['ocupado'] = False
+                self.fila.put('_wifi')             # redesenha
+        threading.Thread(target=tarefa, daemon=True).start()
+
+    def yt_atualiza(self):
+        yt = self.yt
+        yt.update(msg='ATUALIZANDO O YT-DLP...', ocupado=True)
+
+        def tarefa():
+            try:
+                yt['msg'] = youtube.atualiza()[1]
+            finally:
+                yt['ocupado'] = False
+                self.fila.put('_wifi')
+        threading.Thread(target=tarefa, daemon=True).start()
+
+    def desenha_youtube(self, c):
+        yt = self.yt
+        moldura(c, 'YOUTUBE', 'A ESCOLHE  B VOLTA')
+        if not youtube.ytdlp():
+            c.text(24, 56, 'FALTA O YT-DLP. RODE O INSTALAR.SH', ORANGE)
+            c.text(24, 60 + F.ch, '(PRECISA DE INTERNET)', SLATE)
+            return
+        itens = self.yt_itens()
+        sel = min(yt['sel'], len(itens) - 1)
+        y0, passo = 54, F.ch + 6
+        cabem = max(1, (H - 22 - 2 * F.ch - y0) // passo)
+        ini = max(0, min(sel - cabem // 2, len(itens) - cabem))
+        y = y0
+        larg = (W - 60) // F.cw
+        for n in range(ini, min(len(itens), ini + cabem)):
+            k, v = itens[n]
+            on = n == sel
+            if k == 'video':
+                dur = v[3]
+                tit = v[1].upper()[:max(4, larg - len(dur) - 2)]
+                item(c, 24, y, tit, on, dur or None)
+            elif k == 'buscar':
+                item(c, 24, y, 'BUSCAR' + ((': ' + yt['termo'].upper())[:larg - 8] if yt['termo'] else ''), on)
+            else:
+                item(c, 24, y, v, on)
+            y += passo
+        if yt['msg']:
+            c.text(24, H - 18 - 2 * F.ch, yt['msg'][:44], ORANGE if yt['ocupado'] else SLATE)
+        k, v = itens[sel]
+        if k == 'video' and v[2]:
+            c.text(24, H - 14 - F.ch - 2, v[2].upper()[:44], SLATE)
+
+    def acao_youtube(self, a):
+        yt = self.yt
+        if a == 'B':
+            self.tela = 'menu'
+            return
+        if yt['ocupado'] or not youtube.ytdlp():
+            return
+        itens = self.yt_itens()
+        sel = min(yt['sel'], len(itens) - 1)
+        if a in ('CIMA', 'BAIXO'):
+            yt['sel'] = (sel + (1 if a == 'BAIXO' else -1)) % len(itens)
+        elif a in ('ESQ', 'DIR'):
+            yt['sel'] = max(0, min(len(itens) - 1, sel + (10 if a == 'DIR' else -10)))
+        elif a == 'A':
+            k, v = itens[sel]
+            if k == 'buscar':
+                self.senha = yt['termo']
+                self.tec.update(x=0, y=1, maius=False, rede='BUSCAR NO YOUTUBE', modo='youtube')
+                self.tela = 'teclado'
+                self.ent.modo_texto = True
+            elif k == 'atualiza':
+                self.yt_atualiza()
+            else:
+                self.yt_toca(v)
+
+    def yt_toca(self, v):
+        vid, titulo = v[0], v[1]
+        if not getattr(self, 'yt_tela', None):
+            self.yt_tela = tv.TelaCheia(self.fb.tubo, self.fb.w, self.fb.h, self.fb.bpp,
+                                        self.cfg.get('audio_dispositivo') or AUDIO_PADRAO, self.volume())
+        self.leitora.pausa.set()
+        self.tela = 'yt_cheia'
+        self.yt_tela.volume = self.volume()
+        print('youtube: tocando um video', flush=True)
+        self.yt_tela.abre(youtube.url(vid), titulo,
+                          '%s\nA: PAUSA   <- ->: 10 S   CIMA/BAIXO: VOLUME   B: VOLTAR' % titulo,
+                          extra=['--ytdl=yes', '--ytdl-format=' + youtube.formato(self.fb.tubo),
+                                 '--script-opts=ytdl_hook-ytdl_path=' + youtube.ytdlp()])
+
+    def yt_sai(self, aviso=None):
+        if getattr(self, 'yt_tela', None):
+            self.yt_tela.fecha()
+        self.leitora.pausa.clear()
+        self.tela = 'youtube'
+        if aviso:
+            self.yt['msg'] = aviso
+
+    def acao_yt_cheia(self, a):
+        tc = self.yt_tela
+        if a in ('B', 'START', 'SELECT'):
+            self.yt_sai()
+        elif a == 'A':
+            tc._comando(['cycle', 'pause'])
+        elif a in ('ESQ', 'DIR'):
+            tc._comando(['seek', 10 if a == 'DIR' else -10])
+        elif a in ('L2', 'R2'):
+            tc._comando(['seek', 60 if a == 'R2' else -60])
+        elif a in ('CIMA', 'BAIXO'):
+            v = max(0, min(100, self.volume() + (5 if a == 'CIMA' else -5)))
+            self.cfg['volume'] = str(v)
+            self.vol_sujo = time.monotonic()
+            tc._comando(['set_property', 'volume', v])
+            tc._comando(['show-text', 'VOLUME %d' % v, 1500])
 
     # ---------------------------------------------------------- pastas de jogos
     def acao_pastas(self, a):
@@ -3040,6 +3203,12 @@ class App:
         t = self.tela
         if t == 'tv_cheia':
             self.acao_tv_cheia(a)
+            return
+        if t == 'yt_cheia':
+            self.acao_yt_cheia(a)
+            return
+        if t == 'youtube':
+            self.acao_youtube(a)
             return
         if t == 'menu':
             self.acao_menu(a)
@@ -3246,7 +3415,7 @@ class App:
             while True:
                 try:
                     rolando = self.aviso and len(self.aviso[0]) > (W - 44) // F.cw
-                    curto = (self.contagem or self.tela in ('teste_video', 'tv_cheia') or getattr(self, 'tv_previa', None)
+                    curto = (self.contagem or self.tela in ('teste_video', 'tv_cheia', 'yt_cheia') or getattr(self, 'tv_previa', None)
                              or getattr(self, 'tv_pre', 0))
                     a = self.fila.get(timeout=0.25 if curto else 0.1 if rolando else 1.0)
                 except queue.Empty:
@@ -3303,7 +3472,7 @@ class App:
                 if self.aviso and time.monotonic() > self.aviso[1]:
                     self.aviso = None
                     mudou = True
-                if self.tela == 'tv_cheia':               # o mpv e dono da tela
+                if self.tela in ('tv_cheia', 'yt_cheia'):   # o mpv e dono da tela
                     continue
                 if mudou or time.monotonic() - ultimo_desenho > 60:
                     if time.monotonic() - ultimo_desenho > 60:

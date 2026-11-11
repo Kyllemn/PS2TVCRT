@@ -759,3 +759,9 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   efeito do menu dobrava/triplicava (425 ms). Agora: linhas prontas guardadas entre desenhos
   (so as que mudaram sao refeitas: 10-15 ms) e o efeito e aplicado na linha inteira de uma vez
   com inteiro grande (deslocar bits + mascara repetida; 87,5/75/62,5/50%), sem numpy.
+- Aba APPS (entre TV e OPCOES): YOUTUBE. youtube.py: busca pelo yt-dlp (ytsearch30, lista
+  plana em JSON; o termo nao vai para o LOG), video em tela cheia pelo mpv (TelaCheia do tv.py,
+  ytdl_hook com o yt-dlp oficial em /usr/local/bin, formato H.264 ate 1080p no LCD / 480p no
+  tubo). Busca com o teclado da tela (o mesmo da senha do Wi-Fi, tec['modo']). Controles:
+  A pausa, <- -> 10 s, LT/RT 60 s, cima/baixo volume, B volta. ATUALIZAR YT-DLP = yt-dlp -U.
+  instalar.sh baixa o yt-dlp_linux_aarch64. Proximo: KODI (Netflix, midia).
