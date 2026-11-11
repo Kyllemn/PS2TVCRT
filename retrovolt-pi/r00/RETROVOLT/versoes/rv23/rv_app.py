@@ -2133,6 +2133,13 @@ class App:
             return
         if a in ('L1', 'R1'):
             i = ABAS.index(self.aba)
+            if self.aba == 'JOGOS' and self.sistema:
+                # saindo de JOGOS de dentro de um console: na volta, lista de consoles com o
+                # cursor nele
+                ordem = self.sistemas_com_jogos()
+                if self.sistema in ordem:
+                    self.sel['SIS'] = ordem.index(self.sistema)
+                self.sistema = None
             self.aba = ABAS[(i + (1 if a == 'R1' else -1)) % len(ABAS)]
             self.tv_para_previa()
             if self.aba == 'TV':
