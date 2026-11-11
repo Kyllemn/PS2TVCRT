@@ -1543,6 +1543,9 @@ class App:
         cmd += ['--tubo-480i', '0' if self.cfg.get('tubo_480i', 'SIM').upper() == 'NAO' else '1']
         if sistema == 'dreamcast':
             cmd += ['--gpu', 'gles' if self.cfg.get('dreamcast_gpu', 'VULKAN').upper() == 'GLES' else 'vulkan']
+            # opcoes por jogo (ex.: Gunbird 2 em 1280x960 sem pontinhos, 3D em 640x480): o que
+            # mudar no menu do jogo vale so para ele; o resto vem do flycast.opt
+            cmd += ['--opcoes-jogo', os.path.join(self.base, 'config', 'nucleos', 'flycast', save + '.opt')]
         if cd and sistema == 'dreamcast':
             # CD-R em 2 sessoes: uma faixa por arquivo. Cache grande: o Dreamcast volta toda hora
             # aos mesmos arquivos e cada busca nova na leitora para o jogo ~100 ms

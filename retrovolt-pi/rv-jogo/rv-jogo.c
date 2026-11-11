@@ -108,7 +108,10 @@ static enum retro_pixel_format pixfmt = RETRO_PIXEL_FORMAT_0RGB1555;
 
 /* variaveis do nucleo (opcoes): chave, valor */
 #define MAXVAR 256
-static struct { char *k, *v, *desc, *vals[64]; int nvals; } vars[MAXVAR];
+/* base = valor geral (arquivo do nucleo, senao o padrao do nucleo); com --opcoes-jogo,
+ * o que o jogador muda no menu vale so para este jogo (gravado so o que difere da base) */
+static struct { char *k, *v, *base, *desc, *vals[64]; int nvals; } vars[MAXVAR];
+static const char *a_opcoes_jogo;
 static bool vars_mudou;   /* opcao mudada no menu: o nucleo le no proximo quadro */
 static int nvars;
 
@@ -129,13 +132,22 @@ static void var_set(const char *k, const char *v, bool so_se_novo)
 	}
 }
 
+static void opcoes_ler_arq(const char *arq, bool base);
 static void opcoes_ler(void)
 {
-	if (!a_opcoes)
-		return;
-	FILE *f = fopen(a_opcoes, "r");
+	if (a_opcoes)
+		opcoes_ler_arq(a_opcoes, true);
+	if (a_opcoes_jogo)
+		opcoes_ler_arq(a_opcoes_jogo, false);
+}
+
+static void opcoes_ler_arq(const char *arq, bool base)
+{
+	FILE *f = fopen(arq, "r");
 	if (!f)
 		return;
+	if (!base)
+		LOG("opcoes deste jogo: %s", arq);
 	char l[512];
 	while (fgets(l, sizeof l, f)) {
 		char *c = strchr(l, '#');
@@ -150,8 +162,15 @@ static void opcoes_ler(void)
 		for (char *e = k + strlen(k); e > k && (e[-1] == ' ' || e[-1] == '\t'); ) *--e = 0;
 		while (*v == ' ' || *v == '\t' || *v == '"') v++;
 		for (char *e = v + strlen(v); e > v && strchr(" \t\r\n\"", e[-1]); ) *--e = 0;
-		if (*k)
+		if (*k) {
 			var_set(k, v, false);
+			if (base)
+				for (int i = 0; i < nvars; i++)
+					if (!strcmp(vars[i].k, k)) {
+						free(vars[i].base);
+						vars[i].base = strdup(v);
+					}
+		}
 	}
 	fclose(f);
 }
@@ -2719,7 +2738,7 @@ static const uint32_t *vk_converte(int k)
 
 /* quadro pronto na imagem do nucleo: pede a copia dele (sem esperar) e devolve o
  * quadro ANTERIOR, cuja copia ja terminou -> a GPU e o processador nao se esperam.
- * 1 quadro (16 ms) a mais de atraso. *w/*h: tamanho do quadro devolvido. */
+ * 1 quadro (16 ms) a mais de atraso. wp e hp: tamanho do quadro devolvido. */
 static const uint32_t *vk_le_quadro(unsigned *wp, unsigned *hp)
 {
 	unsigned w = *wp, h = *hp;
@@ -3322,6 +3341,23 @@ static void botoes_grava(void)
 
 static void opcoes_grava(void)
 {
+	if (a_opcoes_jogo) { /* vale so para este jogo: grava o que difere da base */
+		mkdir_pai(a_opcoes_jogo);
+		FILE *f = fopen(a_opcoes_jogo, "w");
+		if (!f)
+			return;
+		fprintf(f, "# RETROVOLT: opcoes do nucleo so deste jogo (o resto vem de %s)\n", a_opcoes ? a_opcoes : "padrao");
+		int n = 0;
+		for (int i = 0; i < nvars; i++)
+			if (!vars[i].base || strcmp(vars[i].v, vars[i].base)) {
+				fprintf(f, "%s = \"%s\"\n", vars[i].k, vars[i].v);
+				n++;
+			}
+		fclose(f);
+		sync();
+		LOG("opcoes do nucleo: %d gravadas so para este jogo em %s", n, a_opcoes_jogo);
+		return;
+	}
 	if (!a_opcoes)
 		return;
 	mkdir_pai(a_opcoes);
@@ -3453,6 +3489,9 @@ static bool environment(unsigned cmd, void *data)
 			memcpy(def, p, n);
 			def[n] = 0;
 			var_set(v->key, def, true);
+			for (int i = 0; i < nvars; i++)       /* sem valor geral gravado: a base e o padrao */
+				if (!strcmp(vars[i].k, v->key) && !vars[i].base)
+					vars[i].base = strdup(def);
 			for (int i = 0; i < nvars; i++)       /* guarda descricao e valores para o menu */
 				if (!strcmp(vars[i].k, v->key) && !vars[i].desc) {
 					vars[i].desc = strndup(v->value, strchr(v->value, ';') - v->value);
@@ -4603,6 +4642,30 @@ static void *simbolo(const char *n)
 
 static void ao_sinal(int s) { (void)s; g_sair = 1; }
 
+/* temperatura e velocidade da CPU: o Pi reduz a velocidade sozinho perto de 80-85 C
+ * (nao estraga; fica mais lento) - aparece aqui se um picote for calor */
+static long ler_num(const char *arq)
+{
+	FILE *f = fopen(arq, "r");
+	long v = -1;
+	if (f) {
+		if (fscanf(f, "%li", &v) != 1)
+			v = -1;
+		fclose(f);
+	}
+	return v;
+}
+static const char *calor_txt(void)
+{
+	static char t[96];
+	long tc = ler_num("/sys/class/thermal/thermal_zone0/temp");
+	long cur = ler_num("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq");
+	long max = ler_num("/sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq");
+	snprintf(t, sizeof t, "temperatura %ld C, cpu %ld/%ld MHz%s", tc / 1000, cur / 1000, max / 1000,
+	         cur > 0 && max > 0 && cur < max * 9 / 10 ? " (REDUZIDA)" : "");
+	return t;
+}
+
 /* CPU no maximo durante o jogo (o "ondemand" demora a subir o clock e o quadro atrasa) */
 static void governador(bool jogo)
 {
@@ -4722,6 +4785,7 @@ int main(int argc, char **argv)
 		else if (!strcmp(k, "--volume")) volume = atoi(v) < 0 ? 0 : atoi(v) > 100 ? 100 : atoi(v);
 		else if (!strcmp(k, "--audio")) a_audio = v;
 		else if (!strcmp(k, "--opcoes")) a_opcoes = v;
+		else if (!strcmp(k, "--opcoes-jogo")) a_opcoes_jogo = v;
 		else if (!strcmp(k, "--fonte")) a_fonte = v;
 		else if (!strcmp(k, "--conv")) sscanf(v, "%d,%d,%lf,%lf", &conv_x, &conv_y, &conv_w, &conv_h);
 	}
@@ -4990,7 +5054,8 @@ int main(int argc, char **argv)
 				LOG("ritmo: %.1f quadros/s; cd: %ld blocos, media %.0f ms, max %.0f ms, metodo %d, adiante %ld/%ld usados, musica guardada %ld; som: buffer %d%%, vazio %ld; ressinc %ld",
 				    300 / (t - t_ult), cd_n_blocos, cd_n_blocos ? cd_t_total / cd_n_blocos * 1e3 : 0, cd_t_max * 1e3, cd_metodo,
 				    cd_n_acertos_pf, cd_n_adiante, cd_n_fixos_usados, r_cnt * 100 / RING, som_vazio, vs_ressinc);
-			LOG("picos: controles %.1f ms, nucleo %.1f ms, copia %.1f ms", pico_ctrl * 1e3, pico_run * 1e3, pico_copia * 1e3);
+			LOG("picos: controles %.1f ms, nucleo %.1f ms, copia %.1f ms; %s", pico_ctrl * 1e3, pico_run * 1e3,
+			    pico_copia * 1e3, calor_txt());
 			pico_ctrl = pico_run = pico_copia = 0;
 			t_ult = t;
 			cd_t_max = 0;
