@@ -438,6 +438,36 @@ class TelaCheia:
         except OSError:
             return False
 
+    # barra de progresso estilo YouTube (desenhada pelo mpv numa camada ASS 1920x1080)
+    def barra(self, pos, dur, pausado=False):
+        if not (dur and dur > 0):
+            return
+        pos = max(0.0, min(float(pos or 0), float(dur)))
+        x0, x1, y, h = 96, 1824, 990, 10
+        xp = x0 + int((x1 - x0) * pos / dur)
+
+        def ret(xa, xb, ya, yb, cor, alfa='00'):
+            return ('{\\an7\\pos(0,0)\\bord0\\shad0\\1c&H%s&\\1a&H%s&\\p1}m %d %d l %d %d l %d %d l %d %d{\\p0}'
+                    % (cor, alfa, xa, ya, xb, ya, xb, yb, xa, yb))
+
+        def hms(t):
+            t = int(t)
+            return '%d:%02d:%02d' % (t // 3600, t // 60 % 60, t % 60) if t >= 3600 else '%d:%02d' % (t // 60, t % 60)
+        ev = [
+            ret(0, 1920, 900, 1080, '000000', '80'),               # sombra embaixo (texto legivel)
+            ret(x0, x1, y, y + h, '808080', '40'),                 # trilho
+            ret(x0, xp, y, y + h, '0000FF'),                       # assistido (vermelho)
+            ('{\\an5\\pos(%d,%d)\\bord0\\shad0\\1c&H0000FF&\\p1}m 0 -14 b 8 -14 14 -8 14 0 b 14 8 8 14 0 14 '
+             'b -8 14 -14 8 -14 0 b -14 -8 -8 -14 0 -14{\\p0}' % (xp, y + h // 2)),   # bolinha
+            '{\\an1\\pos(%d,%d)\\fs46\\bord2\\shad0\\1c&HFFFFFF&\\3c&H000000&}%s%s / %s'
+            % (x0, y - 18, '|| ' if pausado else '', hms(pos), hms(dur)),
+        ]
+        self._comando({'name': 'osd-overlay', 'id': 7, 'format': 'ass-events', 'data': '\n'.join(ev),
+                       'res_x': 1920, 'res_y': 1080, 'z': 5})
+
+    def esconde_barra(self):
+        self._comando({'name': 'osd-overlay', 'id': 7, 'format': 'none', 'data': ''})
+
     def linha(self, txt):
         """comando em texto (como no input.conf): aceita prefixos como osd-msg-bar, que o
         formato JSON recusa"""

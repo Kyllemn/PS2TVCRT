@@ -2559,6 +2559,12 @@ class App:
             if pv.quadros and time.monotonic() - self.tv_previa_ini >= (3 if rapida else 5):
                 self.tv_tela_cheia(cedo=rapida)     # rapida: toma a tela uns 2 s depois, ja com imagem
                 return False
+        if self.tela == 'yt_cheia' and getattr(self, 'yt_barra_viva', False):
+            if time.monotonic() < getattr(self, 'yt_barra_ate', 0):
+                self.yt_barra(mostrar=False)      # segue o tempo enquanto aparece
+            else:
+                self.yt_tela.esconde_barra()
+                self.yt_barra_viva = False
         if self.tela == 'yt_cheia' and not self.yt_tela.rodando():
             err = self.yt_tela.erro()
             print('youtube: video terminou %s' % err[:200], flush=True)
@@ -3194,7 +3200,7 @@ class App:
                                  # do seek mostra "tempo / total (porcentagem)"
                                  '--osd-bar-h=4', '--osd-bar-w=90', '--osd-font-size=%d' % (40 if self.fb.tubo else 46),
                                  '--osd-border-size=3', '--osd-color=#FFFFFF', '--osd-border-color=#000000',
-                                 '--osd-on-seek=msg-bar',
+                                 '--osd-on-seek=no',
                                  '--script-opts=ytdl_hook-ytdl_path=' + youtube.ytdlp()])
 
     def yt_sai(self, aviso=None):
@@ -3205,21 +3211,29 @@ class App:
         if aviso:
             self.yt['msg'] = aviso
 
+    def yt_barra(self, mostrar=True):
+        """barra estilo YouTube por cima do video; some 5 s depois do ultimo botao"""
+        if mostrar:
+            self.yt_barra_ate = time.monotonic() + 5
+        tc = self.yt_tela
+        pos, dur = tc.consulta('time-pos'), tc.consulta('duration')
+        tc.barra(pos, dur, bool(tc.consulta('pause')))
+        self.yt_barra_viva = True
+
     def acao_yt_cheia(self, a):
         tc = self.yt_tela
-        tempo = 'show-text "${time-pos} / ${duration}  (${percent-pos}%)" 2500'
         if a in ('B', 'START'):
             self.yt_sai()
-        elif a == 'A':                      # pausa/continua mostrando a barra e o tempo
-            tc.linha('osd-msg-bar cycle pause')
-            tc.linha(tempo)
-        elif a == 'SELECT':                 # so mostra onde esta (barra + tempo/total)
-            tc.linha('show-progress')
-            tc.linha(tempo)
-        elif a in ('ESQ', 'DIR', 'L2', 'R2'):   # barra do video + "tempo / total (%)"
+        elif a == 'A':                      # pausa/continua
+            tc.linha('no-osd cycle pause')
+            self.yt_barra()
+        elif a == 'SELECT':                 # so mostra onde esta
+            self.yt_barra()
+        elif a in ('ESQ', 'DIR', 'L2', 'R2'):
             passo = {'ESQ': -10, 'DIR': 10, 'L2': -60, 'R2': 60}[a]
-            tc.linha('osd-msg-bar seek %d' % passo)
-            tc.linha(tempo)
+            tc.linha('no-osd seek %d' % passo)
+            time.sleep(0.05)                # o mpv atualiza a posicao
+            self.yt_barra()
         elif a in ('CIMA', 'BAIXO'):
             v = max(0, min(100, self.volume() + (5 if a == 'CIMA' else -5)))
             self.cfg['volume'] = str(v)
