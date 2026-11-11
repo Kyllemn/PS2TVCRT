@@ -307,7 +307,7 @@ def topo_direita(c, wifi, y0=3):
     hora = time.strftime('%H:%M')
     yy = y0 + (F.ch * (2 if F.ch <= 10 else 1) - F.ch) // 2
     c.rtext(W - 12, yy, hora, IVORY)
-    c.rtext(W - 12, yy + F.ch + 2, 'LTB', SLATE)    # iniciais do autor, fixas abaixo da hora
+    c.rtext(W - 12, yy + F.ch + 2, 'LTB', ORANGE)    # iniciais do autor, fixas abaixo da hora
     if wifi is False:        # tela sem wi-fi no topo
         return
     nome = (wifi or 'SEM WI-FI')[:14].upper()
