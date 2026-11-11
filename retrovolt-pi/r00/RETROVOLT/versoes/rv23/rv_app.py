@@ -3028,11 +3028,20 @@ class App:
         self.leitora.pausa.set()
         t0 = time.monotonic()
         try:
-            p = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+            p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             r = p.returncode
-            if r not in (0, 64, 65, 66):
-                for l in (p.stderr or '').strip().splitlines()[-5:]:
+            if r not in (0, 64, 65, 66) or time.monotonic() - t0 < 10:
+                # fechou logo: o motivo vai para o LOG (e o fim do log do proprio Kodi)
+                for l in (p.stdout or '').strip().splitlines()[-12:]:
                     print('kodi: %s' % l[:200], flush=True)
+                for k in ('/root/.kodi/temp/kodi.log', os.path.expanduser('~/.kodi/temp/kodi.log')):
+                    try:
+                        for l in open(k, errors='replace').read().splitlines()[-25:]:
+                            if 'ERROR' in l or 'FATAL' in l or 'error' in l:
+                                print('kodi.log: %s' % l[:200], flush=True)
+                        break
+                    except OSError:
+                        pass
         except OSError as ex:
             r = -1
             print('kodi: nao abriu:', ex, flush=True)
@@ -3042,7 +3051,7 @@ class App:
         self._pendentes()                  # teclas apertadas dentro do Kodi nao valem aqui
         self.tela = 'menu'
         self.aba = 'APPS'
-        if r not in (0, 64, 65, 66) and time.monotonic() - t0 < 10:
+        if time.monotonic() - t0 < 10:
             self.mostra_aviso('O KODI NAO ABRIU (CODIGO %s). VEJA O LOG.TXT' % r)
 
     # ---------------------------------------------------------- APPS > YOUTUBE
@@ -3198,19 +3207,19 @@ class App:
 
     def acao_yt_cheia(self, a):
         tc = self.yt_tela
+        tempo = 'show-text "${time-pos} / ${duration}  (${percent-pos}%)" 2500'
         if a in ('B', 'START'):
             self.yt_sai()
         elif a == 'A':                      # pausa/continua mostrando a barra e o tempo
-            tc._comando(['osd-msg-bar', 'cycle', 'pause'])
+            tc.linha('osd-msg-bar cycle pause')
+            tc.linha(tempo)
         elif a == 'SELECT':                 # so mostra onde esta (barra + tempo/total)
-            tc._comando(['show-progress'])
-            tc._comando(['show-text', '${time-pos} / ${duration}  (${percent-pos}%)', 3000])
-        elif a in ('ESQ', 'DIR'):           # osd-msg-bar: barra do video + "tempo / total"
-            tc._comando(['osd-msg-bar', 'seek', 10 if a == 'DIR' else -10])
-            tc._comando(['show-text', '${time-pos} / ${duration}  (${percent-pos}%)', 2500])
-        elif a in ('L2', 'R2'):
-            tc._comando(['osd-msg-bar', 'seek', 60 if a == 'R2' else -60])
-            tc._comando(['show-text', '${time-pos} / ${duration}  (${percent-pos}%)', 2500])
+            tc.linha('show-progress')
+            tc.linha(tempo)
+        elif a in ('ESQ', 'DIR', 'L2', 'R2'):   # barra do video + "tempo / total (%)"
+            passo = {'ESQ': -10, 'DIR': 10, 'L2': -60, 'R2': 60}[a]
+            tc.linha('osd-msg-bar seek %d' % passo)
+            tc.linha(tempo)
         elif a in ('CIMA', 'BAIXO'):
             v = max(0, min(100, self.volume() + (5 if a == 'CIMA' else -5)))
             self.cfg['volume'] = str(v)

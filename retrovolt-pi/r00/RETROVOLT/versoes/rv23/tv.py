@@ -438,6 +438,19 @@ class TelaCheia:
         except OSError:
             return False
 
+    def linha(self, txt):
+        """comando em texto (como no input.conf): aceita prefixos como osd-msg-bar, que o
+        formato JSON recusa"""
+        try:
+            s = socket.socket(socket.AF_UNIX)
+            s.settimeout(1)
+            s.connect(SOCK)
+            s.sendall((txt + '\n').encode())
+            s.close()
+            return True
+        except OSError:
+            return False
+
     def rodando(self):
         return self.proc is not None and self.proc.poll() is None
 
