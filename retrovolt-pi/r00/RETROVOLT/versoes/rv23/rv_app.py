@@ -113,6 +113,7 @@ CFG_PADRAO = [
     ('SOM', None, None),
     ('volume', '80', 'volume geral dos jogos, 0 a 100'),
     ('run_ahead', 'SIM', 'SNES, arcades, NES, Game Boy, GBA e Neo Geo Pocket: SIM = 1 quadro a menos de atraso no controle'),
+    ('som_ganho_gba', '160', 'GBA: volume extra em %, 100 = sem ganho (o som do GBA e baixo de fabrica)'),
     ('ds_duas_telas', 'SIM', 'Nintendo DS com 2 monitores ligados: SIM = tela de baixo no 2o HDMI; NAO = uma tela so'),
     ('leitora_cache_saturn', '512', 'Saturno: MB de memoria com o disco (lido pelo jogo e copiado em 2o plano)'),
     ('leitora_cache_dreamcast', '512', 'Dreamcast: MB de memoria com o disco (lido pelo jogo e copiado em 2o plano; menos picotes)'),
@@ -1394,6 +1395,9 @@ OPCOES_PADRAO = {
                               'melonds_show_cursor': 'timeout', 'melonds_render_mode': 'software',
                               'melonds_threaded_renderer': 'enabled', 'melonds_jit_enable': 'enabled',
                               'melonds_network_mode': 'disabled'},   # sem Wi-Fi do DS (libpcap)
+    # GBA (mGBA): filtro passa-baixa do proprio nucleo a 40% (~9,6 kHz; o padrao 60% abafa):
+    # tira o chiado agudo do som de 65 kHz sem perder clareza
+    'mgba_libretro.so': {'mgba_audio_low_pass_filter': 'enabled', 'mgba_audio_low_pass_range': '40'},
     'mednafen_saturn_libretro.so': {'beetle_saturn_sh2_interleave': '8', 'beetle_saturn_cpucache_emumode': 'auto',
                                     'beetle_saturn_jit_scu': 'enabled', 'beetle_saturn_jit_scsp': 'enabled',
                                     'beetle_saturn_midsync': 'disabled', 'beetle_saturn_deinterlacer': 'bob'},
@@ -2133,13 +2137,25 @@ class App:
         saves = os.path.join(self.base, 'saves', sistema)
         os.makedirs(saves, exist_ok=True)
         opt = os.path.join(self.base, 'config', 'nucleos', nucleo.replace('_libretro.so', '.opt'))
-        if nucleo in OPCOES_PADRAO and not os.path.exists(opt):
+        if nucleo in OPCOES_PADRAO:
+            # arquivo novo: todas as opcoes iniciais; arquivo que ja existe: so as que faltam
+            # (opcao nova de uma versao nova; o que a pessoa escolheu fica)
             try:
-                os.makedirs(os.path.dirname(opt), exist_ok=True)
-                with open(opt, 'w') as f:
-                    f.write('# RETROVOLT: opcoes iniciais deste nucleo (mude no jogo: START+SELECT > OPCOES DO NUCLEO)\n')
-                    for k, v in OPCOES_PADRAO[nucleo].items():
-                        f.write('%s = "%s"\n' % (k, v))
+                tem = set()
+                if os.path.exists(opt):
+                    for l in open(opt, errors='replace'):
+                        if '=' in l and not l.lstrip().startswith('#'):
+                            tem.add(l.split('=', 1)[0].strip())
+                faltam = [(k, v) for k, v in OPCOES_PADRAO[nucleo].items() if k not in tem]
+                if faltam:
+                    os.makedirs(os.path.dirname(opt), exist_ok=True)
+                    novo = not os.path.exists(opt)
+                    with open(opt, 'a') as f:
+                        if novo:
+                            f.write('# RETROVOLT: opcoes iniciais deste nucleo (mude no jogo: START+SELECT > OPCOES DO NUCLEO)\n')
+                        for k, v in faltam:
+                            f.write('%s = "%s"\n' % (k, v))
+                    print('jogo: opcoes iniciais em %s: %s' % (opt, ' '.join(k for k, _ in faltam)), flush=True)
             except OSError as ex:
                 print('jogo: nao gravou %s: %s' % (opt, ex), flush=True)
         cmd = [exe, '--nucleo', so, '--bios', bios_pasta_nucleo(self.base, sistema), '--saves', saves,
@@ -2169,6 +2185,8 @@ class App:
             cmd += ['--opcoes-jogo', os.path.join(self.base, 'config', 'nucleos', 'flycast', save + '.opt')]
         if sistema in RUN_AHEAD and self.cfg.get('run_ahead', 'SIM').upper() != 'NAO':
             cmd += ['--runahead', '1']        # 1 quadro a menos de atraso no controle
+        if sistema == 'gba':      # o som do GBA e baixo de fabrica: ganho (com limitador suave)
+            cmd += ['--som-ganho', str(num(self.cfg, 'som_ganho_gba', int, 50, 300))]
         if sistema == 'nds' and self.cfg.get('ds_duas_telas', 'SIM').upper() != 'NAO':
             cmd += ['--ds-duas-telas', '1']   # so liga se tiver 2 monitores ligados
         if sistema in FBNEO:      # opcoes por jogo (ex.: AES so num jogo)
@@ -3100,6 +3118,7 @@ class App:
                     self.tv_previa = None
                 self.tela = 'tv_cheia'
                 tc.liga_audio()                     # a previa soltou a saida de som
+                self.tv_som = (time.monotonic() + 0.4, 10)   # confere (e tenta de novo) por ~4 s
                 print('tv: tela cheia no ar (%.1f s depois de abrir)' % (time.monotonic() - pre), flush=True)
                 return False
             if not tc.rodando() or time.monotonic() - pre > 8:
@@ -3110,6 +3129,20 @@ class App:
                 self.tv_tela_cheia()
                 return True
             return False
+        som = getattr(self, 'tv_som', None)
+        if som and self.tela == 'tv_cheia' and time.monotonic() >= som[0]:
+            # o HDMI pode demorar um instante para ser solto pelo ffmpeg da previa: tenta de novo
+            tc = self.tv_cheia
+            if tc.liga_audio():
+                self.tv_som = None
+                print('tv: som no HDMI (%s)' % tc.consulta('current-ao'), flush=True)
+            elif som[1] <= 1:
+                self.tv_som = None
+                print('tv: som NAO abriu no HDMI (saida ocupada?)', flush=True)
+            else:
+                self.tv_som = (time.monotonic() + 0.4, som[1] - 1)
+        elif som and self.tela != 'tv_cheia':
+            self.tv_som = None
         pv = getattr(self, 'tv_previa', None)
         if pv and self.tela == 'menu':
             if pv.erro:

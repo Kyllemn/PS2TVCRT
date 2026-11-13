@@ -79,7 +79,8 @@ static int conv_menu_x, conv_menu_y; static double conv_menu_w = 1.0, conv_menu_
 static int volume = 100, volume_ini = -1;  /* 0..100 */
 static int cd_vel = 4;                     /* velocidade da leitora (x); 0 = maxima */
 static int32_t ganho = 32768;              /* Q15 */
-static void volume_aplica(void) { double g = volume / 100.0; ganho = (int32_t)lround(g * g * 32768); }
+static double ganho_extra = 1.0; /* --som-ganho (GBA): ver som_amostra */
+static void volume_aplica(void) { double g = volume / 100.0; ganho = (int32_t)lround(g * g * 32768 * (ganho_extra > 0 ? ganho_extra : 1.0)); }
 static int conv_x, conv_y;
 static double conv_w = 1.0, conv_h = 1.0;
 
@@ -1517,9 +1518,21 @@ static void desenha_base(const void *data, unsigned w, unsigned h, size_t pitch,
 		lp = fb.h / gh;
 		if (lp < 1) lp = 1;
 		dh = gh * lp;
-		if (imagem == 1 && !sem_filtro) /* TELA CHEIA: usa a altura toda (linhas de 3 ou 4 pontos) */
+		/* DOT MATRIX: cada ponto do jogo vira um quadrado IGUAL de lp linhas x kx colunas. Com a
+		 * largura pelo aspecto, o Mega Drive (320x224 em 1440x900) ficava com 3,73 colunas por
+		 * ponto (uns com 3, outros com 4) e a TELA CHEIA com linhas de 4 e 5: quadradinhos
+		 * desalinhados (foto do autor). Fica a ampliacao inteira mais perto do aspecto. */
+		bool dot_int = efeitos && filtro == F_DOT && !sem_filtro && !alta && lp >= 2;
+		if (imagem == 1 && !sem_filtro && !dot_int) /* TELA CHEIA: usa a altura toda (linhas de 3 ou 4 pontos) */
 			dh = fb.h;
 		cw = (int)lround(dh * (aspecto > 0 ? aspecto : 4.0 / 3.0));
+		if (dot_int) {
+			int kx = (int)lround((double)cw / (w ? w : 1));
+			if (kx < 1) kx = 1;
+			while (kx > 1 && kx * (int)w > fb.w)
+				kx--;
+			cw = kx * (int)w;
+		}
 		if (cw > fb.w) cw = fb.w;
 		x0 = (fb.w - cw) / 2;
 		y0 = (fb.h - dh) / 2;
@@ -3664,6 +3677,20 @@ static long som_vazio;
  * autor: "vazio 582" em 5 s). Agora: um silencio limpo de ~40 ms e depois som continuo. */
 #define ALVO 2560
 static bool som_pronto;   /* so na thread do som, com r_mx */
+static double rs_falta = -1, rs_acc[2]; /* filtro de caixa (nucleo acima de 48 kHz) */
+/* volume + ganho do sistema (--som-ganho: GBA e baixo de fabrica). Acima de 3/4 do maximo o
+ * som e comprimido suavemente (tanh) em vez de cortado: sem estalo de saturacao */
+static int som_amostra(int16_t x)
+{
+	int64_t v = ((int64_t)x * ganho) >> 15;
+	if (ganho_extra <= 1.0)
+		return (int)v;
+	const double joelho = 24576, folga = 32767 - 24576;
+	double a = v < 0 ? -(double)v : (double)v;
+	if (a > joelho)
+		a = joelho + folga * tanh((a - joelho) / folga);
+	return (int)(v < 0 ? -a : a);
+}
 static double rs_integ;   /* correcao lenta do ritmo (Hz do nucleo que nao bate com o que ele diz) */
 
 static void *som_thread(void *p)
@@ -3759,18 +3786,48 @@ static size_t audio_batch(const int16_t *d, size_t frames)
 	if (rs_integ > 0.01) rs_integ = 0.01;
 	if (rs_integ < -0.01) rs_integ = -0.01;
 	double passo = rs_passo_base * rs_esticar * (1.0 + erro * 0.005 + rs_integ);
+	/* nucleo com som acima de 48 kHz (mGBA: 65536 Hz): cada ponto de saida e a MEDIA do trecho
+	 * de entrada que ele cobre (filtro de caixa). Pegar um ponto so (linear) rebatia os agudos
+	 * acima de 24 kHz de volta como chiado (LOG do autor: GBA "xiado"). Abaixo de 48 kHz
+	 * (Gambatte 32768, 44100...) continua a interpolacao linear. */
+	bool media = rs_passo_base > 1.05;
 	for (size_t i = 0; i < frames; i++) {
-		int16_t l = (int16_t)((d[i * 2] * ganho) >> 15), r = (int16_t)((d[i * 2 + 1] * ganho) >> 15);
-		while (rs_pos <= 1.0) {
-			if (r_cnt < RING) {
-				ring[r_wr * 2] = rs_ant[0] + (l - rs_ant[0]) * rs_pos;
-				ring[r_wr * 2 + 1] = rs_ant[1] + (r - rs_ant[1]) * rs_pos;
-				r_wr = (r_wr + 1) % RING;
-				r_cnt++;
+		int l = som_amostra(d[i * 2]), r = som_amostra(d[i * 2 + 1]);
+		if (media) {
+			if (rs_falta <= 0) {
+				rs_falta = passo;
+				rs_acc[0] = rs_acc[1] = 0;
 			}
-			rs_pos += passo;
+			double resta = 1.0;
+			while (resta > 1e-12) {
+				double t = resta < rs_falta ? resta : rs_falta;
+				rs_acc[0] += l * t;
+				rs_acc[1] += r * t;
+				rs_falta -= t;
+				resta -= t;
+				if (rs_falta <= 1e-12) {
+					if (r_cnt < RING) {
+						ring[r_wr * 2] = (int16_t)lround(rs_acc[0] / passo);
+						ring[r_wr * 2 + 1] = (int16_t)lround(rs_acc[1] / passo);
+						r_wr = (r_wr + 1) % RING;
+						r_cnt++;
+					}
+					rs_acc[0] = rs_acc[1] = 0;
+					rs_falta += passo;
+				}
+			}
+		} else {
+			while (rs_pos <= 1.0) {
+				if (r_cnt < RING) {
+					ring[r_wr * 2] = rs_ant[0] + (l - rs_ant[0]) * rs_pos;
+					ring[r_wr * 2 + 1] = rs_ant[1] + (r - rs_ant[1]) * rs_pos;
+					r_wr = (r_wr + 1) % RING;
+					r_cnt++;
+				}
+				rs_pos += passo;
+			}
+			rs_pos -= 1.0;
 		}
-		rs_pos -= 1.0;
 		rs_ant[0] = l;
 		rs_ant[1] = r;
 	}
@@ -5666,6 +5723,10 @@ int main(int argc, char **argv)
 		else if (!strcmp(k, "--gpu")) gpu_quer_vulkan = !strcasecmp(v, "vulkan");
 		else if (!strcmp(k, "--runahead")) a_runahead = atoi(v) > 0;
 		else if (!strcmp(k, "--ds-duas-telas")) a_ds2 = atoi(v) > 0;
+		else if (!strcmp(k, "--som-ganho")) { /* % (GBA 160); 50 a 300 */
+			int g = atoi(v);
+			ganho_extra = (g < 50 ? 50 : g > 300 ? 300 : g) / 100.0;
+		}
 		else if (!strcmp(k, "--cd-cache")) { /* MB */
 			int64_t n = (int64_t)atoi(v) * 1024 * 1024 / (BLOCO * SETOR);
 			ncache = n < NCACHE ? NCACHE : n > 16384 ? 16384 : (int)n;

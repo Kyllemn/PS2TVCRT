@@ -299,6 +299,10 @@ class Previa(threading.Thread):
                 self.proc.wait(2)
             except subprocess.TimeoutExpired:
                 self.proc.kill()
+                try:
+                    self.proc.wait(2)     # so depois de sair de vez ele solta o HDMI
+                except subprocess.TimeoutExpired:
+                    pass
 
 
 # ------------------------------------------------------------------ tela cheia
@@ -313,8 +317,11 @@ class TelaCheia:
         self.com_mpv = bool(shutil.which('mpv'))
 
     def abre(self, url, nome='', msg='', sem_audio=False, extra=None):
-        """sem_audio: abre sem som (a previa ainda segura a saida de som, que so aceita um
-        programa por vez); liga_audio() quando a previa fechar"""
+        """sem_audio: a previa ainda segura a saida de som (o HDMI so aceita um programa por
+        vez). O mpv abre COM a faixa de som (decodificando no vazio) e liga_audio() troca para o
+        HDMI quando a previa fechar. Antes abria com --aid=no e ligava a faixa depois: num canal
+        ao vivo o mpv joga fora o som do que ja esta no buffer e o som so voltava quando o video
+        alcancava os pacotes novos (segundos a mais de 1 minuto; LOG/relato do autor)"""
         self.fecha()
         if self.com_mpv:
             try:
@@ -328,8 +335,9 @@ class TelaCheia:
                    '--demuxer-max-bytes=32MiB', '--force-media-title=' + (nome or url),
                    '--brightness=%d' % self.brilho]
             if 'youtube.com/' not in url:      # YouTube: o yt-dlp (ytdl_hook do mpv) cuida disso
-                # inicio rapido: le pouco do canal para descobrir o formato
-                cmd += ['--user-agent=' + http_de(url)[0], '--demuxer-lavf-analyzeduration=1']
+                # le 2 s do canal para achar video E som (com 1 s, canal cujo som chega depois
+                # abria sem faixa de som)
+                cmd += ['--user-agent=' + http_de(url)[0], '--demuxer-lavf-analyzeduration=2']
                 if http_de(url)[1]:
                     cmd += ['--referrer=' + http_de(url)[1]]
             if msg:      # aparece quando o canal comeca (o socket ainda nao existe aqui)
@@ -340,8 +348,10 @@ class TelaCheia:
                 cmd += ['--monitorpixelaspect=%.5f' % ((4.0 / 3.0) / (self.fb_w / float(self.fb_h)))]
             if self.audio_dev:
                 cmd += ['--audio-device=alsa/' + self.audio_dev]
-            if sem_audio:
-                cmd += ['--aid=no']
+            # som sempre em estereo 48 kHz (como a previa, -ac 2): canal com som 5.1 (AC3, comum
+            # na TV) pedia 6 canais ao HDMI, o monitor recusava e o canal ficava mudo para sempre.
+            # Saida de som ocupada (previa): segue no vazio e liga_audio() troca para o HDMI.
+            cmd += ['--audio-channels=stereo', '--audio-samplerate=48000', '--audio-fallback-to-null=yes']
             cmd += list(extra or [])
             cmd += [url]
         else:
@@ -380,8 +390,13 @@ class TelaCheia:
             self._comando(['show-text', 'VOLUME %d' % v, 1500])
 
     def liga_audio(self):
-        if self.com_mpv and self.rodando():
-            self._comando(['set_property', 'aid', 'auto'])
+        """reabre a saida de som do mpv (a previa soltou o HDMI); True se ja esta no HDMI"""
+        if not (self.com_mpv and self.rodando()):
+            return True
+        if self.consulta('current-ao') not in (None, 'null'):
+            return True
+        self._comando(['ao-reload'])
+        return False
 
     def muda_brilho(self, b):
         self.brilho = b

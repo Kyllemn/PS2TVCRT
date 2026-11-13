@@ -863,3 +863,24 @@ CPU; cpu ja vai a 2400 MHz no governador performance). Causas achadas e correcoe
   PLAYSTATION, NINTENDO. AUTO: o do ultimo controle apertado (fabricante 054c Sony, 057e
   Nintendo, 045e Microsoft; 8BitDo 2dc8 = Nintendo, letras B embaixo; nome tambem conta).
 - Falta (C, precisa #compilar): icones no menu do jogo (START+SELECT) do rv-jogo.
+
+## R25d (Python, ja vale) + R26 (rv-jogo, aguardando #compilar): som do GBA/GB/MD, DOT MATRIX, TV
+LOG do autor (ainda com o rv-jogo da R25): Game Boy (Pokemon) e Mega Drive (Sonic 3) caem para
+50-57 quadros/s e o som esvazia exatamente em cada "save: gravado" (fsync no pendrive na thread
+do jogo; o Pokemon usa a SRAM como rascunho dos sprites e grava a cada 5 s). Ja corrigido no
+R26 (save em thread). GBA: som de 65536 Hz reduzido para 48000 com interpolacao simples rebatia
+agudos como chiado; e o run-ahead com o som do quadro errado (R26).
+- R26 (rv-jogo): reducao de taxa por media (filtro de caixa) quando o nucleo passa de 48 kHz;
+  --som-ganho (GBA 160%, cfg som_ganho_gba) com limitador suave (tanh acima de 3/4); DOT MATRIX
+  com ampliacao inteira nos 2 eixos (MD 320x224 em 1440x900: 4x4 em vez de 3,73x4 / linhas 4-5
+  na TELA CHEIA) = quadradinhos iguais.
+- R25d (rv_app): mGBA com o passa-baixa do nucleo a 40% (~9,6 kHz); opcoes padrao novas entram
+  tambem em .opt que ja existe (so as chaves que faltam).
+- TV (tv.py): (1) canal com som 5.1 (AC3) pedia 6 canais ao HDMI e ficava mudo: mpv agora sempre
+  --audio-channels=stereo --audio-samplerate=48000 (a previa ja fazia -ac 2). (2) A tela cheia
+  abria com --aid=no e ligava a faixa depois: no ao vivo o mpv descarta o som do buffer e so
+  voltava quando o video alcancava os pacotes novos (segundos a 1 min). Agora abre com a faixa e
+  --audio-fallback-to-null (HDMI ocupado pela previa = som no vazio) e liga_audio() faz ao-reload
+  (confere current-ao e tenta de novo por ~4 s). analyzeduration 1 -> 2 s. Previa espera o
+  ffmpeg sair de vez depois do kill. Testado no PC (mpv 0.37): TS com AC3 5.1 -> estereo 48 kHz;
+  saida ocupada -> null; ao-reload -> alsa sem reiniciar o video.
