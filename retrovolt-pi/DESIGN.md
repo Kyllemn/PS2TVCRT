@@ -798,3 +798,27 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   quadro adiantado sem som, volta o estado. Desliga sozinho se o nucleo nao guardar estado e
   nunca liga em nucleo com GPU. Chave run_ahead=NAO no retrovolt.cfg desliga.
 - snes9x com -march=armv8.2-a+crc+simd -mtune=cortex-a76.
+
+## R25: DS, GBA, Game Boy, NES e Neo Geo Pocket
+- Nucleos: melonDS DS (nds), mGBA (gba), Gambatte (gb, gbc), Mesen (nes, .fds com disksys.rom),
+  Beetle NeoPop (ngp). Pastas roms/nds, gba, gbc, gb, nes, ngp. Cartuchos pequenos em .zip:
+  o rv_app tira o jogo do .zip para /run/retrovolt/rom (RAM) e apaga ao sair (DS nao: ate 512 MB).
+- BIOS opcionais: gba_bios.bin (bios/gba), gb_bios.bin/gbc_bios.bin, bios7.bin/bios9.bin (bios/nds;
+  sem elas o melonDS DS usa a FreeBIOS e o firmware embutido), disksys.rom (bios/nes, so .fds).
+- melonDS DS: so desenho por CPU (o OpenGL dele pede OpenGL de PC; o Pi 5 tem GLES; issue #262),
+  JIT aarch64, desenho em thread. Sem Wi-Fi (melonds_network_mode=disabled; libpcap falha no
+  Debian Trixie, issue #324). ENABLE_NETWORKING=OFF nao compila (falta Net.h).
+- DS com 1 monitor: layouts "top" e "bottom", R3 troca; toque: R2 + analogico direito.
+- DS com 2 monitores (--ds-duas-telas, cfg ds_duas_telas): rv-jogo acha o 2o conector ligado,
+  CRTC (o que ja o mostra ou um livre), modo preferido ate 1080 linhas a ~60 Hz; forca
+  layout top-bottom sem vao so na resposta ao nucleo (o .opt do jogador fica igual); a metade de
+  cima segue o caminho normal (aspecto 4:3), a de baixo vai para uma thread que amplia por
+  inteiro e troca a tela no vblank (PAGE_FLIP com evento no km.fd; o vsync usa outro fd). No fim
+  devolve o CRTC como estava. Teste no PC: RV_TESTE_DS2=LxA e RV_TESTE_DS2_ARQ=arq.ppm.
+- vsync: com 2 monitores o crtc 0 pode ser o outro; agora mede primeiro o CRTC do monitor do jogo.
+- rv-jogo: set_video_refresh/audio/input DEPOIS do retro_init (como o RetroArch). O Mesen cria o
+  console no init e caia (SIGSEGV) com a ordem antiga.
+- Testes no PC (x86, ROMs de teste livres, fora do git): Gambatte cpu_instrs passa com e sem
+  run-ahead (3600 quadros, estado salvo/volta a cada quadro); Mesen nestest; mGBA jsmolka arm
+  para no 522 (STM com a base na lista: caso raro, igual com e sem run-ahead); NeoPop abre;
+  melonDS DS com ROM minima feita em assembly: 1 tela (256x192) e 2 telas divididas certas.

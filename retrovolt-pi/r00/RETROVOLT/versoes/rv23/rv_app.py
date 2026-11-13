@@ -112,7 +112,8 @@ CFG_PADRAO = [
     ('video_altura', '1.000', 'altura da imagem (1.000 = todas as linhas; 0.950 = 95%)'),
     ('SOM', None, None),
     ('volume', '80', 'volume geral dos jogos, 0 a 100'),
-    ('run_ahead', 'SIM', 'Super Nintendo e arcades (FBNeo): SIM = 1 quadro a menos de atraso no controle'),
+    ('run_ahead', 'SIM', 'SNES, arcades, NES, Game Boy, GBA e Neo Geo Pocket: SIM = 1 quadro a menos de atraso no controle'),
+    ('ds_duas_telas', 'SIM', 'Nintendo DS com 2 monitores ligados: SIM = tela de baixo no 2o HDMI; NAO = uma tela so'),
     ('leitora_cache_saturn', '512', 'Saturno: MB de memoria com o disco (lido pelo jogo e copiado em 2o plano)'),
     ('leitora_cache_dreamcast', '512', 'Dreamcast: MB de memoria com o disco (lido pelo jogo e copiado em 2o plano; menos picotes)'),
     ('tubo_480i', 'SIM', 'tubo: jogo em 480i sai em 480i de verdade (SIM) ou sempre 240p (NAO)'),
@@ -916,10 +917,15 @@ SISTEMAS = {
     # Saturno: Beetle Saturn v1.32 (o mesmo do ReplayOS; desenho por CPU, JIT aarch64 nos DSPs)
     'saturn': ('SATURN', 'mednafen_saturn_libretro.so', True),
     '3do': ('3DO', None, True),
-    'atari2600': ('ATARI 2600', None, False), 'nes': ('NES', None, False),
+    'atari2600': ('ATARI 2600', None, False),
     'n64': ('NINTENDO 64', None, False),
-    'gb': ('GAME BOY', None, False), 'gbc': ('GAME BOY COLOR', None, False),
-    'gba': ('GAME BOY ADVANCE', None, False),
+    # portateis e NES: Mesen (NES/Famicom Disk System), Gambatte (GB/GBC), mGBA (GBA),
+    # Beetle NeoPop (Neo Geo Pocket/Color), melonDS DS (DS; 2 monitores = 2 telas)
+    'nes': ('NES', 'mesen_libretro.so', False),
+    'gb': ('GAME BOY', 'gambatte_libretro.so', False), 'gbc': ('GAME BOY COLOR', 'gambatte_libretro.so', False),
+    'gba': ('GAME BOY ADVANCE', 'mgba_libretro.so', False),
+    'ngp': ('NEO GEO POCKET', 'mednafen_ngp_libretro.so', False),
+    'nds': ('NINTENDO DS', 'melondsds_libretro.so', False),
     # FBNeo (FinalBurn Neo), jogos em .zip no romset do FBNeo: NEO GEO (MVS/AES) e ARCADE
     # (CPS1, CPS2, CPS3 e o resto do FBNeo). BIOS neogeo.zip em bios/neogeo (ou bios/arcade)
     'neogeo': ('NEO GEO', 'fbneo_libretro.so', False), 'arcade': ('ARCADE', 'fbneo_libretro.so', False),
@@ -940,7 +946,20 @@ EXT_JOGO = {
     'saturn': ('.cue', '.chd', '.iso', '.ccd', '.mds', '.m3u'),
     'arcade': ('.zip', '.7z'),
     'neogeo': ('.zip', '.7z'),
+    'nes': ('.nes', '.fds', '.unf', '.unif', '.zip'),
+    'gb': ('.gb', '.dmg', '.zip'),
+    'gbc': ('.gbc', '.gb', '.zip'),
+    'gba': ('.gba', '.zip'),
+    'ngp': ('.ngp', '.ngc', '.ngpc', '.npc', '.zip'),
+    'nds': ('.nds', '.dsi', '.ids'),
 }
+# cartuchos pequenos em .zip: o jogo de dentro vai para a memoria (/run) e abre de la
+# (os nucleos destes nao abrem .zip). DS fica de fora: jogo de ate 512 MB nao cabe na RAM.
+ZIP_EXTRAI = ('nes', 'gb', 'gbc', 'gba', 'ngp')
+ROM_RAM = '/run/retrovolt/rom'
+# run-ahead (1 quadro a menos de atraso; desliga com run_ahead = NAO). DS fica de fora: o
+# estado do DS e grande e o JIT recompila tudo a cada volta
+RUN_AHEAD = ('snes', 'arcade', 'neogeo', 'nes', 'gb', 'gbc', 'gba', 'ngp')
 # FBNeo: as duas listas usam a mesma BIOS (um jogo de Neo Geo pode estar em ARCADE)
 FBNEO = ('arcade', 'neogeo')
 # Saturno: o nucleo procura saturn_bios.bin, sega_101.bin (japonesa) ou mpr-17933.bin
@@ -952,7 +971,7 @@ APELIDO = {'pcenginecd': 'pcengine'}
 PASTAS_EXTRAS = {}
 # ordem do menu JOGOS (de cima para baixo); o que nao estiver aqui vem depois, se tiver jogos
 ORDEM_JOGOS = ['ps1', 'dreamcast', 'saturn', 'segacd', 'neogeocd', 'pcenginecd', 'pcengine', 'snes',
-               'megadrive', 'mastersystem', 'neogeo', 'arcade']
+               'megadrive', 'mastersystem', 'neogeo', 'arcade', 'nds', 'gba', 'gbc', 'gb', 'nes', 'ngp']
 EXT_CD = ('.cue', '.chd', '.ccd', '.m3u', '.iso', '.img', '.bin', '.pbp')
 # BIOS que o sistema precisa (sem ela o jogo nem abre): nome do arquivo em RETROVOLT/bios/
 BIOS_OBRIGATORIA = {'pcengine': 'syscard3.pce'}   # so para jogos de CD
@@ -974,6 +993,13 @@ OPCOES_PADRAO = {
                           'fbneo-hiscores': 'enabled', 'fbneo-memcard-mode': 'per-game',
                           'fbneo-neogeo-mode': 'DIPSWITCH', 'fbneo-frameskip-type': 'disabled',
                           'fbneo-force-60hz': 'disabled'},
+    # DS com 1 monitor: uma tela por vez em tela cheia, R3 troca (cima/baixo); toque pelo
+    # analogico direito segurando R2 (com 2 monitores o rv-jogo forca cima+baixo e divide)
+    'melondsds_libretro.so': {'melonds_number_of_screen_layouts': '2', 'melonds_screen_layout1': 'top',
+                              'melonds_screen_layout2': 'bottom', 'melonds_touch_mode': 'joystick',
+                              'melonds_show_cursor': 'timeout', 'melonds_render_mode': 'software',
+                              'melonds_threaded_renderer': 'enabled', 'melonds_jit_enable': 'enabled',
+                              'melonds_network_mode': 'disabled'},   # sem Wi-Fi do DS (libpcap)
     'mednafen_saturn_libretro.so': {'beetle_saturn_sh2_interleave': '8', 'beetle_saturn_cpucache_emumode': 'auto',
                                     'beetle_saturn_jit_scu': 'enabled', 'beetle_saturn_jit_scsp': 'enabled',
                                     'beetle_saturn_midsync': 'disabled', 'beetle_saturn_deinterlacer': 'bob'},
@@ -989,7 +1015,8 @@ BIOS_SEGACD = {'U': ('bios_CD_U.bin', 'AMERICANO'), 'E': ('bios_CD_E.bin', 'EURO
 BIOS_NOMES = ['bios_CD_U.bin', 'bios_CD_E.bin', 'bios_CD_J.bin', 'bios_MD.bin', 'bios_U.sms', 'bios_E.sms',
               'bios_J.sms', 'bios.gg', 'syscard3.pce', 'syscard2.pce', 'syscard1.pce', 'gexpress.pce',
               'scph1001.bin', 'scph5500.bin', 'scph5501.bin', 'scph5502.bin', 'scph7001.bin', 'scph101.bin',
-              'saturn_bios.bin', 'sega_101.bin', 'mpr-17933.bin']
+              'saturn_bios.bin', 'sega_101.bin', 'mpr-17933.bin', 'gba_bios.bin', 'gb_bios.bin',
+              'gbc_bios.bin', 'bios7.bin', 'bios9.bin', 'disksys.rom']
 PASTA_BIOS_ANTIGA = {'neogeocd': 'neocd'}       # a R19 criou bios/neocd
 
 
@@ -1125,10 +1152,39 @@ def base(onde='pendrive'):
     return b
 
 
+def extrai_zip(arq, sistema):
+    """jogo de dentro do .zip (cartucho pequeno) copiado para a memoria: caminho, ou None"""
+    import zipfile
+    exts = tuple(e for e in EXT_JOGO.get(sistema, ()) if e != '.zip')
+    try:
+        with zipfile.ZipFile(arq) as z:
+            membros = [m for m in z.infolist()
+                       if not m.is_dir() and os.path.splitext(m.filename)[1].lower() in exts]
+            if not membros:
+                print('jogo: %s sem %s dentro' % (arq, '/'.join(exts)), flush=True)
+                return None
+            m = max(membros, key=lambda m: m.file_size)   # varios: o maior
+            if m.file_size > 64 * 1048576:
+                print('jogo: %s grande demais para a memoria (%d MB)' % (m.filename, m.file_size >> 20), flush=True)
+                return None
+            shutil.rmtree(ROM_RAM, ignore_errors=True)
+            os.makedirs(ROM_RAM, exist_ok=True)
+            nome = os.path.basename(m.filename.replace('\\', '/')) or ('jogo' + exts[0])
+            destino = os.path.join(ROM_RAM, nome)
+            with z.open(m) as src, open(destino, 'wb') as dst:
+                shutil.copyfileobj(src, dst, 1048576)
+            return destino
+    except (OSError, RuntimeError, NotImplementedError, EOFError, ValueError, zipfile.BadZipFile) as ex:
+        print('jogo: nao abriu o zip %s: %s' % (arq, ex), flush=True)
+        shutil.rmtree(ROM_RAM, ignore_errors=True)
+        return None
+
+
 def nome_limpo(arq):
     import re
     n = os.path.splitext(os.path.basename(arq))[0]   # tira (USA), [!] etc., mas deixa (Disc 1)
-    if arq.lower().endswith(('.zip', '.7z')):
+    partes = arq.replace('\\', '/').lower().split('/')
+    if arq.lower().endswith(('.zip', '.7z')) and any(p in FBNEO for p in partes[:-1]):
         # arcade: "sf2ce" -> "STREET FIGHTER II': CHAMPION EDITION (WORLD 920513)" (a versao fica:
         # clones tem o mesmo nome e so a versao diferencia)
         d = fbneo_dados().get('nomes', {}).get(n.lower())
@@ -1688,16 +1744,24 @@ class App:
                                if self.cfg.get('video_filtro', 'NENHUM').upper() in self.FILTROS else 0),
                '--filtro-arq', os.path.join(self.base, 'config', 'nucleos', nucleo.replace('_libretro.so', '.filtro')),
                '--imagem-arq', os.path.join(self.base, 'config', 'nucleos', nucleo.replace('_libretro.so', '.imagem'))]
+        rom = arquivo
+        if not cd and sistema in ZIP_EXTRAI and arquivo.lower().endswith('.zip'):
+            rom = extrai_zip(arquivo, sistema)
+            if not rom:
+                self.mostra_aviso('O .ZIP NAO TEM JOGO DE %s' % NOME_SISTEMA.get(sistema, '?'))
+                return
         cmd += ['--cd', self.leitora.dev, '--cd-vel', self.cfg.get('leitora_velocidade', '4'),
-                '--cd-acorda', str(num(self.cfg, 'leitora_acordar', int, 2, 60))] if cd else ['--jogo', arquivo]
+                '--cd-acorda', str(num(self.cfg, 'leitora_acordar', int, 2, 60))] if cd else ['--jogo', rom]
         cmd += ['--tubo-480i', '0' if self.cfg.get('tubo_480i', 'SIM').upper() == 'NAO' else '1']
         if sistema == 'dreamcast':
             cmd += ['--gpu', 'gles' if self.cfg.get('dreamcast_gpu', 'VULKAN').upper() == 'GLES' else 'vulkan']
             # opcoes por jogo (ex.: Gunbird 2 em 1280x960 sem pontinhos, 3D em 640x480): o que
             # mudar no menu do jogo vale so para ele; o resto vem do flycast.opt
             cmd += ['--opcoes-jogo', os.path.join(self.base, 'config', 'nucleos', 'flycast', save + '.opt')]
-        if sistema in ('snes',) + FBNEO and self.cfg.get('run_ahead', 'SIM').upper() != 'NAO':
+        if sistema in RUN_AHEAD and self.cfg.get('run_ahead', 'SIM').upper() != 'NAO':
             cmd += ['--runahead', '1']        # 1 quadro a menos de atraso no controle
+        if sistema == 'nds' and self.cfg.get('ds_duas_telas', 'SIM').upper() != 'NAO':
+            cmd += ['--ds-duas-telas', '1']   # so liga se tiver 2 monitores ligados
         if sistema in FBNEO:      # opcoes por jogo (ex.: AES so num jogo)
             cmd += ['--opcoes-jogo', os.path.join(self.base, 'config', 'nucleos', 'fbneo', save + '.opt')]
         if sistema == 'saturn':   # opcoes por jogo, como no Dreamcast
@@ -1730,6 +1794,8 @@ class App:
             r = -1
             print('jogo: nao rodou:', ex, flush=True)
         self.leitora.pausa.clear()
+        if rom != arquivo:   # jogo tirado do .zip: sai da memoria
+            shutil.rmtree(ROM_RAM, ignore_errors=True)
         try:   # volume mudado no menu do jogo (START+SELECT)
             v = int(open('/run/retrovolt/volume').read())
             self.cfg['volume'] = str(max(0, min(100, v)))

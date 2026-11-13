@@ -81,4 +81,37 @@ git clone -q --depth 1 https://github.com/libretro/FBNeo "$T/fbneo"
        AR=aarch64-linux-gnu-ar -j"$(nproc)" >/dev/null )
 aarch64-linux-gnu-strip -o "$DEST/fbneo_libretro.so" "$T/fbneo/src/burner/libretro/fbneo_libretro.so"
 echo "fbneo $(cd "$T/fbneo" && git log -1 --format=%h)"
+# NES/Famicom Disk System: Mesen (preciso; disksys.rom opcional para .fds)
+F="-march=armv8.2-a+crc+simd -mtune=cortex-a76"
+git clone -q --depth 1 https://github.com/libretro/Mesen "$T/mesen"
+( cd "$T/mesen/Libretro" && make platform=unix CC="aarch64-linux-gnu-gcc $F" CXX="aarch64-linux-gnu-g++ $F" \
+       AR=aarch64-linux-gnu-ar -j"$(nproc)" >/dev/null )
+aarch64-linux-gnu-strip -o "$DEST/mesen_libretro.so" "$T/mesen/Libretro/mesen_libretro.so"
+echo "mesen $(cd "$T/mesen" && git log -1 --format=%h)"
+# Game Boy / Color: Gambatte
+git clone -q --depth 1 https://github.com/libretro/gambatte-libretro "$T/gamb"
+( cd "$T/gamb" && make -f Makefile.libretro platform=unix CC="aarch64-linux-gnu-gcc $F" CXX="aarch64-linux-gnu-g++ $F" \
+       AR=aarch64-linux-gnu-ar -j"$(nproc)" >/dev/null )
+aarch64-linux-gnu-strip -o "$DEST/gambatte_libretro.so" "$T/gamb/gambatte_libretro.so"
+echo "gambatte $(cd "$T/gamb" && git log -1 --format=%h)"
+# Neo Geo Pocket / Color: Beetle NeoPop
+git clone -q --depth 1 https://github.com/libretro/beetle-ngp-libretro "$T/ngp"
+( cd "$T/ngp" && make platform=unix CC="aarch64-linux-gnu-gcc $F" CXX="aarch64-linux-gnu-g++ $F" \
+       AR=aarch64-linux-gnu-ar -j"$(nproc)" >/dev/null )
+aarch64-linux-gnu-strip -o "$DEST/mednafen_ngp_libretro.so" "$T/ngp/mednafen_ngp_libretro.so"
+echo "beetle-ngp $(cd "$T/ngp" && git log -1 --format=%h)"
+# GBA: mGBA (CMake; so o nucleo libretro)
+git clone -q --depth 1 https://github.com/libretro/mgba "$T/mgba"
+( cd "$T/mgba" && cmake -B build -DCMAKE_TOOLCHAIN_FILE="$AQUI/aarch64.cmake" -DCMAKE_BUILD_TYPE=Release \
+       -DLIBMGBA_ONLY=ON -DBUILD_LIBRETRO=ON >/dev/null && cmake --build build --target mgba_libretro -j"$(nproc)" >/dev/null )
+aarch64-linux-gnu-strip -o "$DEST/mgba_libretro.so" "$T/mgba/build/mgba_libretro.so"
+echo "mgba $(cd "$T/mgba" && git log -1 --format=%h)"
+# DS: melonDS DS (CMake; baixa as dependencias). Desenho por CPU (OpenGL do Pi nao serve: ele
+# pede OpenGL de PC; issue #262 do melonDS DS), JIT aarch64. ENABLE_NETWORKING=OFF nao compila
+# (falta Net.h): fica com rede, desligada nas opcoes
+git clone -q --depth 1 https://github.com/JesseTG/melonds-ds "$T/mds"
+( cd "$T/mds" && cmake -B build -DCMAKE_TOOLCHAIN_FILE="$AQUI/aarch64.cmake" -DCMAKE_BUILD_TYPE=Release \
+       -DENABLE_OPENGL=OFF -DENABLE_JIT=ON -DBUILD_TESTING=OFF >/dev/null && cmake --build build -j"$(nproc)" >/dev/null )
+aarch64-linux-gnu-strip -o "$DEST/melondsds_libretro.so" "$T/mds/build/src/libretro/melondsds_libretro.so"
+echo "melonds-ds $(cd "$T/mds" && git log -1 --format=%h)"
 rm -rf "$T"

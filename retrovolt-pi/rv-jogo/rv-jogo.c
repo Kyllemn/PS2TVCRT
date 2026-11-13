@@ -28,6 +28,7 @@
 #include <linux/fb.h>
 #include <linux/input.h>
 #include <math.h>
+#include <poll.h>
 #include <pthread.h>
 #include <scsi/sg.h>
 #include <sched.h>
@@ -1312,6 +1313,7 @@ static void fb_abrir(void)
  * No Pi 5 o FBIO_WAITFORVSYNC do fbdev volta na hora (nao espera nada): por isso
  * cada metodo e medido e so vale se der um intervalo de tela de verdade (12-25 ms). */
 static int vs_tipo, vs_drm = -1;
+static int km_card = -1, km_crtc_idx = -1; /* cardN e posicao do CRTC do monitor do jogo (km_prepara) */
 static unsigned vs_crtc, vs_seq;
 static bool vs_medindo = true;
 static long vs_ressinc;
@@ -1395,7 +1397,15 @@ static double vs_escolhe(void)
 		if (fd < 0)
 			continue;
 		vs_drm = fd;
-		for (vs_crtc = 0; vs_crtc < 4; vs_crtc++) {
+		/* 1o o CRTC do monitor do jogo (com 2 monitores o crtc 0 pode ser o outro) */
+		int ordem[5], no = 0;
+		if (km_card == c && km_crtc_idx >= 0 && km_crtc_idx < 16)
+			ordem[no++] = km_crtc_idx;
+		for (int i = 0; i < 4; i++)
+			if (!no || i != ordem[0])
+				ordem[no++] = i;
+		for (int j = 0; j < no; j++) {
+			vs_crtc = ordem[j];
 			double t = vs_mede(1);
 			LOG("vsync: %s crtc %u: %.2f ms", p, vs_crtc, t * 1e3);
 			if (t > 0.012 && t < 0.025) {
@@ -1964,7 +1974,7 @@ static void km_prepara(void)
 		int fd = open(p, O_RDWR | O_CLOEXEC);
 		if (fd < 0)
 			continue;
-		uint32_t cons[16];
+		uint32_t cons[16], crs[16];
 		struct drm_mode_card_res r;
 		memset(&r, 0, sizeof r);
 		if (ioctl(fd, DRM_IOCTL_MODE_GETRESOURCES, &r) || !r.count_connectors) {
@@ -1972,9 +1982,12 @@ static void km_prepara(void)
 			continue;
 		}
 		int nc = r.count_connectors > 16 ? 16 : r.count_connectors;
+		int ncr = r.count_crtcs > 16 ? 16 : r.count_crtcs;
 		memset(&r, 0, sizeof r);
 		r.connector_id_ptr = (uintptr_t)cons;
 		r.count_connectors = nc;
+		r.crtc_id_ptr = (uintptr_t)crs;
+		r.count_crtcs = ncr;
 		if (ioctl(fd, DRM_IOCTL_MODE_GETRESOURCES, &r)) {
 			close(fd);
 			continue;
@@ -2002,6 +2015,10 @@ static void km_prepara(void)
 			km.fb_boot = cr.fb_id;
 			km.m_boot = cr.mode;
 			km.pode = true;
+			km_card = c;
+			for (int k = 0; k < ncr; k++)
+				if (crs[k] == ge.crtc_id)
+					km_crtc_idx = k;
 		}
 		if (!km.pode)
 			close(fd);
@@ -2118,9 +2135,390 @@ static void km_quadro(unsigned h)
 		km_modo(q);
 }
 
+/* ------------------------------------------------------------------ DS: 2o HDMI
+ * Pi 5 com 2 monitores (--ds-duas-telas 1): o melonDS DS desenha as 2 telas do DS uma em
+ * cima da outra (256x384, sem vao; opcoes forcadas em ds2_forca) e o rv-jogo divide: a de
+ * cima vai para o monitor do menu pelo caminho de sempre (tubo, efeitos, menu do jogo) e a
+ * de baixo (a de toque) para o outro HDMI, ampliada por inteiro, numa thread propria com
+ * 2 telas e troca no vblank (sem rasgo e sem atrasar o quadro do jogo). Com 1 monitor so,
+ * nada disso liga: vale o layout do .opt (uma tela por vez, R3 troca). */
+static int a_ds2;
+static struct {
+	bool ativo, flip_ok, dividiu;
+	uint32_t crtc, conn;
+	struct drm_mode_modeinfo m;
+	struct drm_mode_crtc antes;   /* como o CRTC estava: devolvido no fim */
+	KmBuf b[2];
+	int vez;                      /* tela que a thread desenha agora (a outra esta na tela) */
+	pthread_t th;
+	bool th_ok, sair;
+	pthread_mutex_t mx;
+	pthread_cond_t cv;
+	uint32_t *q, *priv, *linha;   /* tela de baixo copiada pelo jogo / copia da thread / linha ampliada */
+	int qw, qh, novo;
+	int lw, lh;                   /* tamanho da ultima tela desenhada (mudou = limpa as bordas) */
+	long quadros;
+} ds2 = {.mx = PTHREAD_MUTEX_INITIALIZER, .cv = PTHREAD_COND_INITIALIZER};
+
+/* opcoes do melonDS DS com 2 monitores: 1 layout so, cima/baixo, sem vao (o .opt do
+ * jogador nao e mexido: com 1 monitor volta o dele) */
+static const char *ds2_forca(const char *k)
+{
+	if (!ds2.ativo)
+		return NULL;
+	if (!strcmp(k, "melonds_number_of_screen_layouts")) return "1";
+	if (!strcmp(k, "melonds_screen_layout1")) return "top-bottom";
+	if (!strcmp(k, "melonds_screen_gap")) return "0";
+	return NULL;
+}
+
+static double ds2_hz(const struct drm_mode_modeinfo *m)
+{
+	return m->htotal && m->vtotal ? m->clock * 1000.0 / ((double)m->htotal * m->vtotal) : 0;
+}
+
+/* conector ligado (que nao e o do menu): modo e CRTC livre */
+static bool ds2_conector(uint32_t id, const uint32_t *crtcs, int ncrtc)
+{
+	struct drm_mode_get_connector gc;
+	memset(&gc, 0, sizeof gc);
+	gc.connector_id = id;
+	if (ioctl(km.fd, DRM_IOCTL_MODE_GETCONNECTOR, &gc) || gc.connection != 1 || !gc.count_modes ||
+	    !gc.count_encoders)
+		return false;
+	int nm = gc.count_modes, ne = gc.count_encoders;
+	struct drm_mode_modeinfo *ms = calloc(nm, sizeof *ms);
+	uint32_t *es = calloc(ne, sizeof *es);
+	bool ok = false;
+	if (!ms || !es)
+		goto fim;
+	uint32_t enc_atual = gc.encoder_id;
+	memset(&gc, 0, sizeof gc);
+	gc.connector_id = id;
+	gc.count_modes = nm;
+	gc.modes_ptr = (uintptr_t)ms;
+	gc.count_encoders = ne;
+	gc.encoders_ptr = (uintptr_t)es;
+	gc.count_props = 0; /* sem propriedades (ponteiro 0) */
+	if (ioctl(km.fd, DRM_IOCTL_MODE_GETCONNECTOR, &gc) || gc.count_modes > (unsigned)nm ||
+	    gc.count_encoders > (unsigned)ne || !gc.count_modes)
+		goto fim;
+	nm = gc.count_modes;
+	ne = gc.count_encoders;
+	/* modo: o preferido do monitor se for ate 1080 linhas a ~60 Hz; senao o maior assim;
+	 * senao o preferido mesmo. Nunca entrelacado. */
+	int pref = -1, melhor = -1;
+	for (int i = 0; i < nm; i++) {
+		if (ms[i].flags & DRM_MODE_FLAG_INTERLACE)
+			continue;
+		double hz = ds2_hz(&ms[i]);
+		bool bom = ms[i].vdisplay <= 1080 && ms[i].hdisplay <= 1920 && hz > 58.5 && hz < 61.5;
+		if ((ms[i].type & DRM_MODE_TYPE_PREFERRED) && pref < 0)
+			pref = i;
+		if (bom && (melhor < 0 || (int)ms[i].hdisplay * ms[i].vdisplay >
+		                          (int)ms[melhor].hdisplay * ms[melhor].vdisplay))
+			melhor = i;
+	}
+	int esc = -1;
+	if (pref >= 0 && ms[pref].vdisplay <= 1080 && ds2_hz(&ms[pref]) > 58.5 && ds2_hz(&ms[pref]) < 61.5)
+		esc = pref;
+	else if (melhor >= 0)
+		esc = melhor;
+	else if (pref >= 0)
+		esc = pref;
+	else
+		esc = 0;
+	if (ms[esc].flags & DRM_MODE_FLAG_INTERLACE)
+		goto fim;
+	/* CRTC: o que ja mostra esse monitor (console do boot), senao um livre */
+	uint32_t crtc = 0;
+	if (enc_atual) {
+		struct drm_mode_get_encoder ge;
+		memset(&ge, 0, sizeof ge);
+		ge.encoder_id = enc_atual;
+		if (!ioctl(km.fd, DRM_IOCTL_MODE_GETENCODER, &ge) && ge.crtc_id && ge.crtc_id != km.crtc)
+			crtc = ge.crtc_id;
+	}
+	for (int e = 0; e < ne && !crtc; e++) {
+		struct drm_mode_get_encoder ge;
+		memset(&ge, 0, sizeof ge);
+		ge.encoder_id = es[e];
+		if (ioctl(km.fd, DRM_IOCTL_MODE_GETENCODER, &ge))
+			continue;
+		for (int c = 0; c < ncrtc && c < 32 && !crtc; c++)
+			if ((ge.possible_crtcs >> c & 1) && crtcs[c] != km.crtc) {
+				struct drm_mode_crtc cr;
+				memset(&cr, 0, sizeof cr);
+				cr.crtc_id = crtcs[c];
+				if (!ioctl(km.fd, DRM_IOCTL_MODE_GETCRTC, &cr) && !cr.mode_valid)
+					crtc = crtcs[c]; /* livre */
+			}
+	}
+	if (!crtc)
+		goto fim;
+	ds2.crtc = crtc;
+	ds2.conn = id;
+	ds2.m = ms[esc];
+	ok = true;
+fim:
+	free(ms);
+	free(es);
+	return ok;
+}
+
+static void ds2_restaura(void)
+{
+	if (!ds2.ativo)
+		return;
+	struct drm_mode_crtc c;
+	memset(&c, 0, sizeof c);
+	c.crtc_id = ds2.crtc;
+	if (ds2.antes.mode_valid && ds2.antes.fb_id) { /* volta o que estava (console do boot) */
+		c.fb_id = ds2.antes.fb_id;
+		c.set_connectors_ptr = (uintptr_t)&ds2.conn;
+		c.count_connectors = 1;
+		c.mode = ds2.antes.mode;
+		c.mode_valid = 1;
+	} /* senao desliga o CRTC (estava desligado) */
+	ioctl(km.fd, DRM_IOCTL_MODE_SETCRTC, &c);
+	ds2.ativo = false;
+}
+
+/* espera o fim da troca de tela pedida (evento do DRM; so a thread do DS pede trocas no
+ * km.fd: o vsync do jogo usa outro fd) */
+static void ds2_espera_troca(void)
+{
+	for (int t = 0; t < 10; t++) {
+		struct pollfd p = {.fd = km.fd, .events = POLLIN};
+		if (poll(&p, 1, 50) <= 0)
+			return;
+		char buf[256];
+		ssize_t n = read(km.fd, buf, sizeof buf);
+		for (ssize_t o = 0; o + (ssize_t)sizeof(struct drm_event) <= n;) {
+			struct drm_event *e = (struct drm_event *)(buf + o);
+			if (e->type == DRM_EVENT_FLIP_COMPLETE)
+				return;
+			if (!e->length)
+				break;
+			o += e->length;
+		}
+	}
+}
+
+static void *ds2_thread(void *arg)
+{
+	(void)arg;
+	for (;;) {
+		pthread_mutex_lock(&ds2.mx);
+		while (!ds2.novo && !ds2.sair)
+			pthread_cond_wait(&ds2.cv, &ds2.mx);
+		if (ds2.sair) {
+			pthread_mutex_unlock(&ds2.mx);
+			break;
+		}
+		int w = ds2.qw, h = ds2.qh;
+		memcpy(ds2.priv, ds2.q, (size_t)w * h * 4);
+		ds2.novo = 0;
+		pthread_mutex_unlock(&ds2.mx);
+		int W = ds2.m.hdisplay, H = ds2.m.vdisplay;
+		int k = W / w < H / h ? W / w : H / h;
+		if (k < 1)
+			k = 1;
+		int cw = w * k > W ? W : w * k, ch = h * k > H ? H : h * k;
+		int x0 = (W - cw) / 2, y0 = (H - ch) / 2;
+		if (w != ds2.lw || h != ds2.lh) { /* tamanho novo: bordas pretas nas 2 telas */
+			memset(ds2.b[0].map, 0, ds2.b[0].tam);
+			memset(ds2.b[1].map, 0, ds2.b[1].tam);
+			ds2.lw = w;
+			ds2.lh = h;
+		}
+		KmBuf *b = &ds2.b[ds2.flip_ok ? ds2.vez : 0];
+		for (int y = 0; y < h && y * k < ch; y++) {
+			const uint32_t *s = ds2.priv + (size_t)y * w;
+			uint32_t *l = ds2.linha;
+			for (int x = 0; x < cw; x++)
+				l[x] = s[x / k];
+			for (int r = 0; r < k && y * k + r < ch; r++)
+				memcpy(b->map + (size_t)(y0 + y * k + r) * b->pitch + (size_t)x0 * 4, l, (size_t)cw * 4);
+		}
+		if (ds2.flip_ok) {
+			struct drm_mode_crtc_page_flip pf;
+			memset(&pf, 0, sizeof pf);
+			pf.crtc_id = ds2.crtc;
+			pf.fb_id = b->fb_id;
+			pf.flags = DRM_MODE_PAGE_FLIP_EVENT;
+			if (!ioctl(km.fd, DRM_IOCTL_MODE_PAGE_FLIP, &pf)) {
+				ds2_espera_troca(); /* a tela antiga saiu do ar: pode desenhar nela */
+				ds2.vez ^= 1;
+			} else {
+				LOG("ds: troca de tela no 2o monitor recusada (%s): desenha direto", strerror(errno));
+				ds2.flip_ok = false;
+				struct drm_mode_crtc c;
+				memset(&c, 0, sizeof c);
+				c.crtc_id = ds2.crtc;
+				c.fb_id = ds2.b[0].fb_id;
+				c.set_connectors_ptr = (uintptr_t)&ds2.conn;
+				c.count_connectors = 1;
+				c.mode = ds2.m;
+				c.mode_valid = 1;
+				ioctl(km.fd, DRM_IOCTL_MODE_SETCRTC, &c);
+			}
+		}
+		ds2.quadros++;
+	}
+	return NULL;
+}
+
+/* antes de abrir o jogo (as opcoes do layout sao lidas ao carregar) */
+static void ds2_prepara(void)
+{
+	if (!a_ds2)
+		return;
+	const char *teste = getenv("RV_TESTE_DS2"); /* teste no PC: 2o monitor de mentira (LxA) */
+	if (teste && sscanf(teste, "%hux%hu", &ds2.m.hdisplay, &ds2.m.vdisplay) == 2) {
+		for (int i = 0; i < 2; i++) {
+			ds2.b[i].pitch = ds2.m.hdisplay * 4;
+			ds2.b[i].h = ds2.m.vdisplay;
+			ds2.b[i].tam = (size_t)ds2.b[i].pitch * ds2.b[i].h;
+			ds2.b[i].map = calloc(1, ds2.b[i].tam);
+		}
+		ds2.q = malloc(256 * 4 * 4096);
+		ds2.priv = malloc(256 * 4 * 4096);
+		ds2.linha = malloc((size_t)ds2.m.hdisplay * 4);
+		ds2.ativo = true;
+		ds2.th_ok = pthread_create(&ds2.th, NULL, ds2_thread, NULL) == 0;
+		LOG("ds: TESTE: 2o monitor de mentira %dx%d", ds2.m.hdisplay, ds2.m.vdisplay);
+		return;
+	}
+	if (!km.ativo) {
+		LOG("ds: sem a saida de 32 bits do DRM: uma tela so");
+		return;
+	}
+	uint32_t cons[16], crtcs[16];
+	struct drm_mode_card_res r;
+	memset(&r, 0, sizeof r);
+	if (ioctl(km.fd, DRM_IOCTL_MODE_GETRESOURCES, &r))
+		return;
+	int nc = r.count_connectors > 16 ? 16 : r.count_connectors;
+	int ncr = r.count_crtcs > 16 ? 16 : r.count_crtcs;
+	memset(&r, 0, sizeof r);
+	r.connector_id_ptr = (uintptr_t)cons;
+	r.count_connectors = nc;
+	r.crtc_id_ptr = (uintptr_t)crtcs;
+	r.count_crtcs = ncr;
+	if (ioctl(km.fd, DRM_IOCTL_MODE_GETRESOURCES, &r))
+		return;
+	bool achou = false;
+	for (int i = 0; i < nc && !achou; i++)
+		if (cons[i] != km.conn)
+			achou = ds2_conector(cons[i], crtcs, ncr);
+	if (!achou) {
+		LOG("ds: 1 monitor so: uma tela do DS por vez (R3 troca)");
+		return;
+	}
+	memset(&ds2.antes, 0, sizeof ds2.antes);
+	ds2.antes.crtc_id = ds2.crtc;
+	ioctl(km.fd, DRM_IOCTL_MODE_GETCRTC, &ds2.antes);
+	if (!km_buf(&ds2.b[0], ds2.m.hdisplay, ds2.m.vdisplay)) {
+		LOG("ds: tela do 2o monitor recusada (%s): uma tela so", strerror(errno));
+		return;
+	}
+	ds2.flip_ok = km_buf(&ds2.b[1], ds2.m.hdisplay, ds2.m.vdisplay);
+	ds2.q = malloc(256 * 4 * 4096);       /* folga: ate 1024x1024 */
+	ds2.priv = malloc(256 * 4 * 4096);
+	ds2.linha = malloc((size_t)ds2.m.hdisplay * 4);
+	if (!ds2.q || !ds2.priv || !ds2.linha)
+		return;
+	ioctl(km.fd, DRM_IOCTL_SET_MASTER, 0);
+	struct drm_mode_crtc c;
+	memset(&c, 0, sizeof c);
+	c.crtc_id = ds2.crtc;
+	c.fb_id = ds2.b[0].fb_id;
+	c.set_connectors_ptr = (uintptr_t)&ds2.conn;
+	c.count_connectors = 1;
+	c.mode = ds2.m;
+	c.mode_valid = 1;
+	if (ioctl(km.fd, DRM_IOCTL_MODE_SETCRTC, &c)) {
+		LOG("ds: 2o monitor recusou o modo %s (%s): uma tela so", ds2.m.name, strerror(errno));
+		return;
+	}
+	ds2.ativo = true;
+	ds2.vez = 1; /* a 0 esta no ar */
+	ds2.th_ok = pthread_create(&ds2.th, NULL, ds2_thread, NULL) == 0;
+	if (!ds2.th_ok) {
+		ds2_restaura();
+		LOG("ds: thread do 2o monitor nao abriu: uma tela so");
+		return;
+	}
+	LOG("ds: 2 monitores: tela de cima no do menu, de baixo no outro (%s %.2f Hz%s)", ds2.m.name,
+	    ds2_hz(&ds2.m), ds2.flip_ok ? "" : ", sem troca no vblank");
+}
+
+/* quadro do jogo com as 2 telas (cima/baixo): manda a de baixo para a thread e devolve a
+ * altura da de cima (o resto do caminho desenha so ela) */
+static unsigned ds2_quadro(const void *data, unsigned w, unsigned h, size_t pitch, int fmt)
+{
+	ds2.dividiu = false;
+	if (!ds2.ativo || fmt != RETRO_PIXEL_FORMAT_XRGB8888 || h < 2 || h % 2 || w * 3 != h / 2 * 4 ||
+	    (size_t)w * (h / 2) > 256 * 4096)
+		return h;
+	unsigned hh = h / 2;
+	pthread_mutex_lock(&ds2.mx);
+	for (unsigned y = 0; y < hh; y++)
+		memcpy(ds2.q + (size_t)y * w, (const uint8_t *)data + (size_t)(hh + y) * pitch, (size_t)w * 4);
+	ds2.qw = w;
+	ds2.qh = hh;
+	ds2.novo = 1;
+	pthread_cond_signal(&ds2.cv);
+	pthread_mutex_unlock(&ds2.mx);
+	ds2.dividiu = true;
+	return hh;
+}
+
+/* aspecto da imagem do jogo no monitor principal (DS dividido: cada tela e 4:3) */
+static double aspecto_jogo(void)
+{
+	return ds2.dividiu ? 4.0 / 3.0 : av.geometry.aspect_ratio;
+}
+
+static void ds2_sai(void)
+{
+	if (!ds2.ativo)
+		return;
+	if (ds2.th_ok) {
+		pthread_mutex_lock(&ds2.mx);
+		ds2.sair = true;
+		pthread_cond_signal(&ds2.cv);
+		pthread_mutex_unlock(&ds2.mx);
+		pthread_join(ds2.th, NULL);
+		ds2.th_ok = false;
+	}
+	LOG("ds: 2o monitor: %ld quadros", ds2.quadros);
+	const char *arq = getenv("RV_TESTE_DS2_ARQ");
+	if (arq && ds2.b[0].map) { /* teste: grava o 2o monitor (PPM) */
+		FILE *f = fopen(arq, "wb");
+		if (f) {
+			fprintf(f, "P6\n%d %d\n255\n", ds2.m.hdisplay, ds2.m.vdisplay);
+			for (int y = 0; y < ds2.m.vdisplay; y++)
+				for (int x = 0; x < ds2.m.hdisplay; x++) {
+					uint32_t p = *(uint32_t *)(ds2.b[0].map + (size_t)y * ds2.b[0].pitch + x * 4);
+					uint8_t c[3] = {p >> 16, p >> 8, p};
+					fwrite(c, 1, 3, f);
+				}
+			fclose(f);
+		}
+	}
+	if (getenv("RV_TESTE_DS2")) {
+		ds2.ativo = false;
+		return;
+	}
+	ds2_restaura();
+}
+
 /* sinal fatal: devolve a tela do boot antes de morrer (nunca ficar sem imagem) */
 static void km_fatal(int s)
 {
+	ds2_restaura();
 	km_sai();
 	signal(s, SIG_DFL);
 	raise(s);
@@ -3204,6 +3602,7 @@ static void video_cb_real(const void *data, unsigned w, unsigned h, size_t pitch
 		pitch = (size_t)w * 4;
 		fmt = RETRO_PIXEL_FORMAT_XRGB8888;
 	}
+	h = ds2_quadro(data, w, h, pitch, fmt); /* DS com 2 monitores: a tela de baixo vai para o outro */
 	km_quadro(h); /* tubo: 480i quando o jogo e 480i */
 	size_t t = pitch * h;
 	if (t > ult_cap) {
@@ -3213,7 +3612,7 @@ static void video_cb_real(const void *data, unsigned w, unsigned h, size_t pitch
 	}
 	memcpy(ult_q, data, t);
 	ult_w = w; ult_h = h; ult_pitch = pitch; ult_fmt = fmt;
-	desenha(data, w, h, pitch, fmt, av.geometry.aspect_ratio);
+	desenha(data, w, h, pitch, fmt, aspecto_jogo());
 	if (w != osd_w || h != osd_h) {
 		osd_w = w;
 		osd_h = h;
@@ -3816,6 +4215,11 @@ static bool environment(unsigned cmd, void *data)
 	}
 	case RETRO_ENVIRONMENT_GET_VARIABLE: {
 		struct retro_variable *v = data;
+		const char *forcado = ds2_forca(v->key);
+		if (forcado) {
+			v->value = forcado;
+			return true;
+		}
 		for (int i = 0; i < nvars; i++)
 			if (!strcmp(vars[i].k, v->key)) {
 				v->value = vars[i].v;
@@ -4467,7 +4871,7 @@ static void fb_retangulo(int x, int y, int w, int h, int r, int g, int b)
 static void conv_desenha(void)
 {
 	if (ult_q)
-		desenha(ult_q, ult_w, ult_h, ult_pitch, ult_fmt, av.geometry.aspect_ratio);
+		desenha(ult_q, ult_w, ult_h, ult_pitch, ult_fmt, aspecto_jogo());
 	int sx = ult_cw / 320 > 0 ? ult_cw / 320 : 1, sy = ult_dh / 240 > 0 ? ult_dh / 240 : 1;
 	int x0 = ult_x0, y0 = ult_y0, w = ult_cw, h = ult_dh;
 	fb_retangulo(x0, y0, w, 2 * sy, 255, 140, 40);
@@ -5142,6 +5546,7 @@ int main(int argc, char **argv)
 		else if (!strcmp(k, "--saida-32")) saida32_ok = atoi(v) != 0;
 		else if (!strcmp(k, "--gpu")) gpu_quer_vulkan = !strcasecmp(v, "vulkan");
 		else if (!strcmp(k, "--runahead")) a_runahead = atoi(v) > 0;
+		else if (!strcmp(k, "--ds-duas-telas")) a_ds2 = atoi(v) > 0;
 		else if (!strcmp(k, "--cd-cache")) { /* MB */
 			int64_t n = (int64_t)atoi(v) * 1024 * 1024 / (BLOCO * SETOR);
 			ncache = n < NCACHE ? NCACHE : n > 16384 ? 16384 : (int)n;
@@ -5204,12 +5609,14 @@ int main(int argc, char **argv)
 	var_set("pcsx_rearmed_cd_readahead", "128", false); /* le o CD adiantado: menos espera */
 	opcoes_ler();
 	core.set_environment(environment);
+	core.init();
+	/* depois do retro_init, como o RetroArch: o Mesen cria o console no init e cai se a
+	 * imagem for entregue antes (o libretro so exige o set_environment antes do init) */
 	core.set_video_refresh(video_cb);
 	core.set_audio_sample(audio_sample);
 	core.set_audio_sample_batch(audio_batch);
 	core.set_input_poll(input_poll);
 	core.set_input_state(input_state);
-	core.init();
 
 	struct retro_system_info si = {0};
 	core.get_system_info(&si);
@@ -5234,6 +5641,7 @@ int main(int argc, char **argv)
 	fb_abrir();
 	km_prepara();
 	km_entra();
+	ds2_prepara();
 	menu_tamanho();
 	if (!core.load_game(&gi)) {
 		LOG("ERRO: o nucleo nao abriu o jogo");
@@ -5470,6 +5878,7 @@ int main(int argc, char **argv)
 		}
 		LOG("volume: %d", volume);
 	}
+	ds2_sai();
 	km_sai(); /* menu do RetroVolt: a tela do boot (240p no tubo) */
 	vk_fim();
 	gl_fim();
