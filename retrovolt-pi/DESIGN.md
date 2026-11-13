@@ -823,7 +823,7 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   para no 522 (STM com a base na lista: caso raro, igual com e sem run-ahead); NeoPop abre;
   melonDS DS com ROM minima feita em assembly: 1 tela (256x192) e 2 telas divididas certas.
 
-## R26 (CODIGO ESCRITO, aguardando #compilar): picote de som/imagem e lista de sistemas
+## R26 (COMPILADA em 2026-11-13): picote de som/imagem e lista de sistemas
 LOG do autor (LCD HP w1907 1440x900 59,887 Hz): nucleo usa 1-5 ms dos 16,7 ms (nao e falta de
 CPU; cpu ja vai a 2400 MHz no governador performance). Causas achadas e correcoes:
 - Run-ahead estava com o som do quadro REAL e o adiantado mudo. Nucleo que nao guarda no
@@ -884,3 +884,18 @@ agudos como chiado; e o run-ahead com o som do quadro errado (R26).
   (confere current-ao e tenta de novo por ~4 s). analyzeduration 1 -> 2 s. Previa espera o
   ffmpeg sair de vez depois do kill. Testado no PC (mpv 0.37): TS com AC3 5.1 -> estereo 48 kHz;
   saida ocupada -> null; ao-reload -> alsa sem reiniciar o video.
+
+## R26 compilada e testada no PC (2026-11-13)
+- build.sh sem nenhum aviso (-Wall -Wextra). Pacote RETROVOLT_R26.zip (24,4 MB): rv-jogo novo,
+  rv_app.py + tv.py (icones, TV, mGBA), os 7 nucleos da R25 (iguais) e os dados do FBNeo.
+- Run-ahead na ordem nova: Gambatte cpu_instrs "Passed all tests" com e sem run-ahead; Gambatte,
+  Mesen, mGBA e NeoPop com a mesma imagem com e sem run-ahead (3600 quadros).
+- Save em thread: jsmolka save/sram.gba (mGBA, run-ahead) gravou o .srm pela thread e fechou limpo.
+  LOG: "Loading savedata/RTC" 3 vezes e depois "(repetiu 1000 vezes)".
+- Som (programa de teste que inclui o rv-jogo.c, sem placa de som): GBA 65536 Hz seno 1 kHz sai
+  no nivel certo (RMS 0,353); ganho 160% -> 0,565; seno de 95% com ganho: pico 32732 (sem
+  estourar); seno de 30 kHz (vira chiado) cai de ~0,354 para 0,132; GB 32768 Hz linear ok.
+- DOT MATRIX desenhado de verdade (Mesen, LCD 1440x900): todos os pontos 3x3 (2 acesos + 1 escuro)
+  em ORIGINAL e TELA CHEIA. DS 2 monitores (RV_TESTE_DS2) igual a R25.
+- Nao testavel no PC: som real no HDMI (prioridade/enchimento/controle de ritmo), FBNeo com
+  contexto de savestate (sem ROM), troca de som da TV no HDMI do Pi (mpv testado com ALSA null).
