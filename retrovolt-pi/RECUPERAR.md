@@ -26,6 +26,8 @@ que eu (autor) venho fazendo com voce desde 28/10/2026. A sessao anterior caiu.
 - **#compilar**: so compila (build.sh, mknucleos.sh, gcc, cmake, qualquer build de nucleo ou do
   rv-jogo) quando o autor mandar "#compilar". Comando absoluto. Script Python nao e compilacao.
 - "nao faca nada" / "so me explique": so responder, sem mexer em arquivo.
+- Monitor LCD atual (1440x900) nao e definitivo: tudo de LCD vale e e testado tambem em 720p
+  (1280x720) e 1080p (1920x1080), alem do tubo CRT.
 - Arquivos de jogo e texto extraido de jogo NUNCA vao para o git. Nunca publicar logs.
 - Nao baixar BIOS. Nada de XDK vazado nem site pirata (inclusive listas de IPTV de agregador).
 - Python sempre com `python3 -B`.

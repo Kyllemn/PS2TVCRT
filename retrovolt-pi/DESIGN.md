@@ -6,6 +6,9 @@ HDMI > componente para TV de tubo). Detalhes tecnicos e fases ficam no plano.
 ## REGRA ABSOLUTA DO AUTOR
 - So compilar (rv-jogo, nucleos, qualquer build ou teste compilado) quando o autor
   mandar "#compilar". Nunca antes, em nenhuma hipotese.
+- O monitor LCD atual (HP w1907, 1440x900) NAO e definitivo: tudo que for feito para LCD tem
+  que funcionar e ser testado tambem em 1280x720 (720p) e 1920x1080 (1080p), alem do tubo
+  (CRT 240p/480i). Menu, efeitos, filtros, icones, DOT MATRIX, imagem do jogo.
 - Leitora: manter a leitura a cada 10 s sem uso (nao deixar a leitora dormir).
 
 ## Tema escolhido: "Editorial" (mockups em `mockup/rv_F*.png`)
