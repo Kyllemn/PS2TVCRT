@@ -118,6 +118,7 @@ CFG_PADRAO = [
     ('leitora_cache_dreamcast', '512', 'Dreamcast: MB de memoria com o disco (lido pelo jogo e copiado em 2o plano; menos picotes)'),
     ('tubo_480i', 'SIM', 'tubo: jogo em 480i sai em 480i de verdade (SIM) ou sempre 240p (NAO)'),
     ('dreamcast_gpu', 'VULKAN', 'Dreamcast: VULKAN (padrao) ou GLES (reserva, se o Vulkan der problema)'),
+    ('botoes_icones', 'AUTO', 'icones dos botoes no menu: AUTO (pelo controle), XBOX, PLAYSTATION ou NINTENDO (so o desenho)'),
     ('menu_efeito', 'NENHUM', 'so no LCD: efeito no menu principal: NENHUM, SCANLINES LEVE, SCANLINES FORTE, CRT ou DOT MATRIX'),
     ('tv_brilho', '0', 'RetroTV: brilho da imagem, -50 a 50 (LT/RT na tela cheia)'),
     ('tv_troca_rapida', 'SIM', 'RetroTV: SIM = tela cheia abre por tras da previa (sem tela preta); NAO = jeito antigo'),
@@ -289,6 +290,328 @@ class Canvas:
         self.text((W - len(s) * F.cw) // 2, y, s, c)
 
 
+# ---------------------------------------------------------------- icones dos botoes
+# So o DESENHO muda: a acao e a mesma (o botao de baixo do controle e o "A" do menu e aparece
+# como A verde no Xbox, X azul no PlayStation e B no Nintendo; o da direita como B, O e A...).
+# Formas vetoriais com borda suavizada (varias amostras por ponto). No LCD o icone e desenhado
+# nos pontos do monitor (3x mais detalhe, letras vetoriais); no tubo, no proprio menu, com a
+# letra na fonte do menu (mais nitida em 11 pontos).
+ICONES_ESC = None          # LCD: pontos do monitor por ponto do menu (App)
+ICONES_LAYOUT = 'xbox'     # xbox | playstation | nintendo (App, a cada desenho)
+_BT = ('A', 'B', 'X', 'Y', 'L1', 'R1', 'L2', 'R2', 'LB', 'RB', 'LT', 'RT', 'START', 'SELECT')
+_BT_APELIDO = {'LB': 'L1', 'RB': 'R1', 'LT': 'L2', 'RT': 'R2'}
+
+# letras em tracos (caixa de altura 1; largura, lista de linhas)
+_GLIFOS = {
+    'A': (0.84, [[(0, 1), (0.42, 0), (0.84, 1)], [(0.17, 0.66), (0.67, 0.66)]]),
+    'B': (0.72, [[(0, 0), (0, 1), (0.46, 1), (0.63, 0.95), (0.72, 0.82), (0.72, 0.68), (0.63, 0.55),
+                  (0.46, 0.49), (0, 0.49)],
+                 [(0, 0), (0.41, 0), (0.57, 0.05), (0.65, 0.16), (0.65, 0.3), (0.57, 0.43), (0.44, 0.49)]]),
+    'X': (0.82, [[(0, 0), (0.82, 1)], [(0.82, 0), (0, 1)]]),
+    'Y': (0.82, [[(0, 0), (0.41, 0.52), (0.82, 0)], [(0.41, 0.52), (0.41, 1)]]),
+    'L': (0.6, [[(0, 0), (0, 1), (0.6, 1)]]),
+    'R': (0.74, [[(0, 1), (0, 0), (0.43, 0), (0.6, 0.06), (0.69, 0.19), (0.69, 0.31), (0.6, 0.44),
+                  (0.43, 0.5), (0, 0.5)], [(0.38, 0.5), (0.74, 1)]]),
+    'T': (0.72, [[(0, 0), (0.72, 0)], [(0.36, 0), (0.36, 1)]]),
+    'Z': (0.72, [[(0, 0), (0.72, 0), (0, 1), (0.72, 1)]]),
+    '1': (0.52, [[(0.06, 0.22), (0.32, 0), (0.32, 1)], [(0.04, 1), (0.56, 1)]]),
+    '2': (0.68, [[(0.02, 0.24), (0.12, 0.07), (0.34, 0), (0.56, 0.07), (0.66, 0.23), (0.62, 0.42),
+                  (0.0, 1), (0.68, 1)]]),
+}
+
+_CINZA_ARO, _CINZA_FUNDO, _BRANCO = (128, 133, 150), (52, 56, 68), (240, 241, 245)
+
+
+def _poli(pts, w, cor, fechado=False):
+    if fechado:
+        pts = list(pts) + [pts[0]]
+    return [(cor, ('s', pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], w)) for i in range(len(pts) - 1)]
+
+
+def _rotulo_prims(txt, wu, cor, alt=0.44, sw=0.11):
+    """letras em tracos, centralizadas (unidades: altura do icone = 1)"""
+    esp = 0.3 * alt                     # espaco entre letras
+    larg = sum(_GLIFOS[ch][0] for ch in txt) * alt + esp * (len(txt) - 1)
+    x = (wu - larg) / 2.0
+    y0 = 0.5 - alt / 2.0
+    out = []
+    for ch in txt:
+        gw, linhas = _GLIFOS[ch]
+        for l in linhas:
+            out += _poli([(x + px * alt, y0 + py * alt) for px, py in l], sw, cor)
+        x += gw * alt + esp
+    return out
+
+
+def _pxr(x0, y0, x1, y1, alt, cor):
+    """retangulo alinhado aos pontos (icone pequeno do tubo: traco de 1 ponto nitido)"""
+    return (cor, ('rr', x0 / float(alt), y0 / float(alt), x1 / float(alt), y1 / float(alt), 0))
+
+
+def _miudo(lay, nome, wu, alt, prims):
+    """START/SELECT do Xbox e do PlayStation com 11 pontos: os tracos finos viram mancha;
+    aqui viram pontos inteiros (como pixel art)"""
+    base = prims[:2]                   # aro e fundo
+    w = int(round(wu * alt))
+    cx = w // 2
+    l3 = [int(round(alt * f)) for f in (.3, .5, .7)]
+    if nome == 'START':                # tres tracos
+        return base + [_pxr(cx - 2, y, cx + 3 - (w % 2 == 0), y + 1, alt, _BRANCO) for y in l3]
+    if lay == 'xbox':                  # VIEW: quadrado vazado atras e cheio na frente
+        out = base + [_pxr(cx - 3, l3[0], cx + 1, l3[0] + 1, alt, _BRANCO), _pxr(cx - 3, l3[0], cx - 2, l3[1] + 1, alt, _BRANCO),
+                      _pxr(cx - 1, l3[1] - 1, cx + 3, l3[2] + 1, alt, _BRANCO)]
+        return out
+    a = l3[0]                          # PlayStation SHARE: seta para cima
+    return base + [_pxr(cx, a, cx + 1, a + 1, alt, _BRANCO), _pxr(cx - 1, a + 1, cx + 2, a + 2, alt, _BRANCO),
+                   _pxr(cx - 2, a + 2, cx + 3, a + 3, alt, _BRANCO), _pxr(cx, a + 3, cx + 1, l3[2] + 1, alt, _BRANCO)]
+
+
+def _icone_def(lay, nome, alt=None):
+    """(largura em unidades, formas, rotulo, cor do rotulo); formas = [(cor, forma)]"""
+    face = {'A': 0, 'B': 1, 'X': 2, 'Y': 3}           # baixo, direita, esquerda, cima
+    if nome in face:
+        k = face[nome]
+        if lay == 'playstation':
+            prims = [(_CINZA_ARO, ('c', .5, .5, .5)), ((26, 28, 36), ('c', .5, .5, .43))]
+            if k == 0:      # X azul
+                prims += _poli([(.33, .33), (.67, .67)], .1, (120, 176, 242))
+                prims += _poli([(.67, .33), (.33, .67)], .1, (120, 176, 242))
+            elif k == 1:    # O vermelho
+                prims.append(((242, 98, 98), ('an', .5, .5, .19, .095)))
+            elif k == 2:    # quadrado rosa
+                prims += _poli([(.33, .33), (.67, .33), (.67, .67), (.33, .67)], .09, (228, 142, 218), True)
+            else:           # triangulo verde
+                prims += _poli([(.5, .29), (.71, .66), (.29, .66)], .09, (82, 216, 166), True)
+            return 1.0, prims, '', None
+        if lay == 'nintendo':
+            letra = 'BAYX'[k]
+            return 1.0, [(_CINZA_ARO, ('c', .5, .5, .5)), (_CINZA_FUNDO, ('c', .5, .5, .43))], letra, _BRANCO
+        cor = [(86, 176, 62), (218, 64, 52), (56, 124, 226), (236, 184, 32)][k]
+        aro = tuple(int(v * .62) for v in cor)
+        return 1.0, [(aro, ('c', .5, .5, .5)), (cor, ('c', .5, .5, .43))], 'ABXY'[k], \
+            ((60, 44, 0) if k == 3 else _BRANCO)
+    if nome in ('L1', 'R1', 'L2', 'R2'):
+        rot = {'xbox': {'L1': 'LB', 'R1': 'RB', 'L2': 'LT', 'R2': 'RT'},
+               'nintendo': {'L1': 'L', 'R1': 'R', 'L2': 'ZL', 'R2': 'ZR'}}.get(lay, {}).get(nome, nome)
+        wu = 0.7 + 0.44 * len(rot)
+        if nome in ('L1', 'R1'):     # botao de ombro: pilula
+            prims = [(_CINZA_ARO, ('rr', 0, .06, wu, .94, .44)), (_CINZA_FUNDO, ('rr', .07, .13, wu - .07, .87, .37))]
+        else:                        # gatilho: mais quadrado e mais alto
+            prims = [(_CINZA_ARO, ('rr', 0, 0, wu, 1, .26)), (_CINZA_FUNDO, ('rr', .07, .07, wu - .07, .93, .2))]
+        return wu, prims, rot, _BRANCO
+    # START / SELECT
+    if lay == 'playstation':
+        wu = 1.15
+        prims = [(_CINZA_ARO, ('rr', .02, .14, wu - .02, .86, .36)), (_CINZA_FUNDO, ('rr', .09, .21, wu - .09, .79, .29))]
+        if nome == 'START':          # OPTIONS: tres tracos
+            for yy in (.38, .5, .62):
+                prims += _poli([(.37, yy), (.78, yy)], .065, _BRANCO)
+        else:                        # SHARE/CREATE: seta para cima
+            prims += _poli([(.575, .68), (.575, .34)], .075, _BRANCO)
+            prims += _poli([(.43, .48), (.575, .33), (.72, .48)], .075, _BRANCO)
+        if alt and alt < 16:
+            prims = _miudo(lay, nome, wu, alt, prims)
+        return wu, prims, '', None
+    prims = [(_CINZA_ARO, ('c', .5, .5, .5)), (_CINZA_FUNDO, ('c', .5, .5, .43))]
+    if lay == 'nintendo':
+        prims += _poli([(.3, .5), (.7, .5)], .1, _BRANCO)
+        if nome == 'START':
+            prims += _poli([(.5, .3), (.5, .7)], .1, _BRANCO)
+    elif nome == 'START':            # Xbox MENU: tres tracos
+        for yy in (.37, .5, .63):
+            prims += _poli([(.32, yy), (.68, yy)], .07, _BRANCO)
+    else:                            # Xbox VIEW: dois quadrados
+        prims += _poli([(.31, .31), (.58, .31), (.58, .58), (.31, .58)], .06, _BRANCO, True)
+        prims.append((_BRANCO, ('rr', .42, .42, .7, .7, .04)))
+    if lay == 'xbox' and alt and alt < 16:
+        prims = _miudo(lay, nome, 1.0, alt, prims)
+    return 1.0, prims, '', None
+
+
+def _caixa_forma(f):
+    t = f[0]
+    if t == 'c':
+        return f[1] - f[3], f[2] - f[3], f[1] + f[3], f[2] + f[3]
+    if t == 'an':
+        r = f[3] + f[4] / 2
+        return f[1] - r, f[2] - r, f[1] + r, f[2] + r
+    if t == 'rr':
+        return f[1], f[2], f[3], f[4]
+    w = f[5] / 2
+    return min(f[1], f[3]) - w, min(f[2], f[4]) - w, max(f[1], f[3]) + w, max(f[2], f[4]) + w
+
+
+def _dentro(f, x, y):
+    t = f[0]
+    if t == 'c':
+        return (x - f[1]) ** 2 + (y - f[2]) ** 2 <= f[3] * f[3]
+    if t == 'an':
+        d2 = (x - f[1]) ** 2 + (y - f[2]) ** 2
+        return (f[3] - f[4] / 2) ** 2 <= d2 <= (f[3] + f[4] / 2) ** 2
+    if t == 'rr':
+        _, x0, y0, x1, y1, r = f
+        if x < x0 or x > x1 or y < y0 or y > y1:
+            return False
+        dx = max(x0 + r - x, 0, x - (x1 - r))
+        dy = max(y0 + r - y, 0, y - (y1 - r))
+        return dx * dx + dy * dy <= r * r
+    _, ax, ay, bx, by, w = f                 # traco com pontas redondas
+    vx, vy = bx - ax, by - ay
+    l2 = vx * vx + vy * vy
+    u = 0 if l2 == 0 else max(0.0, min(1.0, ((x - ax) * vx + (y - ay) * vy) / l2))
+    dx, dy = x - (ax + u * vx), y - (ay + u * vy)
+    return dx * dx + dy * dy <= w * w / 4
+
+
+_ICONES_CACHE = {}
+
+
+def icone_img(lay, nome, alt, com_rotulo):
+    """(largura, altura, [None | (r, g, b, a)]) em pontos; a de 0 a 1"""
+    chave = (lay, nome, alt, com_rotulo)
+    img = _ICONES_CACHE.get(chave)
+    if img is not None:
+        return img
+    wu, prims, rot, cor_rot = _icone_def(lay, nome, alt)
+    if com_rotulo and rot:
+        prims = prims + (_rotulo_prims(rot, wu, cor_rot) if len(rot) == 1 else
+                         _rotulo_prims(rot, wu, cor_rot, alt=0.38, sw=0.085))
+    if alt < 16:                       # tubo (11 pontos): tracos 1,5x mais grossos, senao somem
+        grosso = []
+        for cor, f in prims:
+            if f[0] == 's':
+                f = f[:5] + (f[5] * 1.5,)
+            elif f[0] == 'an':
+                f = f[:4] + (f[4] * 1.5,)
+            grosso.append((cor, f))
+        prims = grosso
+    w = max(1, int(round(wu * alt)))
+    n = 4 if alt < 24 else 3
+    offs = [(i + 0.5) / n for i in range(n)]
+    inv = 1.0 / alt
+    caixas = []
+    for cor, f in prims:
+        x0, y0, x1, y1 = _caixa_forma(f)
+        caixas.append((cor, f, x0 * alt - 1, y0 * alt - 1, x1 * alt + 1, y1 * alt + 1))
+    px = []
+    for py in range(alt):
+        for qx in range(w):
+            cand = [(cor, f) for cor, f, a, b, c2, d in caixas if a <= qx + 1 and c2 >= qx and b <= py + 1 and d >= py]
+            if not cand:
+                px.append(None)
+                continue
+            r = g = b = 0
+            hits = 0
+            for sy in offs:
+                uy = (py + sy) * inv
+                for sx in offs:
+                    ux = (qx + sx) * inv
+                    cor = None
+                    for c3, f in cand:
+                        if _dentro(f, ux, uy):
+                            cor = c3
+                    if cor:
+                        r += cor[0]
+                        g += cor[1]
+                        b += cor[2]
+                        hits += 1
+            px.append((r // hits, g // hits, b // hits, hits / float(n * n)) if hits else None)
+    img = (w, alt, px)
+    if len(_ICONES_CACHE) > 200:
+        _ICONES_CACHE.clear()
+    _ICONES_CACHE[chave] = img
+    return img
+
+
+def icone_largura(nome):
+    """largura do icone em pontos do menu"""
+    return max(1, int(round(_icone_def(ICONES_LAYOUT, nome)[0] * (F.ch + 3))))
+
+
+def icone(c, x, y, nome):
+    """desenha o icone do botao com o topo em y (altura F.ch+3); devolve a largura"""
+    alt = F.ch + 3
+    wl = icone_largura(nome)
+    if ICONES_ESC:                  # LCD: nos pontos do monitor, por cima do menu
+        c.extras.append((x, y, wl, alt, icone_img(ICONES_LAYOUT, nome, alt * ICONES_ESC, True), False, 'icone'))
+        return wl
+    w, h, px = icone_img(ICONES_LAYOUT, nome, alt, False)
+    for j in range(h):
+        yy = y + j
+        if not 0 <= yy < H:
+            continue
+        for i in range(w):
+            p = px[j * w + i]
+            xx = x + i
+            if p is None or not 0 <= xx < W:
+                continue
+            k = yy * W + xx
+            a = p[3]
+            if a >= 0.999:
+                c.px[k] = p[:3]
+            else:
+                o = c.px[k]
+                c.px[k] = (int(o[0] + (p[0] - o[0]) * a), int(o[1] + (p[1] - o[1]) * a), int(o[2] + (p[2] - o[2]) * a))
+    _, _, rot, cor_rot = _icone_def(ICONES_LAYOUT, nome)
+    if rot:                         # tubo: letra na fonte do menu (nitida)
+        c.text(x + (w - len(rot) * F.cw + 1) // 2, y + (alt - F.ch + 1) // 2, rot, cor_rot)
+    return w
+
+
+def _bt_partes(s, ini=0, so=None):
+    """texto -> [('t', texto) | ('b', botao)]; so as palavras a partir de ini viram icone"""
+    import re
+    partes = [('t', s[:ini])] if ini else []
+    for pal in re.split(r'( +)', s[ini:]):
+        if not pal:
+            continue
+        nucleo = pal[:-1] if pal.endswith(':') and len(pal) > 1 else pal
+        sep = '/' if '/' in nucleo else ('+' if '+' in nucleo else None)
+        pecas = nucleo.split(sep) if sep else [nucleo]
+        if pal.strip() and all(p in _BT and (so is None or p in so) for p in pecas):
+            for k, p in enumerate(pecas):
+                if k and sep == '+':
+                    partes.append(('t', '+'))
+                partes.append(('b', _BT_APELIDO.get(p, p)))
+        else:
+            partes.append(('t', pal))
+    return partes
+
+
+def bt_largura(s, ini=0, so=None):
+    larg, ant = 0, None
+    for k, v in _bt_partes(s, ini, so):
+        if k == 't':
+            larg += len(v) * F.cw
+        else:
+            larg += icone_largura(v) + (1 if ant == 'b' else 0)
+        ant = k
+    return larg
+
+
+def bt_text(c, x, y, s, cor, ini=0, so=None):
+    """texto com os botoes (A, B, L1/R1, START...) trocados pelos icones do controle"""
+    ant = None
+    for k, v in _bt_partes(s, ini, so):
+        if k == 't':
+            c.text(x, y, v, cor)
+            x += len(v) * F.cw
+        else:
+            if ant == 'b':
+                x += 1
+            x += icone(c, x, y - 2, v)
+        ant = k
+    return x
+
+
+def bt_rtext(c, x, y, s, cor, ini=0, so=None):
+    bt_text(c, x - bt_largura(s, ini, so), y, s, cor, ini, so)
+
+
+def bt_ctext(c, y, s, cor, ini=0, so=None):
+    bt_text(c, (W - bt_largura(s, ini, so)) // 2, y, s, cor, ini, so)
+
+
 RAIO = ['.....####', '....####.', '....###..', '...####..', '...###...', '..#######',
         '..######.', '.....###.', '....###..', '....##...', '...##....', '...#.....', '..#......']
 ICONE_WIFI = ['...#####...', '.##.....##.', '#...###...#', '..##...##..', '....###....', '.....#.....']
@@ -342,7 +665,7 @@ def moldura(c, titulo, rodape_d):
     c.rect(16, 30 + F.ch + 2, len(titulo) * F.cw, 2, ORANGE)
     c.rect(16, 30 + F.ch + 8, W - 32, 1, LINE)
     c.text(16, H - 12, VERSAO.upper(), SLATE)
-    c.rtext(W - 12, H - 12, rodape_d, SLATE)
+    bt_rtext(c, W - 12, H - 12, rodape_d, SLATE)
 
 
 def item(c, x, y, s, on, valor=None):
@@ -514,7 +837,10 @@ class FB:
             frame[off:off + len(row)] = row
         if not self.tubo:
             for e in canvas.extras:
-                self._imagem(frame, e, x0, y0 + topo * s, s)
+                if len(e) > 6:                   # icone de botao (com borda suave)
+                    self._icone(frame, e, x0, y0 + topo * s, s)
+                else:
+                    self._imagem(frame, e, x0, y0 + topo * s, s)
         # geometria desta tela (a previa da TV desenha direto na caixa, no lugar certo)
         if self.tubo:
             self.geo = (x0, y0, cw / float(W), ch / float(HT), topo)
@@ -528,6 +854,36 @@ class FB:
             Image.frombuffer('RGBX', (self.w, self.h), bytes(self.mem), 'raw', 'BGRX', self.stride, 1).convert('RGB').save(self.fake)
 
     _linhas_img = {}
+
+    def _icone(self, frame, e, x0, y0, s):
+        """icone (pontos do monitor, com transparencia) misturado com o que ja esta na tela"""
+        lx, ly, lw, lh, m = e[:5]
+        w, h, px = m
+        bpp = self.bpp // 8
+        ox = x0 + lx * s
+        oy = y0 + ly * s + (lh * s - h) // 2
+        for j in range(h):
+            yy = oy + j
+            if not 0 <= yy < self.h:
+                continue
+            base = yy * self.stride
+            for i in range(w):
+                p = px[j * w + i]
+                xx = ox + i
+                if p is None or not 0 <= xx < self.w:
+                    continue
+                off = base + xx * bpp
+                a = p[3]
+                if a < 0.999:
+                    if bpp == 2:
+                        v = frame[off] | frame[off + 1] << 8
+                        r0, g0, b0 = (v >> 11) * 255 // 31, (v >> 5 & 63) * 255 // 63, (v & 31) * 255 // 31
+                    else:
+                        b0, g0, r0 = frame[off], frame[off + 1], frame[off + 2]
+                    cor = (int(r0 + (p[0] - r0) * a), int(g0 + (p[1] - g0) * a), int(b0 + (p[2] - b0) * a))
+                else:
+                    cor = p[:3]
+                frame[off:off + bpp] = self.pixel(cor)
 
     def _imagem(self, frame, e, x0, y0, s):
         """imagem ja reduzida para o tamanho em pontos do monitor, centralizada na caixa
@@ -621,6 +977,8 @@ class Entrada(threading.Thread):
         self.shift = False
         self.caps = False
         self.layout = 'br'
+        self.layout_ctl = 'xbox'    # desenho dos icones: o do ultimo controle usado
+        self._lay_dev = {}
         try:
             for l in open('/etc/default/keyboard'):
                 if l.startswith('XKBLAYOUT='):
@@ -717,12 +1075,46 @@ class Entrada(threading.Thread):
                 self.devs[p] = d
                 print('entrada: %s (%s)' % (d.name, p), flush=True)
                 keys = caps.get(self.e.EV_KEY, [])
-                if self.ja_procurou and (self.e.BTN_SOUTH in keys or self.e.BTN_GAMEPAD in keys):
+                eh_pad = self.e.BTN_SOUTH in keys or self.e.BTN_GAMEPAD in keys
+                if eh_pad and not self._lay_dev.get('_primeiro'):
+                    self._lay_dev['_primeiro'] = p
+                    self.nota_controle(p, d)
+                if self.ja_procurou and eh_pad:
                     self.fila.put('_controle:' + d.name)
             except OSError:
                 pass
         self.nomes = [d.name for d in self.devs.values()]
         self.ja_procurou = True
+
+    @staticmethod
+    def layout_de(nome, vendor):
+        """desenho dos botoes pelo fabricante/nome do controle (so visual)"""
+        n = (nome or '').lower()
+        if vendor == 0x054c or any(k in n for k in ('playstation', 'dualsense', 'dualshock', 'ps3', 'ps4', 'ps5', 'sony')):
+            return 'playstation'
+        if vendor == 0x057e or any(k in n for k in ('nintendo', 'pro controller', 'joy-con', 'switch')):
+            return 'nintendo'
+        if 'xbox' in n or 'x-box' in n or vendor == 0x045e:
+            return 'xbox'
+        if vendor == 0x2dc8 or '8bitdo' in n:   # 8BitDo: letras no padrao Nintendo (B embaixo)
+            return 'nintendo'
+        return 'xbox'
+
+    def nota_controle(self, p, d):
+        """controle usado: se o desenho dos botoes for outro, o menu redesenha"""
+        lay = self._lay_dev.get(p)
+        if lay is None:
+            try:
+                keys = d.capabilities().get(self.e.EV_KEY, [])
+                eh_pad = self.e.BTN_SOUTH in keys or self.e.BTN_GAMEPAD in keys
+                lay = self.layout_de(d.name, d.info.vendor) if eh_pad else ''
+            except (OSError, AttributeError):
+                lay = ''
+            self._lay_dev[p] = lay
+        if lay and lay != self.layout_ctl:
+            self.layout_ctl = lay
+            print('controle: icones %s (%s)' % (lay, d.name), flush=True)
+            self.fila.put('_icones')
 
     def solta(self, nome):
         self.segurando.pop(nome, None)
@@ -770,6 +1162,7 @@ class Entrada(threading.Thread):
                 except OSError:
                     print('entrada removida: %s' % d.name, flush=True)
                     self.devs.pop(p, None)
+                    self._lay_dev.pop(p, None)   # outro controle pode vir no mesmo caminho
                     continue
                 for ev in evs:
                     if ev.type == e.EV_KEY:
@@ -784,6 +1177,7 @@ class Entrada(threading.Thread):
                         self.ultimo = '%s %s %s' % (d.name[:14], nm, ev.value)
                         if nome:
                             if ev.value == 1:
+                                self.nota_controle(p, d)
                                 self.aperta(nome)
                             elif ev.value == 0:
                                 self.solta(nome)
@@ -1559,13 +1953,13 @@ def cabecalho(c, aba, wifi, rodape_d):
     # legenda no centro da tela; se a dica da direita for comprida (TV), no centro do espaco
     # que sobra a esquerda dela
     leg = 'L1/R1 ABAS  START FUNDO'
-    lw = len(leg) * F.cw
-    lim = W - 12 - (len(rodape_d) + 2) * F.cw if rodape_d else W - 16
+    lw = bt_largura(leg)
+    lim = W - 12 - bt_largura(rodape_d) - 2 * F.cw if rodape_d else W - 16
     x = (W - lw) // 2
     if x + lw > lim:
         x = max(16, (16 + lim - lw) // 2)
-    c.text(x, H - 4 - F.ch, leg, SLATE)
-    c.rtext(W - 12, H - 4 - F.ch, rodape_d, SLATE)
+    bt_text(c, x, H - 4 - F.ch, leg, SLATE)
+    bt_rtext(c, W - 12, H - 4 - F.ch, rodape_d, SLATE)
 
 
 AZUL_CAIXA = (24, 44, 110)
@@ -1573,13 +1967,19 @@ AZUL_CAIXA = (24, 44, 110)
 
 def caixa(c, linhas, cores=None):
     """popup de confirmacao no meio da tela: fundo azul com contorno branco"""
-    w = max(len(l) for l in linhas) * F.cw + 24
+    # icones so na parte de botoes: depois do "?" ("REINICIAR? A SIM  B NAO") ou na linha que
+    # comeca com um botao ("B CANCELA"); o resto e texto (o "A" de "VOLTA A ..." fica letra)
+    inis = []
+    for l in linhas:
+        q = l.rfind('? ')
+        inis.append(q + 1 if q >= 0 else (0 if l.split(' ')[0] in _BT else len(l)))
+    w = max(bt_largura(l, i) for l, i in zip(linhas, inis)) + 24
     h = len(linhas) * (F.ch + 6) + 14
     x0, y0 = (W - w) // 2, (H - h) // 2
     c.rect(x0, y0, w, h, (255, 255, 255))
     c.rect(x0 + 1, y0 + 1, w - 2, h - 2, AZUL_CAIXA)
     for k, l in enumerate(linhas):
-        c.ctext(y0 + 8 + k * (F.ch + 6), l, (cores or [IVORY] * len(linhas))[k])
+        bt_ctext(c, y0 + 8 + k * (F.ch + 6), l, (cores or [IVORY] * len(linhas))[k], inis[k])
 
 
 def desenha_cd(c, cx, cy, r):
@@ -1613,7 +2013,7 @@ class App:
     def __init__(self):
         tempo('programa carregado')
         self.fb = FB()
-        global W, H
+        global W, H, ICONES_ESC
         self.esc = None
         if not self.fb.tubo:
             # LCD (qualquer um): amplia um numero inteiro de vezes (nitido) e a tela logica
@@ -1624,6 +2024,7 @@ class App:
             while esc > 1 and self.fb.w // esc < 320:
                 esc -= 1
             self.esc = esc
+            ICONES_ESC = esc if esc > 1 else None   # icones nos pontos do monitor
             H = self.fb.h // esc
             W = self.fb.w // esc
             print('tela: %dx%d, menu %dx%d ampliado %dx' % (self.fb.w, self.fb.h, W, H, esc), flush=True)
@@ -1872,7 +2273,18 @@ class App:
         print('fundo: %s %dx%d (%.1f s)' % (os.path.basename(qual) if qual else 'nenhum (cor lisa)', W, H_TELA,
                                            time.monotonic() - t0), flush=True)
 
+    ICONES = ['AUTO', 'XBOX', 'PLAYSTATION', 'NINTENDO']
+
+    def layout_icones(self):
+        """xbox | playstation | nintendo: o escolhido em OPCOES > VIDEO ou o do controle"""
+        v = self.cfg.get('botoes_icones', 'AUTO').upper()
+        if v in ('XBOX', 'PLAYSTATION', 'NINTENDO'):
+            return v.lower()
+        return getattr(self.ent, 'layout_ctl', 'xbox')
+
     def desenha(self):
+        global ICONES_LAYOUT
+        ICONES_LAYOUT = self.layout_icones()
         t = self.tela
         if t == 'conv':     # teste de convergencia: a tela inteira, sem descer e sem fundo
             global H
@@ -1947,7 +2359,7 @@ class App:
             n = max(0, int(self.teste_ate - time.monotonic() + 0.999))
             c.ctext(H // 2 - 30, 'RESOLUCAO NOVA: %dX%d' % (self.fb.w, self.fb.h), GREEN)
             c.ctext(H // 2 - 10, 'MANTER ESTA RESOLUCAO?', IVORY)
-            c.ctext(H // 2 + 10, 'A OU START: SIM   (VOLTA SOZINHA EM %d)' % n, ORANGE)
+            bt_ctext(c, H // 2 + 10, 'A OU START: SIM   (VOLTA SOZINHA EM %d)' % n, ORANGE)
         elif t == 'wifi':
             self.desenha_wifi(c)
         elif t == 'teclado':
@@ -1979,7 +2391,7 @@ class App:
             c.text(24, 150, 'CONTROLES:', SLATE)
             for k, nm in enumerate((self.ent.nomes or ['NENHUM'])[:3]):
                 c.text(24, 162 + k * (F.ch + 2), nm.upper()[:40], IVORY)
-            c.text(24, 206, 'SAIR: APERTE B 3 VEZES', SLATE)
+            bt_text(c, 24, 206, 'SAIR: APERTE B 3 VEZES', SLATE)
         elif t == 'info':
             moldura(c, 'INFO', 'B VOLTA')
             d = self.info
@@ -2037,10 +2449,10 @@ class App:
             c.text(x0 + 10, yy, nome[k:k + lim], IVORY)
             yy += F.ch + 3
         if tem:
-            c.text(x0 + 10, y0 + h - F.ch - 10, 'INICIAR?  A SIM   B NAO', IVORY)
+            bt_text(c, x0 + 10, y0 + h - F.ch - 10, 'INICIAR?  A SIM   B NAO', IVORY, 9)
         else:
             c.text(x0 + 10, y0 + h - 2 * F.ch - 14, 'NUCLEO AINDA NAO INSTALADO', RED)
-            c.text(x0 + 10, y0 + h - F.ch - 10, 'B VOLTA', SLATE)
+            bt_text(c, x0 + 10, y0 + h - F.ch - 10, 'B VOLTA', SLATE)
 
     def itens_wifi(self):
         out = [('acao', 'BUSCAR REDES', 0, False)]
@@ -2189,9 +2601,9 @@ class App:
             c.text(x, yy + 4, 'NUCLEO: %s' % (SISTEMAS[sis][1] or 'AINDA NAO').replace('_libretro.so', '').upper(), SLATE)
         if pode:
             yj = H - 52
-            c.text(x, yj, 'A JOGAR', IVORY)
-            c.rect(x, yj + F.ch + 2, 7 * F.cw, 1, ORANGE)
-            c.text(x + 8 * F.cw, yj, '->', ORANGE)
+            xf = bt_text(c, x, yj, 'A JOGAR', IVORY)
+            c.rect(x, yj + F.ch + 2, xf - x, 1, ORANGE)
+            c.text(xf + F.cw, yj, '->', ORANGE)
 
     def desenha_arte(self, c, arte, cx, cy, diam):
         """arte do disco num circulo, com o furo do meio; False se ainda nao ha imagem"""
@@ -2481,6 +2893,10 @@ class App:
             itens.append(('filtro', 'FILTRO', self.cfg.get('video_filtro', 'NENHUM').upper()))
             itens.append(('mefeito', 'EFEITO DO MENU', self.cfg.get('menu_efeito', 'NENHUM').upper()))
         itens.append(('gpu', 'GPU DREAMCAST', 'GLES' if self.cfg.get('dreamcast_gpu', 'VULKAN').upper() == 'GLES' else 'VULKAN'))
+        v = self.cfg.get('botoes_icones', 'AUTO').upper()
+        if v == 'AUTO':
+            v = 'AUTO (%s)' % getattr(self.ent, 'layout_ctl', 'xbox').upper()
+        itens.append(('icones', 'ICONES DOS BOTOES', v))
         return itens
 
     # ---------------------------------------------------------- RetroTV
@@ -2586,7 +3002,7 @@ class App:
         else:
             if ch.get('grupo'):
                 c.text(x0 + 6, y0c + 6, ch['grupo'].upper()[:bw // F.cw - 2], SLATE)
-            c.text(x0 + 6, y0c + bh // 2 - F.ch // 2, 'A: ASSISTIR', SLATE)
+            bt_text(c, x0 + 6, y0c + bh // 2 - F.ch // 2, 'A: ASSISTIR', SLATE)
         c.text(x0, y0c + bh + 6, ('%s %s' % (ch.get('num', ''), ch['nome'].upper())).strip()[:bw // F.cw], IVORY)
 
     def tv_brilho(self):
@@ -2852,10 +3268,10 @@ class App:
         x, y, w, h = self.conv
         c.ctext(140, 'X %+d  Y %+d' % (x, y), ORANGE)
         c.ctext(152, 'LARGURA %d%%  ALTURA %d%%' % (round(w * 100), round(h * 100)), ORANGE)
-        c.ctext(168, 'SETAS: POSICAO', SLATE)
-        c.ctext(178, 'LB/RB: LARGURA  LT/RT: ALTURA', SLATE)
-        c.ctext(188, 'SELECT: PADRAO', SLATE)
-        c.ctext(204, 'A: SALVAR   B: VOLTAR', IVORY)
+        c.ctext(166, 'SETAS: POSICAO', SLATE)
+        bt_ctext(c, 179, 'LB/RB: LARGURA  LT/RT: ALTURA', SLATE)    # icones: 2 pontos acima e abaixo
+        bt_ctext(c, 193, 'SELECT: PADRAO', SLATE)
+        bt_ctext(c, 207, 'A: SALVAR   B: VOLTAR', IVORY)
         if time.monotonic() < getattr(self, 'salvo', 0):
             c.ctext(86, 'SALVO!', GREEN)
 
@@ -2877,9 +3293,12 @@ class App:
         if self.itens_video()[min(getattr(self, 'video_sel', 0), len(self.itens_video()) - 1)][0] == 'gpu':
             ajuda = ['GPU DREAMCAST: VULKAN OU GLES.', 'VALE NO PROXIMO JOGO QUE ABRIR',
                      '(O JOGO COMECA DO ZERO COM A', 'GPU NOVA: SALVE ANTES DE SAIR).']
+        if self.itens_video()[min(getattr(self, 'video_sel', 0), len(self.itens_video()) - 1)][0] == 'icones':
+            ajuda = ['ICONES DOS BOTOES NO MENU.', 'SO O DESENHO MUDA: O BOTAO', 'CONTINUA O MESMO.',
+                     'AUTO: PELO CONTROLE EM USO.']
         passo = min(F.ch + 3, (H - 16 - (y + 4)) // len(ajuda))
         for n, l in enumerate(ajuda):
-            c.text(24, y + 4 + n * passo, l, SLATE)
+            bt_text(c, 24, y + 4 + n * passo, l, SLATE, so=('SELECT',))
         if self.confirma == 'VIDEO':
             caixa(c, ['REINICIAR AGORA? A SIM  B NAO'])
 
@@ -2913,6 +3332,8 @@ class App:
                 lst, ck = ['VULKAN', 'GLES'], 'dreamcast_gpu'
             elif k == 'mefeito':
                 lst, ck = list(self.fb.EFEITOS_MENU), 'menu_efeito'
+            elif k == 'icones':
+                lst, ck = self.ICONES, 'botoes_icones'
             else:
                 if not getattr(self, '_modos', None):
                     ms = video.modos_lcd()
@@ -3855,7 +4276,7 @@ class App:
                         if self.leitora.estado != 'ok':
                             self.pergunta_disco = None
                         mudou = True
-                    elif b in ('_wifi', '_img', '_tv'):
+                    elif b in ('_wifi', '_img', '_tv', '_icones'):
                         mudou = True
                     elif b.startswith('_controle:'):
                         self.mostra_aviso('CONTROLE CONECTADO: ' + b[10:].upper())

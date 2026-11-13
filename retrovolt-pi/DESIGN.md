@@ -844,3 +844,22 @@ CPU; cpu ja vai a 2400 MHz no governador performance). Causas achadas e correcoe
 - Menu JOGOS: lista de sistemas no meio da tela (horizontal e vertical), nomes mais juntos
   (F.ch+5), rola com o cursor e setas ^ v quando nao cabe; nunca encosta em "L1/R1 ABAS".
   (Python, testado no PC: 1440x900 e 1920x240 com 18 sistemas.)
+
+## R25c (so Python): icones dos botoes no menu
+- Pedido do autor: tudo que fala de botao no menu vira icone; SO O DESENHO muda (a acao e a
+  mesma). O botao de BAIXO e o "A" do menu e aparece como A verde (Xbox), X azul (PlayStation) ou
+  B (Nintendo); direita = B / O / A; esquerda = X / quadrado / Y; cima = Y / triangulo / X.
+  L1/R1 = LB/RB, L1/R1, L/R; L2/R2 = LT/RT, L2/R2, ZL/ZR; START = MENU / OPTIONS / +;
+  SELECT = VIEW / SHARE / -.
+- Motor vetorial em rv_app.py (_icone_def, icone_img): circulos, pilulas, tracos com borda
+  suave (4x4 ou 3x3 amostras por ponto), letras em tracos (_GLIFOS). LCD: desenhado nos pontos
+  do monitor (extras com 'icone', misturado com o fundo em 16 ou 32 bits no FB._icone). Tubo
+  (11 pontos): no proprio menu, tracos 1,5x, START/SELECT em pontos inteiros (_miudo) e a letra
+  na fonte do menu.
+- bt_text/bt_rtext/bt_ctext: troca so as palavras que sao botoes (A B X Y L1 R1 L2 R2 LB RB LT
+  RT START SELECT, com / e +). Caixa de confirmacao: so depois do "?" ou se a linha comeca com
+  botao; ajuda do VIDEO: so SELECT (o "A" de artigo nunca vira icone).
+- Qual desenho: OPCOES > VIDEO > ICONES DOS BOTOES (cfg botoes_icones): AUTO (padrao), XBOX,
+  PLAYSTATION, NINTENDO. AUTO: o do ultimo controle apertado (fabricante 054c Sony, 057e
+  Nintendo, 045e Microsoft; 8BitDo 2dc8 = Nintendo, letras B embaixo; nome tambem conta).
+- Falta (C, precisa #compilar): icones no menu do jogo (START+SELECT) do rv-jogo.
