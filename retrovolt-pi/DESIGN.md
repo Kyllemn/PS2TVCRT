@@ -899,3 +899,13 @@ agudos como chiado; e o run-ahead com o som do quadro errado (R26).
   em ORIGINAL e TELA CHEIA. DS 2 monitores (RV_TESTE_DS2) igual a R25.
 - Nao testavel no PC: som real no HDMI (prioridade/enchimento/controle de ritmo), FBNeo com
   contexto de savestate (sem ROM), troca de som da TV no HDMI do Pi (mpv testado com ALSA null).
+
+## R26b (so Python): volume unico e previa de 3 s
+- Medido no mpv 0.37 (seno): o --volume do mpv e AO CUBO; o volume= do ffmpeg e direto; o
+  rv-jogo e AO QUADRADO. No volume 25: previa 25% (-12 dB), jogos 6,25% (-24 dB), tela cheia
+  1,6% (-36 dB): a previa tocava 24 dB acima. Agora tudo na curva dos jogos: tv.ganho_volume()
+  (previa e ffmpeg sem mpv) e tv.volume_mpv() (= 100 * ganho^(1/3) para o mpv, tambem no
+  muda_volume). Conferido: mpv 39.7 = ffmpeg 0.0625 = jogos no 25. A tela cheia da TV fica
+  ~12 dB mais alta que antes (igual aos jogos).
+- Previa ~3 s: com troca rapida o mpv comeca por tras com 1 s de previa (leva ~2 s para abrir)
+  e toma a tela por volta dos 3 s; sem troca rapida, previa de 3 s. LOG: "previa de N s".

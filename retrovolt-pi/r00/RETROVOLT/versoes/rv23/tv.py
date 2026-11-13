@@ -238,6 +238,22 @@ def tem_programas():
     return {'ffmpeg': bool(shutil.which('ffmpeg')), 'mpv': bool(shutil.which('mpv'))}
 
 
+# ------------------------------------------------------------------ volume
+# Um volume so para jogos, previa e tela cheia: a curva dos jogos (rv-jogo: ganho = volume ao
+# quadrado). Antes cada programa usava a sua: o ffmpeg da previa direto (volume 25 = 25%, -12 dB)
+# e o mpv ao cubo (25 = 1,6%, -36 dB): a previa tocava 24 dB acima da tela cheia (relato do autor;
+# medido no mpv 0.37 com um seno).
+def ganho_volume(v):
+    """volume do sistema (0-100) -> ganho (0-1), igual aos jogos"""
+    v = max(0, min(100, v)) / 100.0
+    return v * v
+
+
+def volume_mpv(v):
+    """o --volume do mpv e ao cubo: este valor da o mesmo ganho dos jogos"""
+    return round(100 * ganho_volume(v) ** (1 / 3.0), 1)
+
+
 # ------------------------------------------------------------------ previa (ffmpeg -> caixa)
 class Previa(threading.Thread):
     """decodifica o canal em quadros w x h no formato do framebuffer e chama
@@ -270,7 +286,7 @@ class Previa(threading.Thread):
             cmd += ['-re']                      # video no pendrive: no ritmo real
         cmd += ['-i', self.url, '-map', '0:v:0', '-vf', vf, '-f', 'rawvideo', '-pix_fmt', fmt, 'pipe:1']
         if self.audio_dev:
-            cmd += ['-map', '0:a:0?', '-af', 'volume=%.2f' % (self.volume / 100.0), '-ac', '2',
+            cmd += ['-map', '0:a:0?', '-af', 'volume=%.4f' % ganho_volume(self.volume), '-ac', '2',
                     '-f', 'alsa', self.audio_dev]
         tam = self.w * self.h * (2 if self.bpp == 16 else 4)
         try:
@@ -330,7 +346,7 @@ class TelaCheia:
                 pass
             os.makedirs(os.path.dirname(SOCK), exist_ok=True)
             cmd = ['mpv', '--vo=drm', '--hwdec=auto-safe', '--fs', '--really-quiet', '--no-input-terminal',
-                   '--no-osc', '--input-ipc-server=' + SOCK, '--volume=%d' % self.volume,
+                   '--no-osc', '--input-ipc-server=' + SOCK, '--volume=%.1f' % volume_mpv(self.volume),
                    '--osd-level=1', '--osd-duration=3000', '--keep-open=no', '--cache=yes',
                    '--demuxer-max-bytes=32MiB', '--force-media-title=' + (nome or url),
                    '--brightness=%d' % self.brilho]
@@ -368,7 +384,8 @@ class TelaCheia:
             cmd += ['-i', url, '-map', '0:v:0', '-vf', vf,
                     '-pix_fmt', 'rgb565le' if self.bpp == 16 else 'bgra', '-f', 'fbdev', '/dev/fb0']
             if self.audio_dev:
-                cmd += ['-map', '0:a:0?', '-ac', '2', '-f', 'alsa', self.audio_dev]
+                cmd += ['-map', '0:a:0?', '-af', 'volume=%.4f' % ganho_volume(self.volume), '-ac', '2',
+                        '-f', 'alsa', self.audio_dev]
         self.proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
         return self.proc
 
@@ -386,7 +403,7 @@ class TelaCheia:
     def muda_volume(self, v):
         self.volume = v
         if self.com_mpv and self.rodando():
-            self._comando(['set_property', 'volume', v])
+            self._comando(['set_property', 'volume', volume_mpv(v)])
             self._comando(['show-text', 'VOLUME %d' % v, 1500])
 
     def liga_audio(self):

@@ -122,7 +122,7 @@ CFG_PADRAO = [
     ('botoes_icones', 'AUTO', 'icones dos botoes no menu: AUTO (pelo controle), XBOX, PLAYSTATION ou NINTENDO (so o desenho)'),
     ('menu_efeito', 'NENHUM', 'so no LCD: efeito no menu principal: NENHUM, SCANLINES LEVE, SCANLINES FORTE, CRT ou DOT MATRIX'),
     ('tv_brilho', '0', 'RetroTV: brilho da imagem, -50 a 50 (LT/RT na tela cheia)'),
-    ('tv_troca_rapida', 'SIM', 'RetroTV: SIM = tela cheia abre por tras da previa (sem tela preta); NAO = jeito antigo'),
+    ('tv_troca_rapida', 'SIM', 'RetroTV: SIM = previa de ~3 s e a tela cheia abre por tras dela (sem tela preta); NAO = previa de 3 s e depois a tela cheia'),
     ('LEITORA', None, None),
     ('leitora_velocidade', '4', 'velocidade da leitora nos jogos (0 = maxima; a leitora pode ter minimo proprio, ex.: 10x)'),
     ('leitora_acordar', '10', 'segundos sem leitura ate o RetroVolt acordar a leitora (2 a 60)'),
@@ -3119,7 +3119,8 @@ class App:
                 self.tela = 'tv_cheia'
                 tc.liga_audio()                     # a previa soltou a saida de som
                 self.tv_som = (time.monotonic() + 0.4, 10)   # confere (e tenta de novo) por ~4 s
-                print('tv: tela cheia no ar (%.1f s depois de abrir)' % (time.monotonic() - pre), flush=True)
+                print('tv: tela cheia no ar (%.1f s depois de abrir; previa de %.1f s)'
+                      % (time.monotonic() - pre, time.monotonic() - getattr(self, 'tv_previa_ini', pre)), flush=True)
                 return False
             if not tc.rodando() or time.monotonic() - pre > 8:
                 # nao abriu junto com a previa (servidor que so aceita 1 conexao?): do jeito antigo
@@ -3149,9 +3150,11 @@ class App:
                 print('tv: canal fora do ar: %s' % pv.erro[:200], flush=True)
                 self.tv_previa = None
                 return True
+            # previa de ~3 s (pedido do autor): o mpv leva ~2 s para abrir, entao comeca por tras
+            # da previa com 1 s (o canal ja deu imagem) e toma a tela por volta dos 3 s
             rapida = self.cfg.get('tv_troca_rapida', 'SIM').upper() != 'NAO'
-            if pv.quadros and time.monotonic() - self.tv_previa_ini >= (3 if rapida else 5):
-                self.tv_tela_cheia(cedo=rapida)     # rapida: toma a tela uns 2 s depois, ja com imagem
+            if pv.quadros and time.monotonic() - self.tv_previa_ini >= (1.0 if rapida else 3):
+                self.tv_tela_cheia(cedo=rapida)
                 return False
         if self.tela == 'yt_cheia' and getattr(self, 'yt_barra_viva', False):
             if time.monotonic() < getattr(self, 'yt_barra_ate', 0):
