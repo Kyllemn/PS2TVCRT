@@ -1556,7 +1556,15 @@ def cabecalho(c, aba, wifi, rodape_d):
             c.rect(x, 30 + F.ch + 2, len(a) * F.cw, 2, ORANGE)
         x += (len(a) + 3) * F.cw
     c.rect(16, 30 + F.ch + 8, W - 32, 1, LINE)
-    c.text(16, H - 4 - F.ch, 'L1/R1 ABAS  START FUNDO', SLATE)
+    # legenda no centro da tela; se a dica da direita for comprida (TV), no centro do espaco
+    # que sobra a esquerda dela
+    leg = 'L1/R1 ABAS  START FUNDO'
+    lw = len(leg) * F.cw
+    lim = W - 12 - (len(rodape_d) + 2) * F.cw if rodape_d else W - 16
+    x = (W - lw) // 2
+    if x + lw > lim:
+        x = max(16, (16 + lim - lw) // 2)
+    c.text(x, H - 4 - F.ch, leg, SLATE)
     c.rtext(W - 12, H - 4 - F.ch, rodape_d, SLATE)
 
 
@@ -2260,26 +2268,21 @@ class App:
                 c.text(24, 64 + 2 * (F.ch + 6), 'RETROVOLT/ROMS/PS1/', IVORY)
                 return
             self.sel['SIS'] = min(self.sel['SIS'], len(sis) - 1)
-            # lista no meio da tela (horizontal e vertical) entre as abas e a legenda de baixo,
-            # nomes mais juntos; se nao couber (tubo 320x240 com muitos sistemas), rola com o
-            # cursor e mostra setas em cima/embaixo. Nunca encosta na legenda L1/R1.
-            passo = F.ch + 5
-            y_ini = 56
-            y_fim = H - 4 - F.ch - 8             # topo da legenda menos uma folga
-            cabem = max(1, (y_fim - y_ini + 5) // passo)
+            # lista como sempre foi (x 24, y 58, um nome a cada F.ch+9); se nao couber acima da
+            # legenda de baixo (muitos sistemas), rola com o cursor e mostra ^ v a esquerda
+            passo = F.ch + 9
+            y0 = 58
+            y_fim = H - 4 - F.ch - 6             # topo da legenda menos uma folga
+            cabem = max(1, (y_fim - y0 + 9) // passo)
             sel = self.sel['SIS']
             vis = min(len(sis), cabem)
             ini = max(0, min(sel - vis // 2, len(sis) - vis))
-            y0 = y_ini + (y_fim - y_ini - (vis * passo - 5)) // 2
-            larg = max(len(NOME_SISTEMA[s]) for s in sis) * F.cw
-            x0 = max(24, (W - larg - 3 * F.cw) // 2)   # 3 letras de folga para o '->'
             for n in range(ini, ini + vis):
-                item(c, x0, y0 + (n - ini) * passo, NOME_SISTEMA[sis[n]], n == sel)
-            xs = max(0, x0 - 20)                 # setas a esquerda da barra laranja
+                item(c, 24, y0 + (n - ini) * passo, NOME_SISTEMA[sis[n]], n == sel)
             if ini > 0:
-                c.text(xs, y0, '^', SLATE)
+                c.text(7, y0, '^', SLATE)
             if ini + vis < len(sis):
-                c.text(xs, y0 + (vis - 1) * passo, 'v', SLATE)
+                c.text(7, y0 + (vis - 1) * passo, 'v', SLATE)
             return
         itens = self.itens_pasta()
         bw = bh = max(96, min(H - 120, (W - 40) // 3))      # caixa da capa
