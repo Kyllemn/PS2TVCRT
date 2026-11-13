@@ -3964,6 +3964,7 @@ class App:
         self.leitora.pausa.set()
         self.tela = 'yt_cheia'
         self.yt_tela.volume = self.volume()
+        self.yt_pos = self.yt_dur = self.yt_alvo = self.yt_barra_chave = None
         print('youtube: tocando um video', flush=True)
         self.yt_tela.abre(youtube.url(vid), titulo,
                           '%s\nA: PAUSA   <- ->: 10 S   LT/RT: 1 MIN   SELECT: TEMPO   B: VOLTAR' % titulo,
@@ -3988,13 +3989,40 @@ class App:
         if aviso:
             self.yt['msg'] = aviso
 
-    def yt_barra(self, mostrar=True):
-        """barra estilo YouTube por cima do video; some 5 s depois do ultimo botao"""
+    def yt_barra(self, mostrar=True, alvo=None):
+        """barra estilo YouTube por cima do video; some 5 s depois do ultimo botao.
+        O mpv as vezes nao responde a tempo (logo depois de pular, ou ocupado decodificando):
+        antes a barra ia para 0:00 nessa hora e voltava no proximo desenho ("indo e voltando",
+        relato do autor). Agora fica a ultima posicao boa; depois de pular, mostra o destino ate
+        o mpv chegar la; e so redesenha quando o tempo mostrado muda."""
+        agora = time.monotonic()
         if mostrar:
-            self.yt_barra_ate = time.monotonic() + 5
+            self.yt_barra_ate = agora + 5
         tc = self.yt_tela
-        pos, dur = tc.consulta('time-pos'), tc.consulta('duration')
-        tc.barra(pos, dur, bool(tc.consulta('pause')))
+        pos, dur, pausa = tc.consulta('time-pos'), tc.consulta('duration'), tc.consulta('pause')
+        if dur:
+            self.yt_dur = dur
+        dur = getattr(self, 'yt_dur', None)
+        if pos is None:
+            pos = getattr(self, 'yt_pos', None)
+        if alvo is not None and dur:
+            self.yt_alvo = (max(0.0, min(float(alvo), float(dur))), agora + 3)
+        a = getattr(self, 'yt_alvo', None)
+        if a and agora < a[1]:
+            if pos is None or abs(float(pos) - a[0]) > 4:   # o mpv ainda nao chegou no destino
+                pos = a[0]
+            else:
+                self.yt_alvo = None
+        if pos is None or not dur:
+            return
+        self.yt_pos = pos
+        if pausa is None:
+            pausa = getattr(self, 'yt_pausa', False)
+        self.yt_pausa = bool(pausa)
+        chave = (int(pos), int(dur), self.yt_pausa)
+        if mostrar or chave != getattr(self, 'yt_barra_chave', None):
+            tc.barra(pos, dur, self.yt_pausa)
+            self.yt_barra_chave = chave
         self.yt_barra_viva = True
 
     def acao_yt_cheia(self, a):
@@ -4008,15 +4036,19 @@ class App:
             self.yt_barra()
         elif a in ('ESQ', 'DIR', 'L2', 'R2'):
             passo = {'ESQ': -10, 'DIR': 10, 'L2': -60, 'R2': 60}[a]
+            antes = tc.consulta('time-pos')
+            if antes is None:
+                antes = getattr(self, 'yt_pos', None)
+            a0 = getattr(self, 'yt_alvo', None)    # varios pulos seguidos: soma ao destino
+            if a0 and time.monotonic() < a0[1]:
+                antes = a0[0]
             tc.linha('no-osd seek %d' % passo)
-            time.sleep(0.05)                # o mpv atualiza a posicao
-            self.yt_barra()
+            self.yt_barra(alvo=(antes + passo) if antes is not None else None)
         elif a in ('CIMA', 'BAIXO'):
             v = max(0, min(100, self.volume() + (5 if a == 'CIMA' else -5)))
             self.cfg['volume'] = str(v)
             self.vol_sujo = time.monotonic()
-            tc._comando(['set_property', 'volume', v])
-            tc._comando(['show-text', 'VOLUME %d' % v, 1500])
+            tc.muda_volume(v)               # mesma curva dos jogos (tv.volume_mpv)
 
     # ---------------------------------------------------------- pastas de jogos
     def acao_pastas(self, a):

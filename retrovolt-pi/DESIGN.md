@@ -912,3 +912,14 @@ agudos como chiado; e o run-ahead com o som do quadro errado (R26).
   ~12 dB mais alta que antes (igual aos jogos).
 - Previa ~3 s: com troca rapida o mpv comeca por tras com 1 s de previa (leva ~2 s para abrir)
   e toma a tela por volta dos 3 s; sem troca rapida, previa de 3 s. LOG: "previa de N s".
+
+## R26c (so Python): barra do YouTube parada no lugar
+- Causa (relato: "pisca, vai e volta de frente pra tras do video"): a cada 0,25 s o menu
+  pergunta time-pos ao mpv; logo depois de pular (ou com o Pi ocupado) a resposta falha e o
+  codigo desenhava a barra em 0:00 (pos None -> 0), voltando no desenho seguinte. O vo_drm do
+  mpv 0.40 desenha o OSD em todo quadro novo (lido no codigo dele), entao nao era o mpv.
+- Agora: ultima posicao boa quando a resposta falha; depois de pular, mostra o destino (soma
+  pulos seguidos) ate o mpv chegar perto (4 s) ou 3 s; so redesenha quando o segundo, a
+  duracao ou a pausa mudam. Testado com mpv real (vo=null) e 25% das consultas falhando:
+  posicoes 11 -> 23 -> 35 -> 97 s, nunca voltou nem foi a 0:00.
+- Volume no YouTube (CIMA/BAIXO) passa pelo muda_volume (curva unica da R26b).
