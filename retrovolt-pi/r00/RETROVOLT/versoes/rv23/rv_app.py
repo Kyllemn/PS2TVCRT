@@ -2900,7 +2900,8 @@ class App:
 
     # ---------------------------------------------------------- video
     SAIDAS = ['AUTO', 'TUBO', 'LCD']
-    FILTROS = ['NENHUM', 'SCANLINES', 'SCANLINES LEVES', 'CRT', 'SUAVE', 'SCALE2X', 'SCALE3X', 'XBR', 'DOT MATRIX']
+    FILTROS = ['NENHUM', 'SCANLINES', 'SCANLINES LEVES', 'CRT', 'SUAVE', 'SCALE2X', 'SCALE3X', 'XBR', 'DOT MATRIX',
+               'DOT MATRIX PEQUENO']
 
     def itens_video(self):
         """(chave, nome, valor) dos itens de OPCOES > VIDEO"""

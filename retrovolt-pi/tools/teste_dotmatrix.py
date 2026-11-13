@@ -2,13 +2,16 @@
 """teste do DOT MATRIX: repete as contas de desenha_base (rv-jogo.c) e confere se todos os
 pontos do jogo viram blocos iguais. uso: python3 -B tools/teste_dotmatrix.py"""
 # repete as contas de desenha_base (rv-jogo.c) para o DOT MATRIX no LCD (nao compila nada)
-def geo(w, h, fw, fh, aspecto=4/3, novo=True, tela_cheia=False):
+def geo(w, h, fw, fh, aspecto=4/3, novo=True, tela_cheia=False, pequeno=False):
     alta = h > 300
     eh = h
     gh = eh // 2 if alta else eh
     lp = max(1, fh // gh)
     dh = gh * lp
     dot_int = novo and not alta and lp >= 2
+    if dot_int and pequeno and lp >= 3:      # DOT MATRIX PEQUENO: um degrau a menos
+        lp -= 1
+        dh = gh * lp
     if tela_cheia and not dot_int:
         dh = fh
     cw = round(dh * aspecto)          # lround
@@ -44,3 +47,17 @@ print('combinacoes:', len(monitores) * len(larguras) * 2, '| desalinhadas antes:
 for fw, fh in ((1440, 900), (1920, 1080), (1280, 720)):
     print(fw, fh, ' '.join('%dx224->%dx%d(%dx%d)' % (w, *geo(w, 224, fw, fh)[:2], list(geo(w, 224, fw, fh)[2])[0],
                                                      list(geo(w, 224, fw, fh)[3])[0]) for w in (256, 320, 384, 512)))
+
+# DOT MATRIX PEQUENO (filtro 9)
+ruins = 0
+for fw, fh in monitores:
+    for w in larguras:
+        for tc in (False, True):
+            cw, dh, la, al = geo(w, 224, fw, fh, tela_cheia=tc, pequeno=True)
+            if len(la) > 1 or len(al) > 1 or cw > fw or dh > fh:
+                ruins += 1
+                print('PEQUENO DESIGUAL', fw, fh, w, tc, la, al)
+print('PEQUENO: combinacoes:', len(monitores) * len(larguras) * 2, '| desalinhadas:', ruins)
+for fw, fh in ((1280, 720), (1440, 900), (1920, 1080)):
+    print('PEQUENO', fw, fh, ' '.join('%dx224->%dx%d(%dx%d)' % (w, *geo(w, 224, fw, fh, pequeno=True)[:2],
+          list(geo(w, 224, fw, fh, pequeno=True)[2])[0], list(geo(w, 224, fw, fh, pequeno=True)[3])[0]) for w in (256, 320, 384)))

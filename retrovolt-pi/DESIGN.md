@@ -923,3 +923,10 @@ agudos como chiado; e o run-ahead com o som do quadro errado (R26).
   duracao ou a pausa mudam. Testado com mpv real (vo=null) e 25% das consultas falhando:
   posicoes 11 -> 23 -> 35 -> 97 s, nunca voltou nem foi a 0:00.
 - Volume no YouTube (CIMA/BAIXO) passa pelo muda_volume (curva unica da R26b).
+
+## R27 (CODIGO ESCRITO, aguardando #compilar): DOT MATRIX PEQUENO
+- Pedido do autor (escolheu a opcao A do esboco; imagem menor e aceitavel): filtro 9 "DOT MATRIX
+  PEQUENO" = DOT MATRIX com a ampliacao um degrau menor (lp-1, minimo 2; com lp 2 fica igual ao
+  normal). rv-jogo: F_DOT2, N_FILTROS 10; rv_app: FILTROS + 'DOT MATRIX PEQUENO' (OPCOES >
+  VIDEO > FILTRO e menu do jogo). Simulado (tools/teste_dotmatrix.py): 168 combinacoes sem
+  desalinhar. 224 linhas: 720p 2x2 (640x448 no MD), 900p e 1080p 3x3 (960x672).

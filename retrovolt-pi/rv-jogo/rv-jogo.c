@@ -66,10 +66,11 @@ static const char *a_nucleo, *a_jogo, *a_cd, *a_bios = ".", *a_saves = ".", *a_n
 static const char *a_audio, *a_opcoes, *a_fonte = "6X10", *a_save, *a_states, *a_conv_arq;
 static int filtro; /* LCD: 0 nenhum, 1 scanlines, 2 scanlines leves, 3 CRT */
 static const char *FILTROS[] = {"NENHUM", "SCANLINES", "SCANLINES LEVES", "CRT", "SUAVE", "SCALE2X", "SCALE3X", "XBR",
-                                "DOT MATRIX"};
-#define N_FILTROS 9
+                                "DOT MATRIX", "DOT MATRIX PEQUENO"};
+#define N_FILTROS 10
 #define F_AMPLIA 4 /* 4 a 7: ampliadores (imagem intermediaria maior) */
 #define F_DOT 8    /* DOT MATRIX: efeito de linha/coluna como os de 1 a 3 (sem ampliador) */
+#define F_DOT2 9   /* DOT MATRIX PEQUENO: o mesmo com a ampliacao um degrau menor (imagem menor) */
 #define F_EH_AMPLIA(f) ((f) >= F_AMPLIA && (f) < F_DOT)
 static const char *a_filtro_arq;
 static bool sem_filtro; /* menu do jogo: nunca com filtro */
@@ -1522,7 +1523,13 @@ static void desenha_base(const void *data, unsigned w, unsigned h, size_t pitch,
 		 * largura pelo aspecto, o Mega Drive (320x224 em 1440x900) ficava com 3,73 colunas por
 		 * ponto (uns com 3, outros com 4) e a TELA CHEIA com linhas de 4 e 5: quadradinhos
 		 * desalinhados (foto do autor). Fica a ampliacao inteira mais perto do aspecto. */
-		bool dot_int = efeitos && filtro == F_DOT && !sem_filtro && !alta && lp >= 2;
+		bool dot_int = efeitos && (filtro == F_DOT || filtro == F_DOT2) && !sem_filtro && !alta && lp >= 2;
+		/* PEQUENO: um degrau a menos (quadradinho menor; a imagem fica menor, pedido do autor).
+		 * Minimo 2 linhas por ponto (com 2 o atual ja e o menor possivel) */
+		if (dot_int && filtro == F_DOT2 && lp >= 3) {
+			lp--;
+			dh = gh * lp;
+		}
 		if (imagem == 1 && !sem_filtro && !dot_int) /* TELA CHEIA: usa a altura toda (linhas de 3 ou 4 pontos) */
 			dh = fb.h;
 		cw = (int)lround(dh * (aspecto > 0 ? aspecto : 4.0 / 3.0));
@@ -1588,9 +1595,9 @@ static void desenha_base(const void *data, unsigned w, unsigned h, size_t pitch,
 			int ef = (efeitos && !tubo && lp >= 2 && !sem_filtro && !F_EH_AMPLIA(filtro)) ? filtro : 0;
 			/* DOT MATRIX: ultima linha E ultima coluna de cada ponto do jogo a 50% (a coluna
 			 * segue os pontos do jogo, entao fica certa mesmo com escala nao inteira) */
-			int linha_esc = (ef == 1 || ef == 3 || ef == F_DOT) && k == lpj - 1 ? 2 : (ef == 2 && k == lpj - 1) ? 1 : 0;
+			int linha_esc = (ef == 1 || ef == 3 || ef == F_DOT || ef == F_DOT2) && k == lpj - 1 ? 2 : (ef == 2 && k == lpj - 1) ? 1 : 0;
 			bool grade = ef == 3;
-			bool pontos = ef == F_DOT;
+			bool pontos = ef == F_DOT || ef == F_DOT2;
 			if (!linha_esc && !grade && !pontos) { /* linha sem efeito: copia a linha pronta */
 				if (bpp == 2) {
 					uint16_t *o = (uint16_t *)d;
