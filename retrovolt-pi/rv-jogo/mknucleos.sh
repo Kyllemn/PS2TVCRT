@@ -34,7 +34,8 @@ git clone -q --depth 1 https://github.com/libretro/picodrive "$T/pico"
 aarch64-linux-gnu-strip -o "$DEST/picodrive_libretro.so" "$T/pico/picodrive_libretro.so"
 echo "picodrive $(cd "$T/pico" && git log -1 --format=%h)"
 git clone -q --depth 1 https://github.com/libretro/snes9x "$T/snes9x"
-( cd "$T/snes9x/libretro" && make platform=unix CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++ \
+( cd "$T/snes9x/libretro" && make platform=unix CC="aarch64-linux-gnu-gcc -march=armv8.2-a+crc+simd -mtune=cortex-a76" \
+       CXX="aarch64-linux-gnu-g++ -march=armv8.2-a+crc+simd -mtune=cortex-a76" \
        AR=aarch64-linux-gnu-ar -j"$(nproc)" >/dev/null )   # Super Nintendo
 aarch64-linux-gnu-strip -o "$DEST/snes9x_libretro.so" "$T/snes9x/libretro/snes9x_libretro.so"
 echo "snes9x $(cd "$T/snes9x" && git log -1 --format=%h)"
@@ -73,4 +74,11 @@ git clone -q --depth 1 https://github.com/libretro/beetle-saturn-libretro "$T/bs
        AR=aarch64-linux-gnu-ar HAVE_CDROM=0 WANT_JIT=1 SILENT=1 -j"$(nproc)" >/dev/null )
 aarch64-linux-gnu-strip -o "$DEST/mednafen_saturn_libretro.so" "$T/bsat/mednafen_saturn_libretro.so"
 echo "beetle-saturn $(cd "$T/bsat" && git log -1 --format=%h)"
+# Arcade: FBNeo (CPS1/2/3, Neo Geo MVS/AES...). platform=rpi5_64 = cortex-a76, -O3. Sem LTO/
+# flags experimentais (quebram jogos segundo o proprio FBNeo)
+git clone -q --depth 1 https://github.com/libretro/FBNeo "$T/fbneo"
+( cd "$T/fbneo/src/burner/libretro" && make platform=rpi5_64 CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++ \
+       AR=aarch64-linux-gnu-ar -j"$(nproc)" >/dev/null )
+aarch64-linux-gnu-strip -o "$DEST/fbneo_libretro.so" "$T/fbneo/src/burner/libretro/fbneo_libretro.so"
+echo "fbneo $(cd "$T/fbneo" && git log -1 --format=%h)"
 rm -rf "$T"

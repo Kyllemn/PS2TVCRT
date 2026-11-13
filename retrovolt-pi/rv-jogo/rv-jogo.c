@@ -3157,8 +3157,20 @@ static void quadro_foto(void)
 static double t_meu_soma, t_run_soma;
 static long n_medidos;
 static void video_cb_real(const void *data, unsigned w, unsigned h, size_t pitch);
+/* run-ahead (--runahead 1, so nucleos sem GPU: Snes9x, FBNeo): a cada vsync o quadro real
+ * roda escondido (som sim, imagem nao), o estado e guardado, roda mais 1 quadro so para a
+ * imagem (som nao) e o estado volta. A tela mostra 1 quadro "do futuro" = 1 quadro (16 ms)
+ * a menos de atraso no controle. Custa 2 quadros do nucleo + 1 save/load na memoria. */
+static int a_runahead;
+static bool ra_oculto, ra_mudo, ra_desligado;
+static int av_bits = 3;          /* GET_AUDIO_VIDEO_ENABLE: 1 imagem, 2 som, 4 estado rapido */
+static uint8_t *ra_buf;
+static size_t ra_cap;
+static long ra_n;
 static void video_cb(const void *data, unsigned w, unsigned h, size_t pitch)
 {
+	if (ra_oculto) /* quadro real escondido do run-ahead: a imagem e a do quadro adiantado */
+		return;
 	double t0 = agora();
 	video_cb_real(data, w, h, pitch);
 	t_meu_soma += agora() - t0;
@@ -3321,7 +3333,7 @@ static void som_abrir(double hz_nucleo)
 
 static size_t audio_batch(const int16_t *d, size_t frames)
 {
-	if (!som_ok || som_mudo)
+	if (!som_ok || som_mudo || ra_mudo)   /* ra_mudo: quadro adiantado do run-ahead */
 		return frames;
 	pthread_mutex_lock(&r_mx);
 	/* controle de ritmo: mantem o buffer pela metade (+-0,5% de velocidade) */
@@ -3828,7 +3840,7 @@ static bool environment(unsigned cmd, void *data)
 		return true;
 	case RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE:
 		if (data)
-			*(int *)data = 3;
+			*(int *)data = av_bits;
 		return true;
 	case RETRO_ENVIRONMENT_SET_GEOMETRY:
 		av.geometry = *(const struct retro_game_geometry *)data;
@@ -5052,6 +5064,58 @@ static int fundo_converte(const char *ent, const char *sai, int L, int A)
 	return rename(tmp, sai) ? 3 : 0;
 }
 
+/* um quadro do jogo (com run-ahead quando ligado e possivel) */
+static void roda_quadro(void)
+{
+	if (!a_runahead || ra_desligado || gl.ativo || vk.ativo) {
+		core.run();
+		return;
+	}
+	/* 1) quadro real: som sim, imagem nao */
+	av_bits = 2 | 4;
+	ra_oculto = true;
+	core.run();
+	ra_oculto = false;
+	/* tamanho do estado guardado: o FBNeo calcula varrendo a memoria toda a cada pergunta;
+	 * se um dia nao couber, pergunta de novo e tenta mais uma vez */
+	static size_t ra_t;
+	size_t t = ra_t;
+	bool ok = false;
+	for (int tent = 0; tent < 2 && !ok; tent++) {
+		if (!t || tent)
+			t = ra_t = core.serialize_size();
+		if (t > ra_cap) {
+			uint8_t *nb = realloc(ra_buf, t);
+			if (nb) {
+				ra_buf = nb;
+				ra_cap = t;
+			}
+		}
+		ok = t && t <= ra_cap && core.serialize(ra_buf, t);
+	}
+	if (!ok) {
+		/* nucleo nao guarda estado agora: segue sem run-ahead (o quadro ja andou) */
+		ra_desligado = true;
+		av_bits = 3;
+		LOG("run-ahead: desligado (o nucleo nao guardou o estado, tamanho %zu)", t);
+		return;
+	}
+	/* 2) quadro adiantado: imagem sim, som nao */
+	av_bits = 1 | 4;
+	ra_mudo = true;
+	core.run();
+	ra_mudo = false;
+	av_bits = 3;
+	/* 3) volta ao quadro real */
+	if (!core.unserialize(ra_buf, t)) {
+		ra_desligado = true;
+		LOG("run-ahead: desligado (o nucleo nao voltou o estado)");
+		return;
+	}
+	if (ra_n++ == 0)
+		LOG("run-ahead: ligado (1 quadro; estado de %zu KB)", t / 1024);
+}
+
 int main(int argc, char **argv)
 {
 	setvbuf(stdout, NULL, _IOLBF, 0);
@@ -5077,6 +5141,7 @@ int main(int argc, char **argv)
 		else if (!strcmp(k, "--tubo-480i")) tubo_480i_ok = atoi(v) != 0;
 		else if (!strcmp(k, "--saida-32")) saida32_ok = atoi(v) != 0;
 		else if (!strcmp(k, "--gpu")) gpu_quer_vulkan = !strcasecmp(v, "vulkan");
+		else if (!strcmp(k, "--runahead")) a_runahead = atoi(v) > 0;
 		else if (!strcmp(k, "--cd-cache")) { /* MB */
 			int64_t n = (int64_t)atoi(v) * 1024 * 1024 / (BLOCO * SETOR);
 			ncache = n < NCACHE ? NCACHE : n > 16384 ? 16384 : (int)n;
@@ -5317,11 +5382,15 @@ int main(int argc, char **argv)
 			LOG("jogo agora %.3f Hz; %s", fps_ult, um_pra_um ? "1 quadro por vsync" : "ritmo pelo tempo");
 		}
 		if (um_pra_um) {
-			core.run();
+			roda_quadro();
 		} else {
 			acc += av.timing.fps / tela_hz;
 			while (acc >= 1.0) {
-				core.run();
+				/* mais de 1 quadro neste vsync: so o ultimo precisa ser adiantado */
+				if (acc >= 2.0)
+					core.run();
+				else
+					roda_quadro();
 				acc -= 1.0;
 			}
 		}

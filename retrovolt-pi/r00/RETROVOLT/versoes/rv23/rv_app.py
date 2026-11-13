@@ -31,6 +31,7 @@ def tempo(etapa):
 
 
 import disco
+import json
 import shutil
 import imagens
 import tv
@@ -111,6 +112,7 @@ CFG_PADRAO = [
     ('video_altura', '1.000', 'altura da imagem (1.000 = todas as linhas; 0.950 = 95%)'),
     ('SOM', None, None),
     ('volume', '80', 'volume geral dos jogos, 0 a 100'),
+    ('run_ahead', 'SIM', 'Super Nintendo e arcades (FBNeo): SIM = 1 quadro a menos de atraso no controle'),
     ('leitora_cache_saturn', '512', 'Saturno: MB de memoria com o disco (lido pelo jogo e copiado em 2o plano)'),
     ('leitora_cache_dreamcast', '512', 'Dreamcast: MB de memoria com o disco (lido pelo jogo e copiado em 2o plano; menos picotes)'),
     ('tubo_480i', 'SIM', 'tubo: jogo em 480i sai em 480i de verdade (SIM) ou sempre 240p (NAO)'),
@@ -918,7 +920,9 @@ SISTEMAS = {
     'n64': ('NINTENDO 64', None, False),
     'gb': ('GAME BOY', None, False), 'gbc': ('GAME BOY COLOR', None, False),
     'gba': ('GAME BOY ADVANCE', None, False),
-    'neogeo': ('NEO GEO', None, False), 'arcade': ('ARCADE', None, False),
+    # FBNeo (FinalBurn Neo), jogos em .zip no romset do FBNeo: NEO GEO (MVS/AES) e ARCADE
+    # (CPS1, CPS2, CPS3 e o resto do FBNeo). BIOS neogeo.zip em bios/neogeo (ou bios/arcade)
+    'neogeo': ('NEO GEO', 'fbneo_libretro.so', False), 'arcade': ('ARCADE', 'fbneo_libretro.so', False),
 }
 EXT_JOGO = {
     'ps1': ('.cue', '.chd', '.pbp', '.m3u', '.iso', '.img', '.bin', '.exe', '.mdf', '.toc', '.cbn'),
@@ -934,7 +938,11 @@ EXT_JOGO = {
     'snes': ('.sfc', '.smc', '.fig', '.swc', '.bs'),
     'dreamcast': ('.cdi', '.gdi', '.chd', '.cue', '.m3u'),
     'saturn': ('.cue', '.chd', '.iso', '.ccd', '.mds', '.m3u'),
+    'arcade': ('.zip', '.7z'),
+    'neogeo': ('.zip', '.7z'),
 }
+# FBNeo: as duas listas usam a mesma BIOS (um jogo de Neo Geo pode estar em ARCADE)
+FBNEO = ('arcade', 'neogeo')
 # Saturno: o nucleo procura saturn_bios.bin, sega_101.bin (japonesa) ou mpr-17933.bin
 # (americana/europeia); qualquer uma serve
 BIOS_SATURNO = ('saturn_bios.bin', 'sega_101.bin', 'mpr-17933.bin')
@@ -944,7 +952,7 @@ APELIDO = {'pcenginecd': 'pcengine'}
 PASTAS_EXTRAS = {}
 # ordem do menu JOGOS (de cima para baixo); o que nao estiver aqui vem depois, se tiver jogos
 ORDEM_JOGOS = ['ps1', 'dreamcast', 'saturn', 'segacd', 'neogeocd', 'pcenginecd', 'pcengine', 'snes',
-               'megadrive', 'mastersystem']
+               'megadrive', 'mastersystem', 'neogeo', 'arcade']
 EXT_CD = ('.cue', '.chd', '.ccd', '.m3u', '.iso', '.img', '.bin', '.pbp')
 # BIOS que o sistema precisa (sem ela o jogo nem abre): nome do arquivo em RETROVOLT/bios/
 BIOS_OBRIGATORIA = {'pcengine': 'syscard3.pce'}   # so para jogos de CD
@@ -959,6 +967,13 @@ OPCOES_PADRAO = {
                             'reicast_anisotropic_filtering': 'off'},
     # Saturno (Beetle): sincronia Fast 8 (~15%), JIT nos 2 DSPs, sem entrada no meio do quadro
     # (custa CPU), entrelacado em Bob (480i real no tubo; sem pente no LCD)
+    # FBNeo: som em 48 kHz (a saida do rv-jogo; sem reamostrar), 32 bits de cor, recordes,
+    # cartao de memoria por jogo (AES salva nele), Neo Geo pela BIOS do dipswitch (MVS; troca
+    # para AES/UNIBIOS no menu do jogo), sem frameskip
+    'fbneo_libretro.so': {'fbneo-samplerate': '48000', 'fbneo-allow-depth-32': 'enabled',
+                          'fbneo-hiscores': 'enabled', 'fbneo-memcard-mode': 'per-game',
+                          'fbneo-neogeo-mode': 'DIPSWITCH', 'fbneo-frameskip-type': 'disabled',
+                          'fbneo-force-60hz': 'disabled'},
     'mednafen_saturn_libretro.so': {'beetle_saturn_sh2_interleave': '8', 'beetle_saturn_cpucache_emumode': 'auto',
                                     'beetle_saturn_jit_scu': 'enabled', 'beetle_saturn_jit_scsp': 'enabled',
                                     'beetle_saturn_midsync': 'disabled', 'beetle_saturn_deinterlacer': 'bob'},
@@ -985,6 +1000,8 @@ def bios_arquivos(base_rv, sistema):
     pastas = [raiz]
     if sistema in PASTA_BIOS_ANTIGA:
         pastas.append(os.path.join(raiz, PASTA_BIOS_ANTIGA[sistema]))
+    if sistema in FBNEO:
+        pastas += [os.path.join(raiz, s) for s in FBNEO if s != sistema]
     pastas.append(os.path.join(raiz, sistema))
     for pasta in pastas:                   # a ultima (subpasta do sistema) ganha
         try:
@@ -1025,6 +1042,16 @@ def bios_pasta_nucleo(base_rv, sistema):
             certo = exatos.get(n.lower())
             if certo and certo != n:
                 os.symlink(p, os.path.join(alvo, certo))
+        if sistema in FBNEO:
+            # system/fbneo/: hiscore.dat e os recordes (.hi) que o FBNeo grava; fica no
+            # pendrive (RETROVOLT/bios/fbneo) para os recordes nao sumirem ao desligar
+            pasta = os.path.join(base_rv, 'bios', 'fbneo')
+            os.makedirs(pasta, exist_ok=True)
+            hs = os.path.join(PASTA, 'fbneo', 'hiscore.dat')
+            if os.path.exists(hs) and not os.path.exists(os.path.join(pasta, 'hiscore.dat')):
+                shutil.copy(hs, os.path.join(pasta, 'hiscore.dat'))
+            if not os.path.lexists(os.path.join(alvo, 'fbneo')):
+                os.symlink(pasta, os.path.join(alvo, 'fbneo'))
         if sistema == 'saturn':
             # o Beetle escolhe a BIOS pelo NOME da regiao do jogo (sega_101 = Japao,
             # mpr-17933 = EUA/Europa) e nao confere o conteudo: com uma so, as outras viram
@@ -1054,6 +1081,10 @@ def bios_falta(base_rv, sistema, info, e_cd):
         # regiao desconhecida (ex.: .chd): basta uma delas
         if not any(bios_tem(arqs, n) for n, _ in BIOS_SEGACD.values()):
             return 'FALTA A BIOS DO SEGA CD (BIOS_CD_U.BIN, _E OU _J) EM %s' % onde
+        return None
+    if sistema == 'neogeo':
+        if not bios_tem(arqs, 'neogeo.zip') and not os.path.exists(os.path.join(base_rv, 'roms', 'neogeo', 'neogeo.zip')):
+            return 'FALTA A BIOS NEOGEO.ZIP EM %s' % onde
         return None
     if sistema == 'saturn':
         if not any(bios_tem(arqs, n) for n in BIOS_SATURNO):
@@ -1097,6 +1128,12 @@ def base(onde='pendrive'):
 def nome_limpo(arq):
     import re
     n = os.path.splitext(os.path.basename(arq))[0]   # tira (USA), [!] etc., mas deixa (Disc 1)
+    if arq.lower().endswith(('.zip', '.7z')):
+        # arcade: "sf2ce" -> "STREET FIGHTER II': CHAMPION EDITION (WORLD 920513)" (a versao fica:
+        # clones tem o mesmo nome e so a versao diferencia)
+        d = fbneo_dados().get('nomes', {}).get(n.lower())
+        if d:
+            return d.upper()
     disc = re.search(r'\((?:Disc|Disco|CD)\s*(\d+)\)', n, re.I)
     n = re.sub(r'\s*[\(\[][^\)\]]*[\)\]]', '', n).strip()
     if disc:
@@ -1181,7 +1218,26 @@ def lista_jogos(b, sistema):
     out = []
     for pasta in [sistema] + PASTAS_EXTRAS.get(sistema, []):
         out += _lista_pasta(b, pasta, EXT_JOGO.get(sistema, ()))
+    if sistema in FBNEO:      # BIOS (neogeo.zip etc.) fica na pasta mas nao e jogo
+        bios = set(fbneo_dados().get('bios', [])) | {'neogeo', 'qsound', 'hiscore'}
+        out = [p for p in out if os.path.splitext(os.path.basename(p))[0].lower() not in bios]
     return sorted(out, key=lambda p: nome_limpo(p))
+
+
+_FBNEO = None
+
+
+def fbneo_dados():
+    """nomes dos jogos do FBNeo (nome curto do .zip -> nome completo) e quais sao BIOS;
+    gerado do DAT oficial do FBNeo junto com o nucleo (nomes_fbneo.json)"""
+    global _FBNEO
+    if _FBNEO is None:
+        try:
+            with open(os.path.join(PASTA, 'nomes_fbneo.json')) as f:
+                _FBNEO = json.load(f)
+        except (OSError, ValueError):
+            _FBNEO = {}
+    return _FBNEO
 
 
 def _lista_pasta(b, pasta, exts):
@@ -1640,6 +1696,10 @@ class App:
             # opcoes por jogo (ex.: Gunbird 2 em 1280x960 sem pontinhos, 3D em 640x480): o que
             # mudar no menu do jogo vale so para ele; o resto vem do flycast.opt
             cmd += ['--opcoes-jogo', os.path.join(self.base, 'config', 'nucleos', 'flycast', save + '.opt')]
+        if sistema in ('snes',) + FBNEO and self.cfg.get('run_ahead', 'SIM').upper() != 'NAO':
+            cmd += ['--runahead', '1']        # 1 quadro a menos de atraso no controle
+        if sistema in FBNEO:      # opcoes por jogo (ex.: AES so num jogo)
+            cmd += ['--opcoes-jogo', os.path.join(self.base, 'config', 'nucleos', 'fbneo', save + '.opt')]
         if sistema == 'saturn':   # opcoes por jogo, como no Dreamcast
             cmd += ['--opcoes-jogo', os.path.join(self.base, 'config', 'nucleos', nucleo.replace('_libretro.so', ''),
                                                   save + '.opt')]

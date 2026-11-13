@@ -786,3 +786,15 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   config.txt (nao confirmado no README). Nunca guardar senha/chave/PIN aqui nem no git.
 - Ideia em aberto: addon "RetroVolt" no Kodi (fecha o Kodi, roda o disco com o rv-jogo, volta).
   Recomendado manter o RetroVolt como centro.
+
+## R24k: FBNeo (ARCADE / NEO GEO) e run-ahead
+- FBNeo (libretro/FBNeo, platform=rpi5_64, sem LTO). Abas JOGOS: NEO GEO (roms/neogeo) e
+  ARCADE (roms/arcade: CPS1/2/3 etc.), .zip/.7z no romset do FBNeo. BIOS neogeo.zip em
+  RETROVOLT/bios/neogeo ou bios/arcade (ou junto das roms). Zips de BIOS saem da lista.
+- Nomes vem de nomes_fbneo.json (do DAT do FBNeo); recordes em RETROVOLT/bios/fbneo
+  (hiscore.dat copiado na 1a vez). Opcoes: 48 kHz, memcard por jogo, Neo Geo pelo dipswitch
+  (MVS; AES/UNIBIOS no menu do jogo, gravado por jogo).
+- Run-ahead de 1 quadro (snes, arcade, neogeo): quadro real sem imagem, guarda o estado,
+  quadro adiantado sem som, volta o estado. Desliga sozinho se o nucleo nao guardar estado e
+  nunca liga em nucleo com GPU. Chave run_ahead=NAO no retrovolt.cfg desliga.
+- snes9x com -march=armv8.2-a+crc+simd -mtune=cortex-a76.
