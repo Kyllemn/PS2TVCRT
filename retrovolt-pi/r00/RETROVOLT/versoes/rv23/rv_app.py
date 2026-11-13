@@ -2260,10 +2260,26 @@ class App:
                 c.text(24, 64 + 2 * (F.ch + 6), 'RETROVOLT/ROMS/PS1/', IVORY)
                 return
             self.sel['SIS'] = min(self.sel['SIS'], len(sis) - 1)
-            y = 58
-            for n, s in enumerate(sis):
-                item(c, 24, y, NOME_SISTEMA[s], n == self.sel['SIS'])
-                y += F.ch + 9
+            # lista no meio da tela (horizontal e vertical) entre as abas e a legenda de baixo,
+            # nomes mais juntos; se nao couber (tubo 320x240 com muitos sistemas), rola com o
+            # cursor e mostra setas em cima/embaixo. Nunca encosta na legenda L1/R1.
+            passo = F.ch + 5
+            y_ini = 56
+            y_fim = H - 4 - F.ch - 8             # topo da legenda menos uma folga
+            cabem = max(1, (y_fim - y_ini + 5) // passo)
+            sel = self.sel['SIS']
+            vis = min(len(sis), cabem)
+            ini = max(0, min(sel - vis // 2, len(sis) - vis))
+            y0 = y_ini + (y_fim - y_ini - (vis * passo - 5)) // 2
+            larg = max(len(NOME_SISTEMA[s]) for s in sis) * F.cw
+            x0 = max(24, (W - larg - 3 * F.cw) // 2)   # 3 letras de folga para o '->'
+            for n in range(ini, ini + vis):
+                item(c, x0, y0 + (n - ini) * passo, NOME_SISTEMA[sis[n]], n == sel)
+            xs = max(0, x0 - 20)                 # setas a esquerda da barra laranja
+            if ini > 0:
+                c.text(xs, y0, '^', SLATE)
+            if ini + vis < len(sis):
+                c.text(xs, y0 + (vis - 1) * passo, 'v', SLATE)
             return
         itens = self.itens_pasta()
         bw = bh = max(96, min(H - 120, (W - 40) // 3))      # caixa da capa

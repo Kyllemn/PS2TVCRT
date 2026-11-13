@@ -822,3 +822,25 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   run-ahead (3600 quadros, estado salvo/volta a cada quadro); Mesen nestest; mGBA jsmolka arm
   para no 522 (STM com a base na lista: caso raro, igual com e sem run-ahead); NeoPop abre;
   melonDS DS com ROM minima feita em assembly: 1 tela (256x192) e 2 telas divididas certas.
+
+## R26 (CODIGO ESCRITO, aguardando #compilar): picote de som/imagem e lista de sistemas
+LOG do autor (LCD HP w1907 1440x900 59,887 Hz): nucleo usa 1-5 ms dos 16,7 ms (nao e falta de
+CPU; cpu ja vai a 2400 MHz no governador performance). Causas achadas e correcoes:
+- Run-ahead estava com o som do quadro REAL e o adiantado mudo. Nucleo que nao guarda no
+  estado o resto do som do quadro (mGBA, Gambatte...) soltava esse resto fora de ordem a cada
+  quadro = estalo constante. Agora na ordem do RetroArch (1 instancia): quadro real sem imagem
+  e sem som (av_bits 4), estado, quadro adiantado com imagem e som (av_bits 1|2|4), volta.
+- GET_SAVESTATE_CONTEXT (NORMAL; RUNAHEAD_SAME_INSTANCE durante o run-ahead). Sem ele o FBNeo
+  lia o bit 4 do AUDIO_VIDEO_ENABLE como netplay: desligava recordes e o estado vinha 0
+  ("run-ahead: desligado" nos arcades).
+- Som: buffer comecava vazio em todo jogo e a thread metia 64 pontos de silencio a cada falta
+  ("vazio 582" em 5 s = estalos no comeco). Agora so toca com 3/4 do alvo (ALVO 2560 = 53 ms;
+  ALSA 40 ms) e, se esvaziar (menu, trava), um silencio limpo ate encher de novo. Controle de
+  ritmo: proporcional +-0,5% + integral lento ate +-1% (NGP subia a 90%, MD parava em 25%).
+  LOG novo: "som: buffer N ms (alvo 53), faltas N, ajuste +x%".
+- Save (.srm) gravado numa thread (fsync no pendrive USB travava o jogo); no fim, grava direto.
+- LOG: mensagem repetida do nucleo vai 3 vezes e depois so a conta (mGBA: 1.200 linhas em 20 s).
+- rv-jogo com nice -10 (threads herdam).
+- Menu JOGOS: lista de sistemas no meio da tela (horizontal e vertical), nomes mais juntos
+  (F.ch+5), rola com o cursor e setas ^ v quando nao cabe; nunca encosta em "L1/R1 ABAS".
+  (Python, testado no PC: 1440x900 e 1920x240 com 18 sistemas.)

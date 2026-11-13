@@ -41,6 +41,7 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/resource.h>
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
@@ -3562,6 +3563,10 @@ static void video_cb_real(const void *data, unsigned w, unsigned h, size_t pitch
 static int a_runahead;
 static bool ra_oculto, ra_mudo, ra_desligado;
 static int av_bits = 3;          /* GET_AUDIO_VIDEO_ENABLE: 1 imagem, 2 som, 4 estado rapido */
+/* GET_SAVESTATE_CONTEXT: NORMAL (save do jogador) ou RUNAHEAD_SAME_INSTANCE (estado do
+ * run-ahead, so na memoria). Sem isso o FBNeo cai no modo netplay: desliga os recordes e o
+ * estado vinha com tamanho 0 (LOG do autor: "run-ahead: desligado") */
+static int ra_ctx = RETRO_SAVESTATE_CONTEXT_NORMAL;
 static uint8_t *ra_buf;
 static size_t ra_cap;
 static long ra_n;
@@ -3653,6 +3658,13 @@ static volatile double rs_esticar = 1.0;
 static int16_t rs_ant[2];
 static bool som_ok, som_mudo;
 static long som_vazio;
+/* alvo do buffer: 2560 pontos = 53 ms (mais os 40 ms da ALSA). O som so comeca (e so volta
+ * depois de esvaziar) com 3/4 do alvo: antes, com o buffer vazio no comeco de todo jogo, a
+ * thread metia 64 pontos de silencio a cada falta = estalos nos primeiros segundos (LOG do
+ * autor: "vazio 582" em 5 s). Agora: um silencio limpo de ~40 ms e depois som continuo. */
+#define ALVO 2560
+static bool som_pronto;   /* so na thread do som, com r_mx */
+static double rs_integ;   /* correcao lenta do ritmo (Hz do nucleo que nao bate com o que ele diz) */
 
 static void *som_thread(void *p)
 {
@@ -3663,26 +3675,27 @@ static void *som_thread(void *p)
 		LOG("som: sem prioridade de tempo real");
 	while (!g_sair) {
 		pthread_mutex_lock(&r_mx);
-		int n = r_cnt < 256 ? r_cnt : 256;
-		if (n < 64 && r_cnt < 64 && n > 0) {
-			/* quase vazio: espera um pouco antes de completar com silencio */
-			pthread_mutex_unlock(&r_mx);
-			usleep(2000);
-			pthread_mutex_lock(&r_mx);
+		if (!som_pronto && r_cnt >= ALVO * 3 / 4)
+			som_pronto = true;
+		int n = 0;
+		if (som_pronto) {
 			n = r_cnt < 256 ? r_cnt : 256;
+			for (int i = 0; i < n; i++) {
+				buf[i * 2] = ring[r_rd * 2];
+				buf[i * 2 + 1] = ring[r_rd * 2 + 1];
+				r_rd = (r_rd + 1) % RING;
+			}
+			r_cnt -= n;
+			if (n == 0) { /* acabou (jogo parou, menu): espera encher de novo */
+				som_pronto = false;
+				som_vazio++;
+			}
 		}
-		for (int i = 0; i < n; i++) {
-			buf[i * 2] = ring[r_rd * 2];
-			buf[i * 2 + 1] = ring[r_rd * 2 + 1];
-			r_rd = (r_rd + 1) % RING;
-		}
-		r_cnt -= n;
 		pthread_mutex_unlock(&r_mx);
 		int m = n;
-		if (n == 0) {
-			memset(buf, 0, 64 * 4);
-			m = 64;
-			som_vazio++;
+		if (n == 0) { /* enchendo: silencio (bloqueia na ALSA ~5 ms por vez) */
+			memset(buf, 0, 256 * 4);
+			m = 256;
 		}
 		long e = al.writei(al.pcm, buf, m);
 		if (e < 0)
@@ -3735,9 +3748,17 @@ static size_t audio_batch(const int16_t *d, size_t frames)
 	if (!som_ok || som_mudo || ra_mudo)   /* ra_mudo: quadro adiantado do run-ahead */
 		return frames;
 	pthread_mutex_lock(&r_mx);
-	/* controle de ritmo: mantem o buffer pela metade (+-0,5% de velocidade) */
-	double cheio = (double)r_cnt / RING;
-	double passo = rs_passo_base * rs_esticar * (1.0 + (cheio - 0.5) * 0.01);
+	/* controle de ritmo: mantem o buffer no alvo. Rapido: ate +-0,5% conforme a distancia do
+	 * alvo. Lento (integral, ate +-1%): acha sozinho a diferenca fixa entre o Hz que o nucleo
+	 * diz e o que ele entrega (LOG do autor: Neo Geo Pocket subindo ate 90% e Mega Drive
+	 * parado em 25%). Ninguem ouve 1% de afinacao. */
+	double erro = ((double)r_cnt - ALVO) / ALVO;
+	if (erro > 1.0) erro = 1.0;
+	if (erro < -1.0) erro = -1.0;
+	rs_integ += erro * 2e-6 * (double)frames / 735.0; /* por quadro de ~735 pontos */
+	if (rs_integ > 0.01) rs_integ = 0.01;
+	if (rs_integ < -0.01) rs_integ = -0.01;
+	double passo = rs_passo_base * rs_esticar * (1.0 + erro * 0.005 + rs_integ);
 	for (size_t i = 0; i < frames; i++) {
 		int16_t l = (int16_t)((d[i * 2] * ganho) >> 15), r = (int16_t)((d[i * 2 + 1] * ganho) >> 15);
 		while (rs_pos <= 1.0) {
@@ -4123,13 +4144,9 @@ static void sram_carrega(void)
 	memcpy(srm_copia, m, srm_tam);
 }
 
-static void sram_grava(bool forca)
+/* grava no pendrive: arquivo .tmp + fsync + troca de nome (desligar no meio nao estraga) */
+static void sram_escreve(const uint8_t *m)
 {
-	uint8_t *m = core.get_memory_data(RETRO_MEMORY_SAVE_RAM);
-	if (!srm_copia || !m)
-		return;
-	if (!forca && !memcmp(m, srm_copia, srm_tam))
-		return;
 	char tmp[4200];
 	snprintf(tmp, sizeof tmp, "%s.tmp", srm_path);
 	FILE *f = fopen(tmp, "wb");
@@ -4142,8 +4159,73 @@ static void sram_grava(bool forca)
 	fsync(fileno(f));
 	fclose(f);
 	rename(tmp, srm_path);
-	memcpy(srm_copia, m, srm_tam);
 	LOG("save: gravado %s", srm_path);
+}
+
+/* durante o jogo o save vai para uma thread propria: o fsync no pendrive USB leva dezenas
+ * a centenas de ms e, na thread do jogo, travava imagem e som a cada gravacao (o Pokemon e o
+ * Sonic 3 gravam toda hora). No fim do jogo grava direto (sram_fim). */
+static pthread_mutex_t srm_mx = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t srm_cv = PTHREAD_COND_INITIALIZER;
+static uint8_t *srm_fila, *srm_th_buf;
+static bool srm_pend, srm_parar, srm_th_ok;
+static pthread_t srm_th;
+
+static void *srm_thread(void *x)
+{
+	(void)x;
+	pthread_mutex_lock(&srm_mx);
+	for (;;) {
+		while (!srm_pend && !srm_parar)
+			pthread_cond_wait(&srm_cv, &srm_mx);
+		if (!srm_pend)
+			break; /* parar e nada pendente */
+		memcpy(srm_th_buf, srm_fila, srm_tam);
+		srm_pend = false;
+		pthread_mutex_unlock(&srm_mx);
+		sram_escreve(srm_th_buf);
+		pthread_mutex_lock(&srm_mx);
+	}
+	pthread_mutex_unlock(&srm_mx);
+	return NULL;
+}
+
+static void sram_grava(bool forca)
+{
+	uint8_t *m = core.get_memory_data(RETRO_MEMORY_SAVE_RAM);
+	if (!srm_copia || !m)
+		return;
+	if (!forca && !memcmp(m, srm_copia, srm_tam))
+		return;
+	memcpy(srm_copia, m, srm_tam);
+	if (!srm_th_ok && !srm_parar) {
+		srm_fila = malloc(srm_tam);
+		srm_th_buf = malloc(srm_tam);
+		srm_th_ok = srm_fila && srm_th_buf && pthread_create(&srm_th, NULL, srm_thread, NULL) == 0;
+	}
+	if (srm_th_ok) {
+		pthread_mutex_lock(&srm_mx);
+		memcpy(srm_fila, m, srm_tam);
+		srm_pend = true;
+		pthread_cond_signal(&srm_cv);
+		pthread_mutex_unlock(&srm_mx);
+	} else
+		sram_escreve(m);
+}
+
+/* fim do jogo: espera a thread terminar o que tem e grava o ultimo estado direto */
+static void sram_fim(void)
+{
+	if (srm_th_ok) {
+		pthread_mutex_lock(&srm_mx);
+		srm_parar = true;
+		pthread_cond_signal(&srm_cv);
+		pthread_mutex_unlock(&srm_mx);
+		pthread_join(srm_th, NULL);
+		srm_th_ok = false;
+	}
+	srm_parar = true;
+	sram_grava(false); /* srm_parar: grava na hora, sem thread */
 }
 
 /* ------------------------------------------------------------------ ambiente */
@@ -4159,6 +4241,29 @@ static void log_cb(enum retro_log_level lv, const char *fmt, ...)
 	size_t n = strlen(b);
 	while (n && b[n - 1] == '\n')
 		b[--n] = 0;
+	/* mensagens que o nucleo repete toda hora (mGBA com run-ahead: "Savestate: Loading
+	 * savedata" e "Loading RTC" a cada quadro = 1.200 linhas em 20 s no LOG do autor): cada uma
+	 * vai 3 vezes para o LOG; depois so a conta, a cada 1000. Guarda as 8 ultimas diferentes. */
+	static struct { char t[200]; long n; } vistas[8];
+	static int prox;
+	static pthread_mutex_t mx = PTHREAD_MUTEX_INITIALIZER; /* nucleos com threads (melonDS) */
+	pthread_mutex_lock(&mx);
+	int k = 0;
+	while (k < 8 && strncmp(vistas[k].t, b, sizeof vistas[k].t - 1))
+		k++;
+	if (k < 8 && vistas[k].t[0]) {
+		if (++vistas[k].n > 3) {
+			if (vistas[k].n % 1000 == 0)
+				printf("nucleo: (repetiu %ld vezes) %s\n", vistas[k].n, vistas[k].t);
+			pthread_mutex_unlock(&mx);
+			return;
+		}
+	} else {
+		snprintf(vistas[prox].t, sizeof vistas[prox].t, "%s", b);
+		vistas[prox].n = 1;
+		prox = (prox + 1) % 8;
+	}
+	pthread_mutex_unlock(&mx);
 	printf("nucleo: %s\n", b);
 	fflush(stdout);
 }
@@ -4245,6 +4350,10 @@ static bool environment(unsigned cmd, void *data)
 	case RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE:
 		if (data)
 			*(int *)data = av_bits;
+		return true;
+	case RETRO_ENVIRONMENT_GET_SAVESTATE_CONTEXT: /* o FBNeo pergunta com data NULL so para saber se existe */
+		if (data)
+			*(int *)data = ra_ctx;
 		return true;
 	case RETRO_ENVIRONMENT_SET_GEOMETRY:
 		av.geometry = *(const struct retro_game_geometry *)data;
@@ -5475,11 +5584,19 @@ static void roda_quadro(void)
 		core.run();
 		return;
 	}
-	/* 1) quadro real: som sim, imagem nao */
-	av_bits = 2 | 4;
+	/* ordem do RetroArch (1 instancia): o quadro real roda escondido (sem imagem e SEM SOM) e
+	 * o som sai do quadro adiantado. Antes o som saia do quadro real: nucleo que nao guarda no
+	 * estado o resto do som do quadro (mGBA, Gambatte...) soltava esse resto fora de ordem a
+	 * cada quadro = estalo constante (LOG do autor). Assim o resto do quadro adiantado e
+	 * descartado no quadro real seguinte, e o som que sai fica em ordem. */
+	/* 1) quadro real: sem imagem e sem som */
+	av_bits = 4;
 	ra_oculto = true;
+	ra_mudo = true;
 	core.run();
 	ra_oculto = false;
+	ra_mudo = false;
+	ra_ctx = RETRO_SAVESTATE_CONTEXT_RUNAHEAD_SAME_INSTANCE;
 	/* tamanho do estado guardado: o FBNeo calcula varrendo a memoria toda a cada pergunta;
 	 * se um dia nao couber, pergunta de novo e tenta mais uma vez */
 	static size_t ra_t;
@@ -5498,20 +5615,22 @@ static void roda_quadro(void)
 		ok = t && t <= ra_cap && core.serialize(ra_buf, t);
 	}
 	if (!ok) {
-		/* nucleo nao guarda estado agora: segue sem run-ahead (o quadro ja andou) */
+		/* nucleo nao guarda estado agora: segue sem run-ahead (o quadro ja andou; so este
+		 * quadro fica sem imagem nova e sem som, uma vez) */
+		ra_ctx = RETRO_SAVESTATE_CONTEXT_NORMAL;
 		ra_desligado = true;
 		av_bits = 3;
 		LOG("run-ahead: desligado (o nucleo nao guardou o estado, tamanho %zu)", t);
 		return;
 	}
-	/* 2) quadro adiantado: imagem sim, som nao */
-	av_bits = 1 | 4;
-	ra_mudo = true;
+	/* 2) quadro adiantado: imagem e som */
+	av_bits = 1 | 2 | 4;
 	core.run();
-	ra_mudo = false;
 	av_bits = 3;
 	/* 3) volta ao quadro real */
-	if (!core.unserialize(ra_buf, t)) {
+	bool volta = core.unserialize(ra_buf, t);
+	ra_ctx = RETRO_SAVESTATE_CONTEXT_NORMAL;
+	if (!volta) {
 		ra_desligado = true;
 		LOG("run-ahead: desligado (o nucleo nao voltou o estado)");
 		return;
@@ -5567,6 +5686,10 @@ int main(int argc, char **argv)
 	for (int i = 0; i < N_FONTES; i++)
 		if (!strcasecmp(FONTES[i].nome, a_fonte))
 			F = &FONTES[i];
+	/* prioridade alta (nice -10) para o jogo e as threads que ele cria (som, CD, save): o
+	 * menu em Python, Wi-Fi e o resto do sistema nao atrasam o quadro */
+	if (setpriority(PRIO_PROCESS, 0, -10))
+		LOG("prioridade: nao subiu (%s)", strerror(errno));
 	signal(SIGTERM, ao_sinal);
 	signal(SIGINT, ao_sinal);
 	/* sem SIGSEGV aqui: o Flycast usa esse sinal para a memoria dele. Se o rv-jogo cair,
@@ -5834,9 +5957,10 @@ int main(int argc, char **argv)
 			static double t_ult;
 			double t = agora();
 			if (t_ult > 0)
-				LOG("ritmo: %.1f quadros/s; cd: %ld blocos, media %.0f ms, max %.0f ms, metodo %d, adiante %ld/%ld usados, musica guardada %ld; som: buffer %d%%, vazio %ld; ressinc %ld",
+				LOG("ritmo: %.1f quadros/s; cd: %ld blocos, media %.0f ms, max %.0f ms, metodo %d, adiante %ld/%ld usados, musica guardada %ld; som: buffer %d ms (alvo %d), faltas %ld, ajuste %+.2f%%; ressinc %ld",
 				    300 / (t - t_ult), cd_n_blocos, cd_n_blocos ? cd_t_total / cd_n_blocos * 1e3 : 0, cd_t_max * 1e3, cd_metodo,
-				    cd_n_acertos_pf, cd_n_adiante, cd_n_fixos_usados, r_cnt * 100 / RING, som_vazio, vs_ressinc);
+				    cd_n_acertos_pf, cd_n_adiante, cd_n_fixos_usados, r_cnt * 1000 / SAIDA_HZ, ALVO * 1000 / SAIDA_HZ,
+				    som_vazio, rs_integ * 100, vs_ressinc);
 			LOG("picos: controles %.1f ms, nucleo %.1f ms, copia %.1f ms; %s", pico_ctrl * 1e3, pico_run * 1e3,
 			    pico_copia * 1e3, calor_txt());
 			if (n_medidos)
@@ -5866,7 +5990,7 @@ int main(int argc, char **argv)
 			break;
 		}
 	}
-	sram_grava(false);
+	sram_fim();
 	fb_grava_fake();
 	g_sair = 1;
 	governador(false);
