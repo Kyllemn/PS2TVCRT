@@ -2342,19 +2342,6 @@ def icone_pasta(c, x, y, on):
     c.rect(x + 1, y + 3, 6, 3, NAV)
 
 
-def pasta_grande(c, x0, y0, bw, bh, nome, n):
-    """no lugar da capa, para uma pasta: desenho de pasta, nome e quantos jogos"""
-    pw, ph = bw * 3 // 4, bh * 9 // 16
-    px, py = x0 + (bw - pw) // 2, y0 + (bh - ph) // 2 - F.ch
-    c.rect(px, py - ph // 8, pw * 2 // 5, ph // 8 + 1, ORANGE)                # aba
-    c.rect(px, py, pw, ph, ORANGE)
-    c.rect(px + 2, py + 2, pw - 4, ph - 4, (40, 34, 30))
-    txt = '%d JOGO%s' % (n, '' if n == 1 else 'S')
-    c.text(px + (pw - len(txt) * F.cw) // 2, py + (ph - F.ch) // 2, txt, IVORY)
-    nm = nome[:bw // F.cw]
-    c.text(x0 + (bw - len(nm) * F.cw) // 2, py + ph + 8, nm, ORANGE)
-
-
 def moldura_capa(c, x0, y0, bw, bh, iw, ih):
     """R28f: moldura laranja justa em volta da capa (cada formato a sua): capa escura sobre o
     fundo escuro nao mostrava onde terminava. 1 ponto de folga e 1 de linha."""
@@ -3455,9 +3442,7 @@ class App:
         x0, y0c = W - 14 - bw, 50 + F.ch + 8 + (H - (50 + F.ch + 8) - 24 - bh - sob) // 2
         pode = False
         if k == 'pasta':
-            # pasta: desenho de pasta grande e quantos jogos tem dentro (contando subpastas)
-            n_dentro = len(_lista_pasta(self.base, os.path.join(self.sistema, self.sub, v), EXT_JOGO.get(self.sistema, ())))
-            pasta_grande(c, x0, y0c, bw, bh, v.upper(), n_dentro)
+            pass                    # pasta marcada: so o icone na lista (o lugar da capa fica vazio)
         elif k == 'arq':
             self.desenha_capa(c, self.arte_jogo(v), x0, y0c, bw, bh)
             pode = bool(SISTEMAS.get(self.sistema, (0, None))[1])
