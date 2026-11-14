@@ -1,0 +1,392 @@
+{
+"043d76d5f0ef836500700c34faef774d": [
+"neogeocd",
+"neocd_sf.rom",
+"NEOCD_SF.ROM",
+524288
+],
+"0754f903b52e3b3342202bdafb13efa5": [
+"pcengine",
+"syscard3u.pce",
+"SYSCARD3U.PCE",
+262144
+],
+"08ca8b2dba6662e8024f9e789711c6fc": [
+"neogeocd",
+"uni-bioscd.rom",
+"UNI-BIOSCD.ROM",
+524288
+],
+"0a93f7940c455905bea6e392dfde92a4": [
+"dreamcast",
+"dc_flash.bin",
+"DREAMCAST FLASH",
+131072
+],
+"11526d58d4c524daef7d5d677dc6b004": [
+"neogeocd",
+"neocd_z.rom",
+"NEOCD_Z.ROM",
+524288
+],
+"122aee210324c72e8a11116e6ef9c0d0": [
+"neogeocd",
+"top-sp1.bin",
+"TOP-SP1.BIN",
+524288
+],
+"1cd19988d1d72a3e7caa0b73234c96b4": [
+"saturn",
+"mpr-19367-mx.ic1",
+"MPR-19367-MX.IC1",
+2097152
+],
+"1e68c231d0896b7eadcad1d7d8e76129": [
+"ps1",
+"scph7001.bin",
+"PS1 EUA",
+524288
+],
+"239665b1a3dade1b5a52c06338011044": [
+"ps1",
+"scph1000.bin",
+"PS1 JAPAO",
+524288
+],
+"24a519c53f67b00640d0048ef7089105": [
+"mastersystem",
+"bios_J.sms",
+"BIOS_J.SMS",
+8192
+],
+"255113ba943c92a54facd25a10fd780c": [
+"saturn",
+"mpr-18811-mx.ic1",
+"MPR-18811-MX.IC1",
+2097152
+],
+"278a9397d192149e84e820ac621a8edd": [
+"segacd",
+"bios_CD_J.bin",
+"MEGA CD JAPAO",
+131072
+],
+"2b7ccb3d86baa18f6402c176f3065082": [
+"pcengine",
+"syscard1.pce",
+"SYSCARD1.PCE",
+262144
+],
+"2efd74e3232ff260e371b99f84024f7f": [
+"segacd",
+"bios_CD_U.bin",
+"SEGA CD EUA",
+131072
+],
+"3240872c70984b6cbfda1586cab68dbe": [
+"saturn",
+"mpr-17933.bin",
+"SATURN EUA/EUROPA",
+524288
+],
+"32736f17079d0b2b7024407c39bd3050": [
+"ps1",
+"scph5502.bin",
+"PS1 EUROPA",
+524288
+],
+"32fbbd84168d3482956eb3c5051637f5": [
+"gb",
+"gb_bios.bin",
+"GB_BIOS.BIN",
+256
+],
+"38179df8f4ac870017db21ebcbf53114": [
+"pcengine",
+"syscard3.pce",
+"SUPER CD-ROM2 3.0",
+262144
+],
+"3cdd6614a918616bfc41c862e889dd79": [
+"pcengine",
+"syscard2.pce",
+"SYSCARD2.PCE",
+262144
+],
+"3ea3202e2634cb47cb90f3a05c015010": [
+"saturn",
+"hisaturn.bin",
+"HISATURN.BIN",
+524288
+],
+"490f666e1afb15b7362b406ed1cea246": [
+"ps1",
+"scph5501.bin",
+"PS1 EUA",
+524288
+],
+"4ea493ea4e9f6c9ebfccbdb15110367e": [
+"megadrive",
+"sk.bin",
+"SK.BIN",
+2097152
+],
+"54847e693405ffeb0359c6287434cbef": [
+"ps1",
+"scph1002.bin",
+"PS1 EUROPA",
+524288
+],
+"5c2366f25ff92d71788468ca492ebeca": [
+"neogeocd",
+"front-sp1.bin",
+"FRONT-SP1.BIN",
+524288
+],
+"672e104c3be3a238301aceffc3b23fd6": [
+"gamegear",
+"bios.gg",
+"BIOS.GG",
+1024
+],
+"6d2cb14fc3e1f65ceb135633d1694122": [
+"pcengine",
+"gecard.pce",
+"GECARD.PCE",
+32768
+],
+"6e3735ff4c7dc899ee98981385f6f3d0": [
+"ps1",
+"scph101.bin",
+"PSONE EUA",
+524288
+],
+"74570fed4d44b2682b560c8cd44b8b6a": [
+"saturn",
+"sega1003.bin",
+"SEGA1003.BIN",
+524288
+],
+"81bbe60ba7a3d1cea1d48c14cbcc647b": [
+"ps1",
+"ps1_rom.bin",
+"PS1_ROM.BIN",
+524288
+],
+"840481177270d5642a14ca71ee72844c": [
+"mastersystem",
+"bios.sms",
+"BIOS.SMS",
+8192
+],
+"849515939161e62f6b866f6853006780": [
+"ps1",
+"scph3000.bin",
+"SCPH3000.BIN",
+524288
+],
+"85ec9ca47d8f6807718151cbcca8b964": [
+"saturn",
+"sega_101.bin",
+"SATURN JAPAO",
+524288
+],
+"8834880c33164ccbe6476b559f3e37de": [
+"neogeocd",
+"neocd_f.rom",
+"NEOCD_F.ROM",
+524288
+],
+"8abc1b549a4a80954addc48ef02c4521": [
+"ps1",
+"scph100.bin",
+"SCPH100.BIN",
+524288
+],
+"8dd7d5296a650fac7319bce665a6a53c": [
+"ps1",
+"scph5500.bin",
+"PS1 JAPAO",
+524288
+],
+"924e392ed05558ffdb115408c263dccf": [
+"ps1",
+"scph1001.bin",
+"PS1 EUA",
+524288
+],
+"94279f315e8b52904f65ab3108542afe": [
+"pcengine",
+"syscard2u.pce",
+"SYSCARD2U.PCE",
+262144
+],
+"971ee8a36fb72da57aed01758f0a37f5": [
+"neogeocd",
+"neocd_sz.rom",
+"NEOCD_SZ.ROM",
+524288
+],
+"a0028b3043f9d59ceeb03da5b073b30d": [
+"megadrive",
+"areplay.bin",
+"AREPLAY.BIN",
+32768
+],
+"a392174eb3e572fed6447e956bde4b25": [
+"nds",
+"bios9.bin",
+"DS ARM9",
+4096
+],
+"a860e8c0b6d573d191e4ec7db1b1e4f6": [
+"gba",
+"gba_bios.bin",
+"GBA",
+16384
+],
+"ac4e4b6522e200c0d23d371a8cecbfd3": [
+"saturn",
+"vsaturn.bin",
+"VSATURN.BIN",
+524288
+],
+"af5828fdff51384f99b3c4926be27762": [
+"saturn",
+"saturn_bios.bin",
+"SATURN_BIOS.BIN",
+524288
+],
+"b10f5e0e3d9eb60e5159690680b1e774": [
+"ps1",
+"scph102A.bin",
+"SCPH102A.BIN",
+524288
+],
+"b4e76e416b887f4e7413ba76fa735f16": [
+"megadrive",
+"sk2chip.bin",
+"SK2CHIP.BIN",
+262144
+],
+"b9d9a0286c33dc6b7237bb13cd46fdee": [
+"ps1",
+"scph7002.bin",
+"SCPH7002.BIN",
+524288
+],
+"c53ca5908936d412331790f4426c6c33": [
+"ps1",
+"psxonpsp660.bin",
+"PSXONPSP660.BIN",
+524288
+],
+"ca30b50f880eb660a320674ed365ef7a": [
+"nes",
+"disksys.rom",
+"FAMICOM DISK SYSTEM",
+8192
+],
+"cb2cebc1b6e573b7c44523d037edcd45": [
+"saturn",
+"mpr-18100.bin",
+"MPR-18100.BIN",
+524288
+],
+"cba733ceeff5aef5c32254f1d617fa62": [
+"ps1",
+"scph3500.bin",
+"SCPH3500.BIN",
+524288
+],
+"d3293ebaaa7f4eb2a6766b68a0fb4609": [
+"megadrive",
+"bios_MD.bin",
+"BIOS_MD.BIN",
+2048
+],
+"dbfce9db9deaa2567f6a84fde55f9680": [
+"gbc",
+"gbc_bios.bin",
+"GBC_BIOS.BIN",
+2304
+],
+"de3cf45d227ad44645b22aa83b49f450": [
+"neogeocd",
+"neocd_t.rom",
+"NEOCD_T.ROM",
+524288
+],
+"de93caec13d1a141a40a79f5c86168d6": [
+"ps1",
+"scph102B.bin",
+"SCPH102B.BIN",
+524288
+],
+"df692a80a5b1bc90728bc3dfc76cd948": [
+"nds",
+"bios7.bin",
+"DS ARM7",
+16384
+],
+"e10c53c2f8b90bab96ead2d368858623": [
+"dreamcast",
+"dc_boot.bin",
+"DREAMCAST",
+2097152
+],
+"e255264d85d5765013b1b2fa8109dd53": [
+"neogeocd",
+"ng-lo.rom",
+"NG-LO.ROM",
+65536
+],
+"e45033d9b0fa6b0de071292bba7c9d13": [
+"nds",
+"firmware.bin",
+"DS FIRMWARE",
+262144
+],
+"e66fa1dc5820d254611fdcdba0662372": [
+"segacd",
+"bios_CD_E.bin",
+"MEGA CD EUROPA",
+131072
+],
+"e8af7fe115a75c849f6aab3701e7799b": [
+"megadrive",
+"ggenie.bin",
+"GGENIE.BIN",
+32768
+],
+"eb201d2d98251a598af467d4347bb62f": [
+"ps1",
+"scph5000.bin",
+"SCPH5000.BIN",
+524288
+],
+"f273555d7d91e8a5a6bfd9bcf066331c": [
+"saturn",
+"sega_100a.bin",
+"SEGA_100A.BIN",
+524288
+],
+"f39572af7584cb5b3f70ae8cc848aba2": [
+"neogeocd",
+"neocd.bin",
+"NEOCD.BIN",
+524288
+],
+"f6325a33c6d63ea4b9162a3fa8c32727": [
+"neogeocd",
+"neocd_st.rom",
+"NEOCD_ST.ROM",
+524288
+],
+"fc7599f3f871578fe9a0453662d1c966": [
+"neogeocd",
+"000-lo.lo",
+"000-LO.LO",
+131072
+]
+}

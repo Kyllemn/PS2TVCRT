@@ -939,3 +939,17 @@ agudos como chiado; e o run-ahead com o som do quadro errado (R26).
 - rv-jogo com DOT MATRIX PEQUENO (filtro 9): testado no PC (Mesen, 1440x900): pontos 2x2 iguais.
 - Pacote R27: rv23 completo (rv-jogo, Python atual, 10 nucleos: os 7 novos + flycast, neocd,
   picodrive). Os 4 recuperados ficam no pendrive do autor.
+
+## R27b (so Python): BIOS reconhecida pelo conteudo
+- Pedido do autor: colocar a BIOS do jeito que veio (qualquer nome) e o sistema reconhecer.
+  dados/bios_md5.json (65 BIOS de 14 sistemas; gerado por tools/mkbios_md5.py do System.dat
+  publico do libretro: nome/tamanho/MD5, nenhuma BIOS). bios_reconhecidas(): arquivos de bios/ e
+  das subpastas (2 niveis), so os de tamanho conhecido sao lidos; MD5 guardado em
+  /var/lib/retrovolt/bios_md5_cache.json (caminho, tamanho, data). bios_arquivos() junta as
+  reconhecidas do sistema com o nome que o nucleo procura (ganham do nome); o arquivo nao e
+  mexido (atalho em /run). Dreamcast (dc/ e a pasta do pendrive, FAT sem atalhos): copia com o
+  nome certo. OPCOES > BIOS: por sistema o que foi reconhecido, o que falta (obrigatorias: PS1,
+  Saturn, Sega CD, PC Engine CD, neogeo.zip) e os arquivos nao reconhecidos.
+- Testado no PC com arquivos de mentira na tabela: "bios ps1 americana (1).bin" -> scph5501.bin,
+  "Saturn BIOS JP v1.01.bin" -> sega_101.bin (+ apelidos), Dreamcast copiada como dc_boot.bin,
+  arquivo qualquer = nao reconhecido. Telas em 720p, 900p, 1080p e tubo sem erro.

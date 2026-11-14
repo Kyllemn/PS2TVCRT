@@ -1436,7 +1436,124 @@ def bios_arquivos(base_rv, sistema):
                     achados[n] = p
         except OSError:
             pass
+    # reconhecidas pelo conteudo (em qualquer pasta de bios/): ganham com o nome certo
+    grupo = GRUPO_BIOS.get(sistema, sistema)
+    for p, sis, nome, _ in bios_reconhecidas(base_rv)[0]:
+        if sis == grupo:
+            achados[nome] = p
     return achados
+
+
+# BIOS pelo CONTEUDO (MD5), nao pelo nome: a pessoa coloca o arquivo do jeito que veio em
+# RETROVOLT/bios (ou em qualquer subpasta dela) e o menu descobre o que e (tabela do libretro em
+# dados/bios_md5.json) e entrega ao nucleo com o nome que ele procura. O arquivo nao e mexido.
+_BIOS_MD5 = None
+_BIOS_CACHE = {}                 # caminho -> (tamanho, data, md5)
+BIOS_CACHE_ARQ = os.path.join(DADOS, 'bios_md5_cache.json')
+GRUPO_BIOS = {'pcenginecd': 'pcengine'}    # lista do menu -> sistema da BIOS
+
+
+def bios_tabela():
+    global _BIOS_MD5
+    if _BIOS_MD5 is None:
+        try:
+            with open(os.path.join(PASTA, 'dados', 'bios_md5.json')) as f:
+                _BIOS_MD5 = json.load(f)
+        except (OSError, ValueError):
+            _BIOS_MD5 = {}
+    return _BIOS_MD5
+
+
+def bios_reconhecidas(base_rv):
+    """[(caminho, sistema, nome_certo, descricao)] dos arquivos de RETROVOLT/bios (2 niveis)
+    cujo conteudo e uma BIOS conhecida; [(caminho)] dos que nao sao (arquivos pequenos)"""
+    import hashlib
+    tab = bios_tabela()
+    tamanhos = {v[3] for v in tab.values()}
+    if not _BIOS_CACHE:
+        try:
+            with open(BIOS_CACHE_ARQ) as f:
+                _BIOS_CACHE.update({k: tuple(v) for k, v in json.load(f).items()})
+        except (OSError, ValueError):
+            pass
+    raiz = os.path.join(base_rv, 'bios')
+    achados, estranhos, mudou = [], [], False
+    pastas = [raiz]
+    try:
+        pastas += [os.path.join(raiz, n) for n in sorted(os.listdir(raiz)) if os.path.isdir(os.path.join(raiz, n))]
+    except OSError:
+        return [], []
+    for pasta in pastas:
+        try:
+            nomes = sorted(os.listdir(pasta))
+        except OSError:
+            continue
+        for n in nomes:
+            p = os.path.join(pasta, n)
+            if n.startswith('.') or not os.path.isfile(p) or n.lower().endswith(('.zip', '.7z', '.txt', '.dat', '.hi')):
+                continue
+            try:
+                st = os.stat(p)
+            except OSError:
+                continue
+            if st.st_size not in tamanhos:
+                if st.st_size <= 4 * 1048576 and os.path.basename(pasta) != 'fbneo':
+                    estranhos.append(p)
+                continue
+            c = _BIOS_CACHE.get(p)
+            if c and c[0] == st.st_size and c[1] == int(st.st_mtime):
+                md5 = c[2]
+            else:
+                try:
+                    with open(p, 'rb') as f:
+                        md5 = hashlib.md5(f.read()).hexdigest()
+                except OSError:
+                    continue
+                _BIOS_CACHE[p] = (st.st_size, int(st.st_mtime), md5)
+                mudou = True
+            if md5 in tab:
+                sis, nome, desc, _ = tab[md5]
+                achados.append((p, sis, nome, desc))
+            else:
+                estranhos.append(p)
+    if mudou:
+        try:
+            os.makedirs(os.path.dirname(BIOS_CACHE_ARQ), exist_ok=True)
+            with open(BIOS_CACHE_ARQ, 'w') as f:
+                json.dump(_BIOS_CACHE, f)
+        except OSError:
+            pass
+    return achados, estranhos
+
+
+BIOS_MOSTRA = [('ps1', True), ('saturn', True), ('segacd', True), ('pcengine', True), ('neogeo', True),
+               ('dreamcast', False), ('neogeocd', False), ('megadrive', False), ('mastersystem', False),
+               ('gamegear', False), ('gba', False), ('gb', False), ('gbc', False), ('nds', False), ('nes', False)]
+
+
+def bios_resumo(base_rv):
+    """linhas da tela BIOS: (sistema, o que tem / falta, cor)"""
+    ach, estranhos = bios_reconhecidas(base_rv)
+    out = []
+    for sis, obrig in BIOS_MOSTRA:
+        nome = NOME_SISTEMA.get(sis, sis.upper())
+        if sis == 'neogeo':
+            tem = bios_tem(bios_arquivos(base_rv, 'neogeo'), 'neogeo.zip') or \
+                os.path.exists(os.path.join(base_rv, 'roms', 'neogeo', 'neogeo.zip'))
+            out.append((nome, 'NEOGEO.ZIP OK' if tem else 'FALTA NEOGEO.ZIP', GREEN if tem else RED))
+            continue
+        meus = sorted({(n, d) for p, s, n, d in ach if s == sis})
+        if meus:
+            out.append((nome, ', '.join(d for n, d in meus), GREEN))
+        elif obrig:
+            out.append((nome, 'FALTA' + (' (SO PARA JOGOS DE CD)' if sis == 'pcengine' else ''), RED))
+        else:
+            out.append((nome, 'NAO PRECISA (TEM EMBUTIDA)' if sis in ('dreamcast', 'neogeocd', 'nds') else 'OPCIONAL', SLATE))
+    if estranhos:
+        out.append(('NAO RECONHECIDOS', '%d ARQUIVO(S)' % len(estranhos), ORANGE))
+        for p in estranhos[:20]:
+            out.append(('  ' + os.path.basename(p).upper()[:30], '', SLATE))
+    return out
 
 
 def bios_tem(arqs, nome):
@@ -1457,15 +1574,22 @@ def bios_pasta_nucleo(base_rv, sistema):
             # se perder ao desligar (no pendrive a caixa das letras nao conta)
             pasta = os.path.join(base_rv, 'bios', 'dreamcast')
             os.makedirs(pasta, exist_ok=True)
+            # BIOS reconhecida pelo conteudo com outro nome (ou em outra pasta): uma copia com o
+            # nome que o Flycast procura (o pendrive FAT nao aceita atalhos)
+            for nome, p in arqs.items():
+                if nome in ('dc_boot.bin', 'dc_flash.bin') and not os.path.exists(os.path.join(pasta, nome)):
+                    shutil.copy(p, os.path.join(pasta, nome))
+                    print('bios: %s copiada como %s' % (p, nome), flush=True)
             os.symlink(pasta, os.path.join(destino, 'dc'))
             return destino
         alvo = os.path.join(destino, 'neocd') if sistema == 'neogeocd' else destino
         os.makedirs(alvo, exist_ok=True)
         exatos = {n.lower(): n for n in BIOS_NOMES}
         for n, p in arqs.items():
-            os.symlink(p, os.path.join(alvo, n))
+            if not os.path.lexists(os.path.join(alvo, n)):
+                os.symlink(p, os.path.join(alvo, n))
             certo = exatos.get(n.lower())
-            if certo and certo != n:
+            if certo and certo != n and not os.path.lexists(os.path.join(alvo, certo)):
                 os.symlink(p, os.path.join(alvo, certo))
         if sistema in FBNEO:
             # system/fbneo/: hiscore.dat e os recordes (.hi) que o FBNeo grava; fica no
@@ -1935,7 +2059,8 @@ class Leitora(threading.Thread):
 # ---------------------------------------------------------------- telas
 ABAS = ['DISCO', 'JOGOS', 'TV', 'APPS', 'OPCOES']
 APPS = ['YOUTUBE', 'KODI']
-OPCOES = ['VOLUME', 'VIDEO', 'CONVERGENCIA', 'FONTE', 'WI-FI', 'PASTAS DE JOGOS', 'TESTE DO CONTROLE', 'INFO', 'REINICIAR', 'DESLIGAR']
+OPCOES = ['VOLUME', 'VIDEO', 'CONVERGENCIA', 'FONTE', 'WI-FI', 'PASTAS DE JOGOS', 'BIOS', 'TESTE DO CONTROLE', 'INFO',
+          'REINICIAR', 'DESLIGAR']
 TECLAS = {False: ['1234567890', 'qwertyuiop', 'asdfghjkl@', 'zxcvbnm.-_'],
           True: ['!#$%&*()+=', 'QWERTYUIOP', 'ASDFGHJKL?', 'ZXCVBNM,:/']}
 TECLAS_FIM = ['ABC', 'ESPACO', 'APAGAR', 'OK']
@@ -2410,6 +2535,23 @@ class App:
             for k, nm in enumerate((self.ent.nomes or ['NENHUM'])[:3]):
                 c.text(24, 162 + k * (F.ch + 2), nm.upper()[:40], IVORY)
             bt_text(c, 24, 206, 'SAIR: APERTE B 3 VEZES', SLATE)
+        elif t == 'bios':
+            moldura(c, 'BIOS', 'B VOLTA')
+            c.text(16, 48, 'RECONHECIDAS PELO CONTEUDO: O NOME DO ARQUIVO NAO IMPORTA', SLATE)
+            linhas = getattr(self, 'bios_linhas', None) or bios_resumo(self.base)
+            passo = F.ch + 4
+            y0 = 48 + F.ch + 8
+            cabem = max(1, (H - 16 - y0) // passo)
+            ini = min(getattr(self, 'bios_sel', 0), max(0, len(linhas) - cabem))
+            self.bios_sel = ini
+            for k, (esq, dir_, cor) in enumerate(linhas[ini:ini + cabem]):
+                y = y0 + k * passo
+                c.text(16, y, esq, IVORY if cor != SLATE else SLATE)
+                c.rtext(W - 14, y, dir_[:(W - 30) // F.cw - len(esq) - 1], cor)
+            if ini > 0:
+                c.text(4, y0, '^', SLATE)
+            if ini + cabem < len(linhas):
+                c.text(4, y0 + (cabem - 1) * passo, 'v', SLATE)
         elif t == 'info':
             moldura(c, 'INFO', 'B VOLTA')
             d = self.info
@@ -2882,7 +3024,10 @@ class App:
                     self.confirma = o
                     return
                 self.tela = {'CONVERGENCIA': 'conv', 'FONTE': 'fonte', 'TESTE DO CONTROLE': 'controle', 'INFO': 'info',
-                             'WI-FI': 'wifi', 'PASTAS DE JOGOS': 'pastas', 'VIDEO': 'video'}[o]
+                             'WI-FI': 'wifi', 'PASTAS DE JOGOS': 'pastas', 'VIDEO': 'video', 'BIOS': 'bios'}[o]
+                if self.tela == 'bios':
+                    self.bios_sel = 0
+                    self.bios_linhas = bios_resumo(self.base)
                 if self.tela == 'video':
                     self.video_sel = 0
                 if self.tela == 'wifi':
@@ -4185,6 +4330,11 @@ class App:
         elif t == 'info':
             if a == 'B':
                 self.tela = 'menu'
+        elif t == 'bios':
+            if a == 'B':
+                self.tela = 'menu'
+            elif a in ('CIMA', 'BAIXO'):
+                self.bios_sel = max(0, getattr(self, 'bios_sel', 0) + (1 if a == 'BAIXO' else -1))
         elif t == 'video':
             self.acao_video(a)
         elif t == 'teste_video':
