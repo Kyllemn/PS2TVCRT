@@ -5,35 +5,48 @@ set -e
 AQUI="$(cd "$(dirname "$0")" && pwd)"
 DEST="$1/nucleos"; mkdir -p "$DEST"
 T=$(mktemp -d)
-git clone -q --depth 1 https://github.com/libretro/pcsx_rearmed "$T/pcsx"
-( cd "$T/pcsx" && git submodule update --init --depth 1 -q &&
+# Cada nucleo na versao que JA FUNCIONOU no Pi do autor (nao a mais nova: o projeto pode ter mudado).
+# Commit conhecido (LOG do autor / ultima compilacao) ou "antes:AAAA-MM-DD" = ultimo commit antes da
+# data em que foi compilado e funcionou (os 5 cujo commit nao ficou anotado).
+baixa() {   # url pasta versao
+	git clone -q --filter=blob:none "$1" "$2"
+	local ref="$3"
+	case "$ref" in
+		antes:*) ref=$(git -C "$2" rev-list -1 --before="${ref#antes:}" HEAD) ;;
+	esac
+	[ -n "$ref" ] && git -C "$2" checkout -q "$ref"
+}
+# submodulos no commit gravado no nucleo (depth 1 quando o GitHub deixa; senao completo)
+submod() { git submodule update --init $1 --depth 1 -q 2>/dev/null || git submodule update --init $1 -q; }
+baixa https://github.com/libretro/pcsx_rearmed "$T/pcsx" antes:2026-11-11
+( cd "$T/pcsx" && submod &&
   make -f Makefile.libretro platform=rpi4_64 CC=aarch64-linux-gnu-gcc AR=aarch64-linux-gnu-ar \
        HAVE_PHYSICAL_CDROM=0 -j"$(nproc)" >/dev/null )   # leitora: pelo CD virtual do rv-jogo
 aarch64-linux-gnu-strip -o "$DEST/pcsx_rearmed_libretro.so" "$T/pcsx/pcsx_rearmed_libretro.so"
 echo "pcsx_rearmed $(cd "$T/pcsx" && git log -1 --format=%h)"
-git clone -q --depth 1 https://github.com/libretro/beetle-pce-fast-libretro "$T/pce"
+baixa https://github.com/libretro/beetle-pce-fast-libretro "$T/pce" antes:2026-11-11
 ( cd "$T/pce" && make platform=unix CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++ AR=aarch64-linux-gnu-ar \
        HAVE_CDROM=0 -j"$(nproc)" >/dev/null )   # PC Engine e PC Engine CD (leitora pelo CD virtual)
 aarch64-linux-gnu-strip -o "$DEST/mednafen_pce_fast_libretro.so" "$T/pce/mednafen_pce_fast_libretro.so"
 echo "beetle-pce-fast $(cd "$T/pce" && git log -1 --format=%h)"
-git clone -q --depth 1 https://github.com/libretro/Genesis-Plus-GX "$T/gpgx"
+baixa https://github.com/libretro/Genesis-Plus-GX "$T/gpgx" b9c2316
 ( cd "$T/gpgx" && make -f Makefile.libretro platform=unix CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++ \
        AR=aarch64-linux-gnu-ar -j"$(nproc)" >/dev/null )   # Sega CD, Mega Drive, Master System (CD pelo VFS)
 aarch64-linux-gnu-strip -o "$DEST/genesis_plus_gx_libretro.so" "$T/gpgx/genesis_plus_gx_libretro.so"
 echo "genesis-plus-gx $(cd "$T/gpgx" && git log -1 --format=%h)"
-git clone -q --depth 1 https://github.com/libretro/neocd_libretro "$T/neocd"
+baixa https://github.com/libretro/neocd_libretro "$T/neocd" antes:2026-11-11
 python3 "$AQUI/remendos/neocd_nomes_sem_caixa.py" "$T/neocd"
 ( cd "$T/neocd" && make platform=unix CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++ \
        AR=aarch64-linux-gnu-ar -j"$(nproc)" >/dev/null )   # Neo Geo CD (CD pelo VFS; BIOS opcional: tem HLE)
 aarch64-linux-gnu-strip -o "$DEST/neocd_libretro.so" "$T/neocd/neocd_libretro.so"
 echo "neocd $(cd "$T/neocd" && git log -1 --format=%h)"
-git clone -q --depth 1 https://github.com/libretro/picodrive "$T/pico"
-( cd "$T/pico" && git submodule update --init --depth 1 -q &&
+baixa https://github.com/libretro/picodrive "$T/pico" antes:2026-11-11
+( cd "$T/pico" && submod &&
   make -f Makefile.libretro platform=aarch64 CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++ \
        AR=aarch64-linux-gnu-ar -j"$(nproc)" >/dev/null )   # 32X (e MD/SMS/Sega CD, mas esses ficam no GPGX)
 aarch64-linux-gnu-strip -o "$DEST/picodrive_libretro.so" "$T/pico/picodrive_libretro.so"
 echo "picodrive $(cd "$T/pico" && git log -1 --format=%h)"
-git clone -q --depth 1 https://github.com/libretro/snes9x "$T/snes9x"
+baixa https://github.com/libretro/snes9x "$T/snes9x" fae2fea
 ( cd "$T/snes9x/libretro" && make platform=unix CC="aarch64-linux-gnu-gcc -march=armv8.2-a+crc+simd -mtune=cortex-a76" \
        CXX="aarch64-linux-gnu-g++ -march=armv8.2-a+crc+simd -mtune=cortex-a76" \
        AR=aarch64-linux-gnu-ar -j"$(nproc)" >/dev/null )   # Super Nintendo
@@ -44,8 +57,8 @@ echo "snes9x $(cd "$T/snes9x" && git log -1 --format=%h)"
 # GLES do arm64 para ligar (dpkg --add-architecture arm64; apt-get install libgles-dev:arm64).
 # PAGE_SIZE 16384: o kernel do Pi 5 usa paginas de 16 KB; com o padrao (4 KB) o mprotect
 # da memoria emulada falha e o Flycast para (SIGTRAP, "codigo 5"). 16 KB vale tambem em 4 KB.
-git clone -q --depth 1 https://github.com/flyinghead/flycast "$T/flycast"
-( cd "$T/flycast" && git submodule update --init --recursive --depth 1 -q &&
+baixa https://github.com/flyinghead/flycast "$T/flycast" 72b8e67
+( cd "$T/flycast" && submod --recursive &&
   python3 "$AQUI/remendos/flycast_page_size.py" . &&
   cat > "$T/aarch64.cmake" <<'TC'
 set(CMAKE_SYSTEM_NAME Linux)
@@ -68,7 +81,7 @@ echo "flycast $(cd "$T/flycast" && git log -1 --format=%h)"
 # VFS_HYBRID_SANDBOXED=1: o VFS "hibrido" dele so passa ao frontend caminhos "xxx://"; o
 # disco.cue existe de verdade e abre, mas o disco.bin so existe no CD virtual ("Failed to open
 # CD"). Assim, o que falhar no arquivo real vai para o rv-jogo.
-git clone -q --depth 1 https://github.com/libretro/beetle-saturn-libretro "$T/bsat"
+baixa https://github.com/libretro/beetle-saturn-libretro "$T/bsat" antes:2026-11-12
 ( cd "$T/bsat" && make platform=unix CC="aarch64-linux-gnu-gcc -mcpu=cortex-a76 -DVFS_HYBRID_SANDBOXED=1" \
        CXX="aarch64-linux-gnu-g++ -mcpu=cortex-a76 -DVFS_HYBRID_SANDBOXED=1" \
        AR=aarch64-linux-gnu-ar HAVE_CDROM=0 WANT_JIT=1 SILENT=1 -j"$(nproc)" >/dev/null )
@@ -76,32 +89,32 @@ aarch64-linux-gnu-strip -o "$DEST/mednafen_saturn_libretro.so" "$T/bsat/mednafen
 echo "beetle-saturn $(cd "$T/bsat" && git log -1 --format=%h)"
 # Arcade: FBNeo (CPS1/2/3, Neo Geo MVS/AES...). platform=rpi5_64 = cortex-a76, -O3. Sem LTO/
 # flags experimentais (quebram jogos segundo o proprio FBNeo)
-git clone -q --depth 1 https://github.com/libretro/FBNeo "$T/fbneo"
+baixa https://github.com/libretro/FBNeo "$T/fbneo" a836e52
 ( cd "$T/fbneo/src/burner/libretro" && make platform=rpi5_64 CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++ \
        AR=aarch64-linux-gnu-ar -j"$(nproc)" >/dev/null )
 aarch64-linux-gnu-strip -o "$DEST/fbneo_libretro.so" "$T/fbneo/src/burner/libretro/fbneo_libretro.so"
 echo "fbneo $(cd "$T/fbneo" && git log -1 --format=%h)"
 # NES/Famicom Disk System: Mesen (preciso; disksys.rom opcional para .fds)
 F="-march=armv8.2-a+crc+simd -mtune=cortex-a76"
-git clone -q --depth 1 https://github.com/libretro/Mesen "$T/mesen"
+baixa https://github.com/libretro/Mesen "$T/mesen" 0102910
 ( cd "$T/mesen/Libretro" && make platform=unix CC="aarch64-linux-gnu-gcc $F" CXX="aarch64-linux-gnu-g++ $F" \
        AR=aarch64-linux-gnu-ar -j"$(nproc)" >/dev/null )
 aarch64-linux-gnu-strip -o "$DEST/mesen_libretro.so" "$T/mesen/Libretro/mesen_libretro.so"
 echo "mesen $(cd "$T/mesen" && git log -1 --format=%h)"
 # Game Boy / Color: Gambatte
-git clone -q --depth 1 https://github.com/libretro/gambatte-libretro "$T/gamb"
+baixa https://github.com/libretro/gambatte-libretro "$T/gamb" 77f2567
 ( cd "$T/gamb" && make -f Makefile.libretro platform=unix CC="aarch64-linux-gnu-gcc $F" CXX="aarch64-linux-gnu-g++ $F" \
        AR=aarch64-linux-gnu-ar -j"$(nproc)" >/dev/null )
 aarch64-linux-gnu-strip -o "$DEST/gambatte_libretro.so" "$T/gamb/gambatte_libretro.so"
 echo "gambatte $(cd "$T/gamb" && git log -1 --format=%h)"
 # Neo Geo Pocket / Color: Beetle NeoPop
-git clone -q --depth 1 https://github.com/libretro/beetle-ngp-libretro "$T/ngp"
+baixa https://github.com/libretro/beetle-ngp-libretro "$T/ngp" a50d5ac
 ( cd "$T/ngp" && make platform=unix CC="aarch64-linux-gnu-gcc $F" CXX="aarch64-linux-gnu-g++ $F" \
        AR=aarch64-linux-gnu-ar -j"$(nproc)" >/dev/null )
 aarch64-linux-gnu-strip -o "$DEST/mednafen_ngp_libretro.so" "$T/ngp/mednafen_ngp_libretro.so"
 echo "beetle-ngp $(cd "$T/ngp" && git log -1 --format=%h)"
 # GBA: mGBA (CMake; so o nucleo libretro)
-git clone -q --depth 1 https://github.com/libretro/mgba "$T/mgba"
+baixa https://github.com/libretro/mgba "$T/mgba" 7a12d6d
 ( cd "$T/mgba" && cmake -B build -DCMAKE_TOOLCHAIN_FILE="$AQUI/aarch64.cmake" -DCMAKE_BUILD_TYPE=Release \
        -DLIBMGBA_ONLY=ON -DBUILD_LIBRETRO=ON >/dev/null && cmake --build build --target mgba_libretro -j"$(nproc)" >/dev/null )
 aarch64-linux-gnu-strip -o "$DEST/mgba_libretro.so" "$T/mgba/build/mgba_libretro.so"
@@ -109,7 +122,7 @@ echo "mgba $(cd "$T/mgba" && git log -1 --format=%h)"
 # DS: melonDS DS (CMake; baixa as dependencias). Desenho por CPU (OpenGL do Pi nao serve: ele
 # pede OpenGL de PC; issue #262 do melonDS DS), JIT aarch64. ENABLE_NETWORKING=OFF nao compila
 # (falta Net.h): fica com rede, desligada nas opcoes
-git clone -q --depth 1 https://github.com/JesseTG/melonds-ds "$T/mds"
+baixa https://github.com/JesseTG/melonds-ds "$T/mds" f394adb
 ( cd "$T/mds" && cmake -B build -DCMAKE_TOOLCHAIN_FILE="$AQUI/aarch64.cmake" -DCMAKE_BUILD_TYPE=Release \
        -DENABLE_OPENGL=OFF -DENABLE_JIT=ON -DBUILD_TESTING=OFF >/dev/null && cmake --build build -j"$(nproc)" >/dev/null )
 aarch64-linux-gnu-strip -o "$DEST/melondsds_libretro.so" "$T/mds/build/src/libretro/melondsds_libretro.so"
