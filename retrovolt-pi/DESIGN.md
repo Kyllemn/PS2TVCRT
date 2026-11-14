@@ -1052,3 +1052,4 @@ agudos como chiado; e o run-ahead com o som do quadro errado (R26).
 - .zip tambem em Mega Drive, 32X, Master System, Game Gear, SG-1000, Super Nintendo e PC Engine:
   aparece na lista e o jogo de dentro vai para a memoria (/run/retrovolt/rom) ao abrir, como no
   NES/GB/GBA/NGP. Save e capa pelo nome do .zip.
+- R28k: dentro da moldura da capa fica transparente (fundo do menu aparece), com ou sem capa.

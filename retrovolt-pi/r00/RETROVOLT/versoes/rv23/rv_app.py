@@ -3156,7 +3156,7 @@ class App:
         asp = ASPECTO_CAPA.get(sistema or self.sistema, 1.0)
         fw, fh = (bw, max(1, round(bw / asp))) if asp >= bw / bh else (max(1, round(bh * asp)), bh)
         fx, fy = x0 + (bw - fw) // 2, y0 + (bh - fh) // 2
-        c.rect(fx, fy, fw, fh, (20, 26, 52))
+        # R28k: dentro da moldura fica transparente (aparece o fundo do menu), com ou sem capa
         moldura_capa(c, fx, fy, fw, fh, fw, fh)
         if self.esc and arte:   # LCD: capa com os pontos do monitor (nitida)
             m = self.mini.pega(arte, fw * self.esc, fh * self.esc)
