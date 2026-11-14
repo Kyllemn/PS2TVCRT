@@ -975,3 +975,16 @@ agudos como chiado; e o run-ahead com o som do quadro errado (R26).
   lenta, o LOG mostra e o proximo passo e no Flycast (emu.stop com renderizacao em thread).
 - DOT MATRIX PEQUENO na TELA CHEIA: explicado ao autor (quadrado menor com a tela cheia so com
   outro desenho do ponto); aguardando escolha pelo esboco.
+- Menu (Python): aba DISCO sem codigo e sem nucleo, bloco centralizado, nome do jogo em azul,
+  JOGAR so perto do CD; aba JOGOS com o JOGAR embaixo da capa (rodape so com VOLTA).
+- CD girando (DISCO e INICIAR CD): CD liso em 12 quadros prontos (o desenho repete a cada 60
+  graus), arte do disco girada numa thread (GiroArte, sem PIL); ate 15 quadros/s, adaptado ao
+  tempo de desenho (LOG "menu: CD girando"). Imagem fixa opcional imagens/discos/cd.png.
+- Capas automaticas (capas.py, cfg capas_automaticas = SIM): ao ligar e a cada 30 min, com
+  internet, baixa a capa dos jogos sem capa. PS1 primeiro pelo codigo no psx-covers; depois
+  pelo nome no libretro-thumbnails (lista de nomes por console em imagens/.cache/capas/,
+  renovada a cada 30 dias; nome exato, titulo limpo, difflib 0.9 ou "uma palavra a mais" se
+  unico; regiao: tags iguais > Brasil > USA > World > Europa > Japao). Reduz com ffmpeg (600
+  linhas, PNG RGB) e grava com o nome da ROM. Sem certeza = sem capa (sem_capa.txt, nova
+  tentativa em 30 dias). Nao baixa com jogo rodando. Teste no PC: 7 de 8 certas, a inexistente
+  ficou sem capa.

@@ -30,6 +30,7 @@ def tempo(etapa):
     print('tempo: %.2f s %s' % (time.monotonic() - T0, etapa), flush=True)
 
 
+import capas
 import disco
 import json
 import shutil
@@ -127,6 +128,7 @@ CFG_PADRAO = [
     ('leitora_velocidade', '4', 'velocidade da leitora nos jogos (0 = maxima; a leitora pode ter minimo proprio, ex.: 10x)'),
     ('leitora_acordar', '10', 'segundos sem leitura ate o RetroVolt acordar a leitora (2 a 60)'),
     ('JOGOS', None, None),
+    ('capas_automaticas', 'SIM', 'SIM = com internet, baixa sozinho as capas dos jogos que nao tem (libretro-thumbnails e psx-covers)'),
     ('pasta_jogos', 'pendrive', 'onde ficam jogos, BIOS e saves: pendrive ou cartao'),
     ('VIDEO', None, None),
     ('video_saida', 'AUTO', 'AUTO detecta pela EDID; TUBO ou LCD forca (so na tela em que foi escolhido)'),
@@ -2346,6 +2348,12 @@ class App:
         self.giro_arte = GiroArte(self.fila)
         self.giro_arte.start()
         self.anima = False            # R28: o CD esta girando na tela (o laco redesenha sozinho)
+        # R28: capas baixadas sozinhas (internet, na primeira volta e a cada 30 min)
+        self.capas = capas.Capas(self.base, lista_jogos, disco.identifica_arquivo, lambda: self.fila.put('_img'),
+                                 self.leitora.pausa, lambda: fbneo_dados().get('nomes', {}))
+        if self.cfg.get('capas_automaticas', 'SIM').upper() != 'NAO' and (not os.environ.get('RV_FAKEFB')
+                                                                         or os.environ.get('RV_CAPAS')):
+            self.capas.start()
         self.aba = os.environ.get('RV_ABA', 'DISCO')
         self.tela = os.environ.get('RV_TELA', 'menu')   # menu | conv | fonte | controle | info | aviso
         self.sel = {'JOGOS': 0, 'OPCOES': 0, 'SIS': 0}
@@ -4417,6 +4425,9 @@ class App:
         antiga = self.base
         self.cfg['pasta_jogos'] = destino
         self.base = base(destino)
+        self.capas.base = self.base
+        self.capas.cache = os.path.join(self.base, 'imagens', '.cache', 'capas')
+        self.capas.falhas_arq = os.path.join(self.capas.cache, 'sem_capa.txt')
         cfg_gravar(self.cfg)
         n = copia_sem_sobrescrever(antiga, self.base) if copiar else 0
         print('pastas: %s -> %s (%d arquivos copiados)' % (antiga, self.base, n), flush=True)
