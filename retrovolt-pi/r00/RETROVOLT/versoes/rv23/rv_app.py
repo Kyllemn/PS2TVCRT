@@ -2342,6 +2342,17 @@ def icone_pasta(c, x, y, on):
     c.rect(x + 1, y + 3, 6, 3, NAV)
 
 
+# R28i: formato da capa de cada console (largura / altura), medido nas capas do libretro
+# (mediana das americanas): Mega Drive/NES/Master em pe, SNES deitado, PS1/Dreamcast quadrado
+ASPECTO_CAPA = {
+    'ps1': 1.0, 'dreamcast': 1.0, 'neogeocd': 1.0, 'pcengine': 1.0, 'pcenginecd': 1.0,
+    'segacd': 0.6, 'saturn': 0.6,
+    'megadrive': 0.7, '32x': 0.72, 'mastersystem': 0.71, 'gamegear': 0.71, 'sg1000': 0.72,
+    'snes': 1.41, 'nes': 0.7, 'gb': 1.0, 'gbc': 1.0, 'gba': 1.0, 'ngp': 1.0, 'nds': 1.12,
+    'neogeo': 0.71, 'arcade': 0.71,
+}
+
+
 def moldura_capa(c, x0, y0, bw, bh, iw, ih):
     """R28f: moldura laranja justa em volta da capa (cada formato a sua): capa escura sobre o
     fundo escuro nao mostrava onde terminava. 1 ponto de folga e 1 de linha."""
@@ -3135,24 +3146,27 @@ class App:
                     c.px[(cy + y) * W + cx + x] = NAV if x * x + y * y <= (f - 2) ** 2 else (200, 205, 215)
         return True
 
-    def desenha_capa(self, c, arte, x0, y0, bw, bh):
-        """capa do jogo centralizada na caixa; moldura vazia enquanto carrega/sem capa"""
+    def desenha_capa(self, c, arte, x0, y0, bw, bh, sistema=None):
+        """R28i: quadro de capa com o formato do console (Mega Drive em pe, SNES deitado, PS1
+        quadrado...), igual com e sem capa, sempre com a moldura laranja. A capa cabe dentro
+        do quadro (se for de outro formato, sobra fundo dentro da moldura)."""
+        asp = ASPECTO_CAPA.get(sistema or self.sistema, 1.0)
+        fw, fh = (bw, max(1, round(bw / asp))) if asp >= bw / bh else (max(1, round(bh * asp)), bh)
+        fx, fy = x0 + (bw - fw) // 2, y0 + (bh - fh) // 2
+        c.rect(fx, fy, fw, fh, (20, 26, 52))
+        moldura_capa(c, fx, fy, fw, fh, fw, fh)
         if self.esc and arte:   # LCD: capa com os pontos do monitor (nitida)
-            m = self.mini.pega(arte, bw * self.esc, bh * self.esc)
+            m = self.mini.pega(arte, fw * self.esc, fh * self.esc)
             if m:
-                c.extras.append((x0, y0, bw, bh, m, False))
-                moldura_capa(c, x0, y0, bw, bh, m[0] / self.esc, m[1] / self.esc)
+                c.extras.append((fx, fy, fw, fh, m, False))
                 return
-        m = self.mini.pega(arte, bw, bh) if (arte and not self.esc) else None
+        m = self.mini.pega(arte, fw, fh) if (arte and not self.esc) else None
         if not m:
-            c.rect(x0, y0, bw, bh, (20, 26, 52))
-            c.rect(x0, y0, bw, 1, LINE); c.rect(x0, y0 + bh - 1, bw, 1, LINE)
-            c.rect(x0, y0, 1, bh, LINE); c.rect(x0 + bw - 1, y0, 1, bh, LINE)
             txt = '...' if arte else 'SEM CAPA'
-            c.text(x0 + (bw - len(txt) * F.cw) // 2, y0 + (bh - F.ch) // 2, txt, SLATE)
+            c.text(fx + (fw - len(txt) * F.cw) // 2, fy + (fh - F.ch) // 2, txt, SLATE)
             return
         w, h, rgb = m
-        ox, oy = x0 + (bw - w) // 2, y0 + (bh - h) // 2
+        ox, oy = fx + (fw - w) // 2, fy + (fh - h) // 2
         for y in range(h):
             Y = oy + y
             if not 0 <= Y < H:
@@ -3162,7 +3176,6 @@ class App:
                 if 0 <= X < W:
                     o = (y * w + x) * 3
                     c.px[Y * W + X] = (rgb[o], rgb[o + 1], rgb[o + 2])
-        moldura_capa(c, x0, y0, bw, bh, w, h)
 
     def arte_jogo(self, arquivo, sistema=None):
         """capa de um jogo da lista (pelo codigo lido da imagem, ou pelo nome)"""
@@ -3257,7 +3270,7 @@ class App:
                 c.text(9, y, '*', AMARELO)
         sob = F.ch + 16
         x0, y0c = W - 14 - bw, 50 + F.ch + 8 + (H - (50 + F.ch + 8) - 24 - bh - sob) // 2
-        self.desenha_capa(c, self.arte_jogo(a_sel, s_sel), x0, y0c, bw, bh)
+        self.desenha_capa(c, self.arte_jogo(a_sel, s_sel), x0, y0c, bw, bh, s_sel)
         jogar_seta(c, x0 + bw // 2, y0c + bh + 10)
 
     def acao_minha_lista(self, aba, a):

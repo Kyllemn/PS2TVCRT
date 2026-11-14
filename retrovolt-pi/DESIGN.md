@@ -1042,3 +1042,8 @@ agudos como chiado; e o run-ahead com o som do quadro errado (R26).
   (varios discos de um titulo, .m3u, ou pasta com o nome do jogo) continua aberta na lista.
   .bin de .cue e discos de .m3u escondidos pelo conteudo do arquivo (FILE/linhas), nao pela
   pasta. lista_jogos continua com todos os jogos (capas, contagem); lista_menu so o nivel aberto.
+
+## R28i (menu Python)
+- Quadro de capa com o formato do console (ASPECTO_CAPA, medido nas capas do libretro: PS1/DC 1.0,
+  Mega Drive/NES/Master 0.7, SNES 1.41, Saturn/Sega CD 0.6, DS 1.12, arcade 0.71...), igual com e
+  sem capa, sempre com a moldura laranja; a capa cabe dentro do quadro; "SEM CAPA" no mesmo quadro.
