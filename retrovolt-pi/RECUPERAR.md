@@ -1,6 +1,7 @@
 # RETROVOLT Pi — como retomar o projeto numa sessao nova
 
-Atualizado em 2026-11-13 (release R25, commit seguinte ao aa77150).
+Atualizado em 2026-11-14 (release R28: scanlines inteiras na TELA CHEIA, save state em thread,
+menu DISCO novo, CD girando, capas automaticas).
 
 ## 1. Prompt para colar na sessao nova (copie tudo dentro do bloco)
 

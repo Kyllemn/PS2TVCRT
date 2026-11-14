@@ -962,7 +962,7 @@ agudos como chiado; e o run-ahead com o som do quadro errado (R26).
   Nintendo"; invertido. E o ultimo desenho de controle fica guardado em
   /var/lib/retrovolt/ultimo_controle.txt: a 1a tela (antes de reconhecer o controle) ja sai certa.
 
-## R28 (rv-jogo; precisa de #compilar)
+## R28 (entregue 2026-11-14: RETROVOLT_R28.zip = rv-jogo + menu Python)
 - Scanlines na TELA CHEIA (opcao B do esboco, aprovada): com SCANLINES, SCANLINES LEVES ou CRT
   a TELA CHEIA usa linhas inteiras (todas as linhas do jogo com a mesma altura), como o DOT
   MATRIX. 224 linhas: 720p 896x672, 900p 1195x896, 1080p 1195x896. Sem filtro continua enchendo
@@ -989,3 +989,6 @@ agudos como chiado; e o run-ahead com o som do quadro errado (R26).
   linhas, PNG RGB) e grava com o nome da ROM. Sem certeza = sem capa (sem_capa.txt, nova
   tentativa em 30 dias). Nao baixa com jogo rodando. Teste no PC: 7 de 8 certas, a inexistente
   ficou sem capa.
+- Teste do R28 no PC (rv-jogo.x86): save state em thread (serializa, grava, carrega esperando a
+  gravacao); TELA CHEIA com SCANLINES no GB (144 linhas): 900p 960x864, 720p 800x720, 1080p
+  1120x1008, linhas inteiras; sem filtro continua enchendo (1000x900, 800x720, 1200x1080).
