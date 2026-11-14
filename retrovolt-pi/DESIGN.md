@@ -1024,3 +1024,9 @@ agudos como chiado; e o run-ahead com o som do quadro errado (R26).
 ## R28e (menu Python)
 - CD liso: 3 faixas escuras (luz 30%-100%) giram com o disco; reflexo parado mais fraco; 20
   quadros de 6 graus (repete a cada 120 graus), 90 graus/s. Cache de linhas do FB 3000 -> 4500.
+
+## R28f (menu Python, esboco enviado)
+- Moldura laranja justa em volta de cada capa (formato de cada uma), 1 ponto de folga; as capas
+  com borda transparente (3D do PS1) sao cortadas antes (imagens.reduz, cache _v2).
+- INICIAR CD: CD girando so com disco deste console na leitora; sem disco ou disco de outro
+  console, o lugar do CD vazio (cd_vazio, igual a aba DISCO).

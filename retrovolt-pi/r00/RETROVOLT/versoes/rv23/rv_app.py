@@ -2254,6 +2254,28 @@ def _cd_calcula(r, fase):
     return pts
 
 
+def moldura_capa(c, x0, y0, bw, bh, iw, ih):
+    """R28f: moldura laranja justa em volta da capa (cada formato a sua): capa escura sobre o
+    fundo escuro nao mostrava onde terminava. 1 ponto de folga e 1 de linha."""
+    iw, ih = int(round(iw)), int(round(ih))
+    x = x0 + (bw - iw) // 2 - 2
+    y = y0 + (bh - ih) // 2 - 2
+    w, h = iw + 4, ih + 4
+    c.rect(x, y, w, 1, ORANGE)
+    c.rect(x, y + h - 1, w, 1, ORANGE)
+    c.rect(x, y, 1, h, ORANGE)
+    c.rect(x + w - 1, y, 1, h, ORANGE)
+
+
+def cd_vazio(c, cx, cy, raio):
+    """lugar do CD sem disco: disco liso escuro (aba DISCO e INICIAR CD sem disco)"""
+    furo = raio * 5 // 14
+    for y in range(cy - raio, cy + raio + 1):
+        for x in range(cx - raio, cx + raio + 1):
+            if furo * furo < (x - cx) ** 2 + (y - cy) ** 2 <= raio * raio and 0 <= x < W and 0 <= y < H:
+                c.px[y * W + x] = (30, 38, 66)
+
+
 def desenha_cd(c, cx, cy, r, passo=0):
     """CD liso: aneis iridescentes, brilho e furo; passo = quadro do giro (0 = parado)"""
     import math
@@ -2934,11 +2956,7 @@ class App:
                 desenha_cd(c, cx, cy, raio, giro_passo(CD_PASSOS, CD_GRAUS))
                 self.anima = True
         else:
-            furo = raio * 5 // 14
-            for y in range(cy - raio, cy + raio + 1):
-                for x in range(cx - raio, cx + raio + 1):
-                    if furo * furo < (x - cx) ** 2 + (y - cy) ** 2 <= raio * raio:
-                        c.px[y * W + x] = (30, 38, 66)
+            cd_vazio(c, cx, cy, raio)
         x, y = cx + raio + 16, 66
         if st == 'procurando':
             c.text(x, y, 'PROCURANDO A', SLATE)
@@ -3026,6 +3044,7 @@ class App:
             m = self.mini.pega(arte, bw * self.esc, bh * self.esc)
             if m:
                 c.extras.append((x0, y0, bw, bh, m, False))
+                moldura_capa(c, x0, y0, bw, bh, m[0] / self.esc, m[1] / self.esc)
                 return
         m = self.mini.pega(arte, bw, bh) if (arte and not self.esc) else None
         if not m:
@@ -3046,6 +3065,7 @@ class App:
                 if 0 <= X < W:
                     o = (y * w + x) * 3
                     c.px[Y * W + X] = (rgb[o], rgb[o + 1], rgb[o + 2])
+        moldura_capa(c, x0, y0, bw, bh, w, h)
 
     def arte_jogo(self, arquivo, sistema=None):
         """capa de um jogo da lista (pelo codigo lido da imagem, ou pelo nome)"""
@@ -3322,10 +3342,14 @@ class App:
             pode = bool(SISTEMAS.get(self.sistema, (0, None))[1])
         elif k == 'cd':
             arte = imagens.arte_disco(self.base, cd.get('sistema'), cd.get('codigo')) if cd else None
+            # R28f: CD (girando) so com disco deste console na leitora; sem disco ou com disco de
+            # outro console, o lugar do CD vazio
             gira = bool(cd and cd.get('sistema') == self.sistema)
-            if not (arte and self.desenha_arte(c, arte, x0 + bw // 2, y0c + bh // 2, bh, gira)):
-                desenha_cd(c, x0 + bw // 2, y0c + bh // 2, bh // 2, giro_passo(CD_PASSOS, CD_GRAUS) if gira else 0)
-                self.anima = self.anima or gira
+            if not gira:
+                cd_vazio(c, x0 + bw // 2, y0c + bh // 2, bh // 2)
+            elif not (arte and self.desenha_arte(c, arte, x0 + bw // 2, y0c + bh // 2, bh, True)):
+                desenha_cd(c, x0 + bw // 2, y0c + bh // 2, bh // 2, giro_passo(CD_PASSOS, CD_GRAUS))
+                self.anima = True
             pode = bool(cd and cd.get('sistema') == self.sistema and SISTEMAS.get(self.sistema, (0, None))[1])
             if not pode:
                 st = 'OUTRO DISCO' if cd else {'lendo': 'LENDO...', 'sem_leitora': 'SEM LEITORA',

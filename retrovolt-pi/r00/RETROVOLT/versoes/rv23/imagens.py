@@ -141,7 +141,7 @@ def reduz(path, bw, bh, cache_dir=None):
     except OSError:
         return None
     nome = hashlib.md5(('%s|%d|%d' % (path, st.st_size, int(st.st_mtime))).encode()).hexdigest()
-    arq = os.path.join(cache_dir, '%s_%dx%d.rgb' % (nome, bw, bh)) if cache_dir else None
+    arq = os.path.join(cache_dir, '%s_%dx%d_v2.rgb' % (nome, bw, bh)) if cache_dir else None
     if arq and os.path.exists(arq):
         try:
             d = open(arq, 'rb').read()
@@ -154,6 +154,22 @@ def reduz(path, bw, bh, cache_dir=None):
     if not img:
         return None
     sw, sh, px = img
+    # R28f: corta a borda transparente (capa 3D do PS1 em PNG com fundo transparente): a imagem
+    # fica do tamanho da caixa de verdade e a moldura laranja do menu encosta nela
+    borda = [px[x] for x in range(sw)] + [px[(sh - 1) * sw + x] for x in range(sw)] + \
+        [px[y * sw] for y in range(sh)] + [px[y * sw + sw - 1] for y in range(sh)]
+    if any(p[3] < 128 for p in borda):
+        xs0, ys0, xs1, ys1 = sw, sh, -1, -1
+        for y in range(sh):
+            linha = px[y * sw:(y + 1) * sw]
+            opacos = [x for x, p in enumerate(linha) if p[3] >= 128]
+            if opacos:
+                xs0, xs1 = min(xs0, opacos[0]), max(xs1, opacos[-1])
+                ys0 = min(ys0, y)
+                ys1 = y
+        if xs1 >= xs0 and ys1 >= ys0 and (xs1 - xs0 + 1, ys1 - ys0 + 1) != (sw, sh):
+            px = [px[y * sw + x] for y in range(ys0, ys1 + 1) for x in range(xs0, xs1 + 1)]
+            sw, sh = xs1 - xs0 + 1, ys1 - ys0 + 1
     esc = min(bw / sw, bh / sh)
     w, h = max(1, int(sw * esc)), max(1, int(sh * esc))
     out = bytearray(w * h * 3)
