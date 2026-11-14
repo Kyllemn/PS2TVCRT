@@ -1005,3 +1005,13 @@ agudos como chiado; e o run-ahead com o som do quadro errado (R26).
   porcentagem como a do RetroArch, jogo atual, contagem com/sem capa; B cancela. Ignora o
   sem_capa.txt (tenta de novo tudo). A volta automatica espera enquanto a tela trabalha.
 - Escolha da capa: versoes Virtual Console/Classic Mini/Beta/Proto/Demo/Hack perdem pontos.
+
+## R28c (menu Python): nome do jogo nos discos fisicos
+- PC Engine CD e Neo Geo CD nao gravam o nome no disco; Sega CD/Saturn/Dreamcast gravam um
+  nome cru. Agora disco.py procura no banco do Redump (dados/discos_<sistema>.txt.gz, gerado por
+  tools/mkdiscos.py do libretro-database: codigo, setores da faixa de dados, nome; 79 KB):
+  pelo codigo do disco (Sega CD, Saturn, Dreamcast; codigo repetido desempata pelo tamanho) ou
+  pelo tamanho exato da faixa de dados (PC Engine CD, Neo Geo CD; testa as combinacoes de
+  intervalo de 0/150/225 setores). So mostra quando todos os candidatos sao o mesmo titulo.
+  Simulado: PC Engine CD 95 de 120 com nome certo, 0 errados. O LOG mostra a TOC
+  ("disco: PC Engine CD, faixas ...") para calibrar com os discos reais do autor.

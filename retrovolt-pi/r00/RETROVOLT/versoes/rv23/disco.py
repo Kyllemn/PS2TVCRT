@@ -168,6 +168,80 @@ def nome_jogo(sistema, codigo):
     return _nomes[sistema].get(codigo)
 
 
+# R28c: nome do disco pelo banco do Redump (tools/mkdiscos.py -> dados/discos_<sistema>.txt.gz):
+# pelo codigo gravado no disco (Sega CD, Saturn, Dreamcast) ou, sem codigo (PC Engine CD, Neo
+# Geo CD), pelo tamanho exato da faixa de dados. So da nome quando todos os candidatos sao o
+# mesmo jogo (regioes e revisoes do mesmo titulo contam como um).
+_bancos = {}
+
+
+def _banco(sistema):
+    if sistema not in _bancos:
+        por_cod, por_tam = {}, {}
+        try:
+            with gzip.open(os.path.join(AQUI, 'dados', 'discos_%s.txt.gz' % sistema), 'rt') as f:
+                for l in f:
+                    cod, tam, nome = l.rstrip('\n').split('\t')
+                    if cod:
+                        por_cod.setdefault(_so_alnum(cod), []).append(nome)
+                    por_tam.setdefault(int(tam), []).append(nome)
+        except (OSError, ValueError):
+            pass
+        _bancos[sistema] = (por_cod, por_tam)
+    return _bancos[sistema]
+
+
+def _so_alnum(t):
+    return ''.join(ch for ch in t.upper() if ch.isalnum())
+
+
+def _titulo(nome):
+    import re
+    return re.sub(r'\s*\([^)]*\)', '', nome).strip()
+
+
+def _um_titulo(nomes):
+    tits = []
+    for n in nomes:
+        t = _titulo(n)
+        if t not in tits:
+            tits.append(t)
+    return tits[0] if len(tits) == 1 else None
+
+
+def nome_banco(sistema, codigo=None, setores=()):
+    """nome do jogo pelo codigo do disco ou pelo tamanho da faixa de dados (lista de
+    tamanhos possiveis: a conta do Redump inclui ou nao os intervalos entre faixas)"""
+    por_cod, por_tam = _banco(sistema)
+    nomes = None
+    if codigo:
+        c = _so_alnum(codigo)
+        nomes = por_cod.get(c)
+        if not nomes:      # o disco traz sufixo de regiao/versao (T-93175-00) ou o banco traz
+            nomes = [n for k, v in por_cod.items() if len(k) >= 5 and (c.startswith(k) or k.startswith(c))
+                     for n in v]
+        t = _um_titulo(nomes or [])
+        if t:
+            return t
+    achados = [n for s_ in setores for n in por_tam.get(s_, [])]
+    if codigo and nomes and achados:      # codigo repetido no banco: desempata pelo tamanho
+        juntos = [n for n in achados if n in nomes]
+        if juntos:
+            return _um_titulo(juntos)
+    return _um_titulo(achados) if achados else None
+
+
+def _setores_dados(faixas, fim, base, primeira):
+    """tamanhos possiveis, em setores, da faixa de dados que comeca em 'base' como o Redump
+    mede (a faixa inclui o proprio intervalo de 2 ou 3 s antes, se nao for a primeira, e o
+    seguinte fica com a proxima faixa)"""
+    prox = [lba for _, lba, _ in faixas if lba > base]
+    L = (min(prox) if prox else fim) - base
+    antes = (0,) if primeira else (225, 150, 0)
+    depois = (150, 225, 0) if prox else (0,)
+    return sorted({L + a - d for a in antes for d in depois})
+
+
 def _texto_sega(b):
     """texto do cabecalho Sega (so ASCII legivel; espacos repetidos viram um)"""
     t = ''.join(chr(c) if 32 <= c < 127 else ' ' for c in b)
@@ -212,18 +286,21 @@ def identifica(src):
         cod = cod.replace(' ', '')
         # codigo de verdade (tem numero, nao e "XXXXXXXX-XX" de modelo) -> nome do save
         r['codigo'] = cod if any(ch.isdigit() for ch in cod) and 'XXXX' not in cod.upper() else None
+        r['nome'] = nome_banco('segacd', r['codigo'], _setores_dados(faixas, getattr(src, 'fim', 0), base, base == faixas[0][1])) \
+            or r['nome']
         # regiao pelo codigo de seguranca (igual ao nucleo): escolhe a BIOS
         r['regiao'] = {0x64: 'E', 0xa1: 'J'}.get(s0[0x20b] if len(s0) > 0x20b else 0, 'U')
         return r
     if s0[:16] == b'SEGA SEGAKATANA ':     # Dreamcast (IP.BIN; CD-R selfboot: 2a sessao)
         r['sistema'] = 'dreamcast'
         r['codigo'] = _texto_sega(s0[0x40:0x4a])
-        r['nome'] = _texto_sega(s0[0x80:0x100])
+        r['nome'] = nome_banco('dreamcast', r['codigo']) or _texto_sega(s0[0x80:0x100])
         return r
     if s0[:15] == b'SEGA SEGASATURN':
         r['sistema'] = 'saturn'
         r['codigo'] = s0[0x20:0x2a].decode('ascii', 'replace').strip() or None
-        r['nome'] = s0[0x60:0xd0].decode('ascii', 'replace').strip() or None
+        r['nome'] = nome_banco('saturn', r['codigo'], _setores_dados(faixas, getattr(src, 'fim', 0), base, True)) \
+            or s0[0x60:0xd0].decode('ascii', 'replace').strip() or None
         return r
     if s0[:7] == b'\x01ZZZZZ\x01':
         r['sistema'] = '3do'
@@ -238,6 +315,11 @@ def identifica(src):
                 import zlib
                 toc = ','.join('%d' % lba for _, lba, _ in faixas) + ',%d' % getattr(src, 'fim', 0)
                 r['codigo'] = 'PCECD-%08X' % (zlib.crc32(toc.encode()) & 0xffffffff)
+                tams = _setores_dados(faixas, getattr(src, 'fim', 0), base, False)
+                r['nome'] = nome_banco('pcenginecd', None, tams)
+                print('disco: PC Engine CD, faixas %s, dados %s -> %s' % (
+                    [lba for _, lba, _ in faixas] + [getattr(src, 'fim', 0)], tams, r['nome'] or 'sem nome no banco'),
+                    flush=True)
                 return r
         except OSError:
             pass
@@ -252,6 +334,11 @@ def identifica(src):
             arqs = {}
         if 'IPL.TXT' in arqs:
             r['sistema'] = 'neogeocd'
+            tams = _setores_dados(faixas, getattr(src, 'fim', 0), base, True)
+            r['nome'] = nome_banco('neogeocd', None, tams)
+            print('disco: Neo Geo CD, faixas %s, dados %s -> %s' % (
+                [lba for _, lba, _ in faixas] + [getattr(src, 'fim', 0)], tams, r['nome'] or 'sem nome no banco'),
+                flush=True)
             return r
         if sysid == 'PLAYSTATION' or 'SYSTEM.CNF' in arqs or 'PSX.EXE' in arqs:
             r['sistema'] = 'ps1'
