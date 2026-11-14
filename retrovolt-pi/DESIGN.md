@@ -1059,3 +1059,6 @@ agudos como chiado; e o run-ahead com o som do quadro errado (R26).
   found at .../roms/arcade/dino" com o dino.zip la). Causa: v_seek do VFS devolvia a posicao nova;
   o RetroArch devolve 0 (vfs_implementation.c) e o minizip do FBNeo (fseek -> filestream_seek)
   trata diferente de 0 como erro, entao nenhum .zip abria. Agora devolve 0 / -1.
+- Teste no PC (FBNeo x86, so Neo Geo, ssideki3.zip falso): rv-jogo antigo "No romset found at
+  .../roms/neogeo/ssideki3", novo "Romset found at ...". Gambatte e mGBA continuam (save/load ok).
+  Entregue em RETROVOLT_R28l.zip (rv-jogo + menu Python completo).
