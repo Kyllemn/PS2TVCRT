@@ -1073,3 +1073,6 @@ agudos como chiado; e o run-ahead com o som do quadro errado (R26).
   O pacote leva o DAT em RETROVOLT/dats/ para o autor usar com ClrMamePro/RomVault no PC.
 - R28n: sem capa (ou carregando) nao aparece nada no lugar da capa (nem moldura nem "SEM CAPA");
   a moldura so aparece com capa. O JOGAR continua no mesmo lugar.
+- R28o: OPCOES > BAIXAR CAPAS: B sai da tela e o download continua por tras (Y cancela);
+  rodape "CAPAS 37%" no menu enquanto baixa; aviso no fim ("CAPAS PRONTAS: N COM CAPA, M SEM");
+  com jogo aberto o download espera (baixa_sistemas chama _espera_jogo).

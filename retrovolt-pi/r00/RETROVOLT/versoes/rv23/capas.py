@@ -373,6 +373,7 @@ class Capas(threading.Thread):
             for n, (sis, jogo) in enumerate(jogos):
                 if cancelado():
                     break
+                self._espera_jogo()          # R28o: com jogo aberto, espera voltar ao menu
                 progresso(n, len(jogos), sis, jogo, achadas, sem)
                 codigo = self.codigo_ps1(sis, jogo)
                 if self.tem_capa(sis, jogo, codigo) or self.um_jogo(sis, jogo, codigo) == 'ok':

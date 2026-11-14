@@ -2257,11 +2257,15 @@ def cabecalho(c, aba, wifi, rodape_d):
     x = (W - lw) // 2
     if x + lw > lim:
         x = max(16, (16 + lim - lw) // 2)
+    if CAPAS_RODAPE:          # R28o: download de capas por tras (OPCOES > BAIXAR CAPAS)
+        c.text(16, H - 4 - F.ch, CAPAS_RODAPE, ORANGE)
+        x = max(x, 16 + (len(CAPAS_RODAPE) + 2) * F.cw)
     bt_text(c, x, H - 4 - F.ch, leg, SLATE)
     bt_rtext(c, W - 12, H - 4 - F.ch, rodape_d, SLATE)
 
 
 AZUL_CAIXA = (24, 44, 110)
+CAPAS_RODAPE = ''     # R28o: "CAPAS 37%" no rodape enquanto OPCOES > BAIXAR CAPAS baixa por tras
 AZUL_NOME = (110, 175, 255)     # nome do jogo nas telas DISCO / JOGOS (pedido do autor)
 
 
@@ -3300,7 +3304,7 @@ class App:
     def desenha_capas(self, c):
         cp = self.__dict__.setdefault('cp', {'sel': 0, 'rodando': False, 'prog': None, 'fim': None})
         if cp['rodando'] or cp['fim']:
-            moldura(c, 'BAIXAR CAPAS', 'B CANCELA' if cp['rodando'] else 'B VOLTA')
+            moldura(c, 'BAIXAR CAPAS', 'Y CANCELA  B SAI' if cp['rodando'] else 'B VOLTA')
             feitos, total, sis, jogo, achadas, sem = cp['prog'] or (0, 0, '', '', 0, 0)
             pct = int(100 * feitos / total) if total else 0
             y = 62
@@ -3352,7 +3356,10 @@ class App:
     def acao_capas(self, a):
         cp = self.cp
         if cp['rodando']:
+            # R28o: B sai e o download continua por tras (rodape "CAPAS 37%"); Y cancela
             if a == 'B':
+                self.tela = 'menu'
+            elif a == 'Y':
                 cp['cancela'] = True
             return
         if cp['fim']:
@@ -3371,7 +3378,10 @@ class App:
                       titulo='TODOS OS CONSOLES' if cp['sel'] == 0 else NOME_SISTEMA[sis[0]])
 
             def prog(*v):
+                global CAPAS_RODAPE
                 cp['prog'] = v
+                feitos, total = v[0], v[1]
+                CAPAS_RODAPE = 'CAPAS %d%%' % (100 * feitos // total if total else 0)
                 self.fila.put('_img')
 
             def roda():
@@ -3385,8 +3395,13 @@ class App:
                     com, sem = self.capas.baixa_sistemas(sis, prog, lambda: cp.get('cancela'))
                     cp['fim'] = 'CANCELADO.' if cp.get('cancela') else 'PRONTO!'
                     print('capas: tela BAIXAR CAPAS %s: %d com capa, %d sem' % (cp['titulo'], com, sem), flush=True)
+                    if self.tela != 'capas':        # saiu da tela: avisa no menu quando acabar
+                        self.mostra_aviso('CAPAS %s: %d COM CAPA, %d SEM' % (
+                            'CANCELADAS' if cp.get('cancela') else 'PRONTAS', com, sem))
                 except Exception as ex:
                     cp['fim'] = 'ERRO: %s' % str(ex)[:30].upper()
+                global CAPAS_RODAPE
+                CAPAS_RODAPE = ''
                 cp['rodando'] = False
                 self.fila.put('_img')
             threading.Thread(target=roda, daemon=True).start()
