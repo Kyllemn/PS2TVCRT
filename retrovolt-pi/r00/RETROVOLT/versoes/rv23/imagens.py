@@ -98,6 +98,12 @@ def arte_disco(base, sistema, codigo=None, arquivo=None, tipo='discos'):
             p = os.path.join(pasta, n + ext)
             if os.path.exists(p):
                 return p
+    if tipo == 'discos':
+        # R28: imagem fixa de CD para todos os discos sem arte propria (escolhida pelo autor)
+        for ext in ('.png', '.PNG'):
+            p = os.path.join(base, 'imagens', 'discos', 'cd' + ext)
+            if os.path.exists(p):
+                return p
     return None
 
 
