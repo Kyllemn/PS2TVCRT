@@ -1071,3 +1071,5 @@ agudos como chiado; e o run-ahead com o som do quadro errado (R26).
   do .zip; mostra OK / FALTAM N / SEM BIOS / DESCONHECIDO com barra de porcentagem, detalhe do
   marcado embaixo, e grava RETROVOLT/verificacao_arcade.txt (com o que tem dentro de cada zip).
   O pacote leva o DAT em RETROVOLT/dats/ para o autor usar com ClrMamePro/RomVault no PC.
+- R28n: sem capa (ou carregando) nao aparece nada no lugar da capa (nem moldura nem "SEM CAPA");
+  a moldura so aparece com capa. O JOGAR continua no mesmo lugar.

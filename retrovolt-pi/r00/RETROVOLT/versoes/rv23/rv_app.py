@@ -3153,23 +3153,24 @@ class App:
 
     def desenha_capa(self, c, arte, x0, y0, bw, bh, sistema=None):
         """R28i: quadro de capa com o formato do console (Mega Drive em pe, SNES deitado, PS1
-        quadrado...), igual com e sem capa, sempre com a moldura laranja. A capa cabe dentro
-        do quadro (se for de outro formato, sobra fundo dentro da moldura)."""
+        quadrado...), com a moldura laranja; a capa cabe dentro do quadro (se for de outro
+        formato, sobra fundo transparente dentro da moldura). R28n: sem capa (ou carregando)
+        nao aparece nada - nem moldura nem "SEM CAPA" (pedido do autor)."""
         asp = ASPECTO_CAPA.get(sistema or self.sistema, 1.0)
         fw, fh = (bw, max(1, round(bw / asp))) if asp >= bw / bh else (max(1, round(bh * asp)), bh)
         fx, fy = x0 + (bw - fw) // 2, y0 + (bh - fh) // 2
-        # R28k: dentro da moldura fica transparente (aparece o fundo do menu), com ou sem capa
-        moldura_capa(c, fx, fy, fw, fh, fw, fh)
-        if self.esc and arte:   # LCD: capa com os pontos do monitor (nitida)
+        if not arte:
+            return
+        if self.esc:            # LCD: capa com os pontos do monitor (nitida)
             m = self.mini.pega(arte, fw * self.esc, fh * self.esc)
             if m:
+                moldura_capa(c, fx, fy, fw, fh, fw, fh)
                 c.extras.append((fx, fy, fw, fh, m, False))
-                return
-        m = self.mini.pega(arte, fw, fh) if (arte and not self.esc) else None
-        if not m:
-            txt = '...' if arte else 'SEM CAPA'
-            c.text(fx + (fw - len(txt) * F.cw) // 2, fy + (fh - F.ch) // 2, txt, SLATE)
             return
+        m = self.mini.pega(arte, fw, fh)
+        if not m:
+            return
+        moldura_capa(c, fx, fy, fw, fh, fw, fh)
         w, h, rgb = m
         ox, oy = fx + (fw - w) // 2, fy + (fh - h) // 2
         for y in range(h):
