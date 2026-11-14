@@ -1030,3 +1030,6 @@ agudos como chiado; e o run-ahead com o som do quadro errado (R26).
   com borda transparente (3D do PS1) sao cortadas antes (imagens.reduz, cache _v2).
 - INICIAR CD: CD girando so com disco deste console na leitora; sem disco ou disco de outro
   console, o lugar do CD vazio (cd_vazio, igual a aba DISCO).
+- R28g dentro do pacote R28f: capas do PS1 voltam a ser as normais (2D, psx-covers default JPG ->
+  ffmpeg -> PNG). As 3D ja baixadas (nome = codigo do disco) saem uma vez (marca
+  imagens/capas/ps1/.estilo = 2d) e as falhas do PS1 sao esquecidas para tentar de novo.

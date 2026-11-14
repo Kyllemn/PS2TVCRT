@@ -3,8 +3,8 @@ ele baixar").
 
 Ao ligar (e depois a cada 30 min), com internet, numa thread de baixa prioridade:
 - para cada jogo das pastas roms/<sistema> que ainda nao tem capa em imagens/capas/<sistema>/,
-- PlayStation: tenta primeiro a capa 3D pelo codigo do disco (SLUS-01158) no psx-covers;
-  se nao houver 3D, cai na capa normal do libretro pelo nome (abaixo);
+- PlayStation: tenta primeiro a capa normal pelo codigo do disco (SLUS-01158) no psx-covers;
+  se nao houver, cai na capa normal do libretro pelo nome (abaixo);
 - todos: cruza o nome do arquivo com a lista de capas do libretro-thumbnails (a lista de
   nomes de cada console fica em imagens/.cache/capas/ e e baixada de novo a cada 30 dias)
   e baixa a capa do nome que bate;
@@ -24,8 +24,9 @@ import urllib.request
 
 LIBRETRO = 'https://thumbnails.libretro.com/'
 LIBRETRO_GH = 'https://raw.githubusercontent.com/libretro-thumbnails/%s/master/Named_Boxarts/%s'
-# PS1: capa 3D (caixa em perspectiva, fundo transparente), pedido do autor
-PSX_COVERS = 'https://raw.githubusercontent.com/xlenore/psx-covers/main/covers/3d/%s.png'
+# PS1: capa normal (2D, JPG; o ffmpeg converte para PNG). R28g: o autor desistiu da 3D
+PSX_COVERS = 'https://raw.githubusercontent.com/xlenore/psx-covers/main/covers/default/%s.jpg'
+ESTILO_PS1 = '2d'
 AGENTE = {'User-Agent': 'RetroVolt/1.0'}
 DIAS = 30 * 86400
 ALTURA = 600
@@ -231,6 +232,37 @@ class Capas(threading.Thread):
         except OSError:
             pass
 
+    def troca_estilo_ps1(self):
+        """R28g: capas 3D do PS1 ja baixadas (gravadas com o codigo do disco, SLUS-01158.png)
+        saem uma vez, para virem de novo em 2D. As achadas pelo nome (libretro) ja sao 2D."""
+        pasta = os.path.join(self.base, 'imagens', 'capas', 'ps1')
+        marca = os.path.join(pasta, '.estilo')
+        try:
+            if open(marca).read().strip() == ESTILO_PS1:
+                return
+        except OSError:
+            pass
+        n = 0
+        try:
+            for f in os.listdir(pasta):
+                if re.match(r'^[A-Z]{4}[-_]?\d{3}\.?\d{2}\.png$', f, re.I):
+                    os.remove(os.path.join(pasta, f))
+                    n += 1
+        except OSError:
+            pass
+        try:
+            os.makedirs(pasta, exist_ok=True)
+            with open(marca, 'w') as f:
+                f.write(ESTILO_PS1 + '\n')
+        except OSError:
+            pass
+        if n:
+            log('ps1: %d capas 3D apagadas para baixar a versao normal' % n)
+        # o que falhou antes pode existir em 2D: limpa as falhas do PS1
+        f = self._falhas()
+        if any(k.startswith('ps1/') for k in f):
+            self._grava_falhas({k: v for k, v in f.items() if not k.startswith('ps1/')})
+
     def _espera_jogo(self):
         while self.pausa.is_set():
             time.sleep(5)
@@ -269,7 +301,7 @@ class Capas(threading.Thread):
             if codigo:
                 try:
                     if grava_capa(baixa(PSX_COVERS % codigo), os.path.join(destino_dir, codigo + '.png'), self.cache):
-                        log('%s: %s (codigo %s, psx-covers 3D)' % (sis, os.path.basename(jogo), codigo))
+                        log('%s: %s (codigo %s, psx-covers)' % (sis, os.path.basename(jogo), codigo))
                         return 'ok'
                 except Exception:
                     pass
@@ -295,6 +327,7 @@ class Capas(threading.Thread):
             return 'sem'
 
     def uma_volta(self):
+        self.troca_estilo_ps1()
         falhas = self._falhas()
         novas = 0
         for sis in SISTEMAS_LIBRETRO:
@@ -327,6 +360,7 @@ class Capas(threading.Thread):
         antes. progresso(feitos, total, sistema, jogo, achadas, sem) a cada jogo"""
         self.manual = True
         try:
+            self.troca_estilo_ps1()
             jogos = []
             for sis in sistemas:
                 try:
