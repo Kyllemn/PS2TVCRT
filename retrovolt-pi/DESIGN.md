@@ -953,3 +953,7 @@ agudos como chiado; e o run-ahead com o som do quadro errado (R26).
 - Testado no PC com arquivos de mentira na tabela: "bios ps1 americana (1).bin" -> scph5501.bin,
   "Saturn BIOS JP v1.01.bin" -> sega_101.bin (+ apelidos), Dreamcast copiada como dc_boot.bin,
   arquivo qualquer = nao reconhecido. Telas em 720p, 900p, 1080p e tubo sem erro.
+- R27c: icones misturados na 1a tela (A do Xbox, LB/RB/START de outro padrao): no boot a checagem
+  de video (tv/aplica_video) desenha em outra thread junto com a tela normal, e o controle era
+  reconhecido no meio. desenha() agora com trava (um desenho por vez; padrao lido uma vez por
+  tela). Teste: 2 threads desenhando + troca de padrao a cada 3 ms: 2880 telas, 0 misturadas.

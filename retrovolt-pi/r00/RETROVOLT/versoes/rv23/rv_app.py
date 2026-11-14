@@ -2425,7 +2425,17 @@ class App:
             return v.lower()
         return getattr(self.ent, 'layout_ctl', 'xbox')
 
+    _trava_desenho = threading.RLock()
+
     def desenha(self):
+        """um desenho por vez: no boot a checagem de video desenha em outra thread junto com a
+        tela normal; com o controle sendo reconhecido no meio, cada desenho pegava um desenho de
+        botao (A do Xbox e LB/RB/START de outro, relato do autor). Agora o padrao e lido uma vez
+        e vale para a tela inteira."""
+        with self._trava_desenho:
+            return self._desenha()
+
+    def _desenha(self):
         global ICONES_LAYOUT
         ICONES_LAYOUT = self.layout_icones()
         t = self.tela
