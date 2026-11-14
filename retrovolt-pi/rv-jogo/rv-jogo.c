@@ -1144,16 +1144,21 @@ static int64_t v_tell(struct retro_vfs_file_handle *s)
 {
 	return s->tipo == T_ARQ ? ftello(s->fp) : s->pos;
 }
+/* R28l: devolve 0 quando da certo (-1 erro), como o RetroArch (vfs_implementation.c). Antes
+ * devolvia a posicao nova: o minizip do FBNeo (fseek -> filestream_seek) entende qualquer valor
+ * diferente de 0 como erro, nao abria nenhum .zip e todo arcade dava "None of those archives
+ * was found in your paths" (romset no lugar certo). */
 static int64_t v_seek(struct retro_vfs_file_handle *s, int64_t off, int w)
 {
 	if (s->tipo == T_ARQ) {
 		int ww = w == RETRO_VFS_SEEK_POSITION_CURRENT ? SEEK_CUR : w == RETRO_VFS_SEEK_POSITION_END ? SEEK_END : SEEK_SET;
-		return fseeko(s->fp, off, ww) ? -1 : ftello(s->fp);
+		return fseeko(s->fp, off, ww) ? -1 : 0;
 	}
 	int64_t base = w == RETRO_VFS_SEEK_POSITION_CURRENT ? s->pos : w == RETRO_VFS_SEEK_POSITION_END ? v_size(s) : 0;
 	if (base + off < 0)
 		return -1;
-	return s->pos = base + off;
+	s->pos = base + off;
+	return 0;
 }
 static int64_t v_read(struct retro_vfs_file_handle *s, void *buf, uint64_t len)
 {

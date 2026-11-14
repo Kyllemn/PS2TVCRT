@@ -1053,3 +1053,9 @@ agudos como chiado; e o run-ahead com o som do quadro errado (R26).
   aparece na lista e o jogo de dentro vai para a memoria (/run/retrovolt/rom) ao abrir, como no
   NES/GB/GBA/NGP. Save e capa pelo nome do .zip.
 - R28k: dentro da moldura da capa fica transparente (fundo do menu aparece), com ou sem capa.
+
+## R28l (rv-jogo; precisa de #compilar)
+- FBNeo: TODO arcade dava "None of those archives was found in your paths" (LOG: "No romset
+  found at .../roms/arcade/dino" com o dino.zip la). Causa: v_seek do VFS devolvia a posicao nova;
+  o RetroArch devolve 0 (vfs_implementation.c) e o minizip do FBNeo (fseek -> filestream_seek)
+  trata diferente de 0 como erro, entao nenhum .zip abria. Agora devolve 0 / -1.
