@@ -1390,16 +1390,16 @@ SISTEMAS = {
 }
 EXT_JOGO = {
     'ps1': ('.cue', '.chd', '.pbp', '.m3u', '.iso', '.img', '.bin', '.exe', '.mdf', '.toc', '.cbn'),
-    'pcengine': ('.pce',),
+    'pcengine': ('.pce', '.zip'),
     'pcenginecd': ('.cue', '.chd', '.ccd', '.toc', '.m3u'),
     'segacd': ('.cue', '.chd', '.iso', '.m3u'),
     'neogeocd': ('.cue', '.chd'),
-    'megadrive': ('.md', '.gen', '.smd', '.bin', '.68k', '.sgd', '.mdx', '.bms'),
-    '32x': ('.32x', '.bin'),
-    'mastersystem': ('.sms',),
-    'gamegear': ('.gg',),
-    'sg1000': ('.sg',),
-    'snes': ('.sfc', '.smc', '.fig', '.swc', '.bs'),
+    'megadrive': ('.md', '.gen', '.smd', '.bin', '.68k', '.sgd', '.mdx', '.bms', '.zip'),
+    '32x': ('.32x', '.bin', '.zip'),
+    'mastersystem': ('.sms', '.zip'),
+    'gamegear': ('.gg', '.zip'),
+    'sg1000': ('.sg', '.zip'),
+    'snes': ('.sfc', '.smc', '.fig', '.swc', '.bs', '.zip'),
     'dreamcast': ('.cdi', '.gdi', '.chd', '.cue', '.m3u'),
     'saturn': ('.cue', '.chd', '.iso', '.ccd', '.mds', '.m3u'),
     'arcade': ('.zip', '.7z'),
@@ -1413,7 +1413,10 @@ EXT_JOGO = {
 }
 # cartuchos pequenos em .zip: o jogo de dentro vai para a memoria (/run) e abre de la
 # (os nucleos destes nao abrem .zip). DS fica de fora: jogo de ate 512 MB nao cabe na RAM.
-ZIP_EXTRAI = ('nes', 'gb', 'gbc', 'gba', 'ngp')
+# R28j: tambem Mega Drive, 32X, Master System, Game Gear, SG-1000, Super Nintendo e PC Engine
+# (Genesis Plus GX, PicoDrive, Snes9x e Beetle PCE nao abrem .zip sozinhos)
+ZIP_EXTRAI = ('nes', 'gb', 'gbc', 'gba', 'ngp', 'megadrive', '32x', 'mastersystem', 'gamegear', 'sg1000', 'snes',
+              'pcengine')
 ROM_RAM = '/run/retrovolt/rom'
 # run-ahead (1 quadro a menos de atraso; desliga com run_ahead = NAO). DS fica de fora: o
 # estado do DS e grande e o JIT recompila tudo a cada volta
