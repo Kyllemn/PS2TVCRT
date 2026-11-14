@@ -148,6 +148,11 @@ class Lista:
         def nota(c):
             tc = set(_tags(c))
             pontos = 10 * len(meus & tc)
+            # versao de relancamento/teste so se a ROM tambem for (Super Metroid pegava a do
+            # Virtual Console por ter USA e Europe juntos)
+            if any(re.search(r'virtual console|switch online|classic mini|beta|proto|demo|sample|kiosk|hack', t_)
+                   for t_ in tc - meus):
+                pontos -= 25
             for i, r in enumerate(REGIOES):
                 if r in tc:
                     pontos += len(REGIOES) - i
@@ -203,6 +208,8 @@ class Capas(threading.Thread):
         self.cache = os.path.join(base, 'imagens', '.cache', 'capas')
         self.listas = {}
         self.falhas_arq = os.path.join(self.cache, 'sem_capa.txt')
+        self.trava = threading.Lock()
+        self.manual = False
 
     def _falhas(self):
         f = {}
@@ -244,68 +251,109 @@ class Capas(threading.Thread):
                 pass
         return re.sub(r'\s*\((track|faixa)\s*\d+\)', '', n, flags=re.I)
 
+    def codigo_ps1(self, sis, jogo):
+        if sis != 'ps1':
+            return None
+        try:
+            return (self.identifica(jogo) or {}).get('codigo')
+        except Exception:
+            return None
+
+    def um_jogo(self, sis, jogo, codigo=None):
+        """baixa a capa de um jogo (ja sabendo que falta): 'ok' ou 'sem' """
+        pastas = SISTEMAS_LIBRETRO.get(sis, [])
+        destino_dir = os.path.join(self.base, 'imagens', 'capas', sis)
+        with self.trava:                      # a volta automatica e a tela BAIXAR CAPAS juntas
+            if self.tem_capa(sis, jogo, codigo):
+                return 'ok'
+            if codigo:
+                try:
+                    if grava_capa(baixa(PSX_COVERS % codigo), os.path.join(destino_dir, codigo + '.png'), self.cache):
+                        log('%s: %s (codigo %s, psx-covers 3D)' % (sis, os.path.basename(jogo), codigo))
+                        return 'ok'
+                except Exception:
+                    pass
+            busca = self.nome_para_busca(sis, jogo)
+            for p in pastas:
+                lst = self.listas.get(p)
+                if lst is None:
+                    lst = self.listas[p] = Lista(self.cache, p)
+                achado = lst.acha(busca)
+                if not achado:
+                    continue
+                destino = os.path.join(destino_dir, os.path.splitext(os.path.basename(jogo))[0] + '.png')
+                nome_url = urllib.parse.quote(achado + '.png')
+                for url in (LIBRETRO + urllib.parse.quote(p) + '/Named_Boxarts/' + nome_url,
+                            LIBRETRO_GH % (urllib.parse.quote(p.replace(' ', '_')), nome_url)):
+                    try:
+                        if grava_capa(baixa(url), destino, self.cache):
+                            log('%s: %s -> %s' % (sis, os.path.basename(jogo), achado))
+                            return 'ok'
+                    except Exception:
+                        pass
+            log('%s: sem capa para %s' % (sis, os.path.basename(jogo)))
+            return 'sem'
+
     def uma_volta(self):
         falhas = self._falhas()
         novas = 0
-        for sis, pastas in SISTEMAS_LIBRETRO.items():
+        for sis in SISTEMAS_LIBRETRO:
             try:
                 jogos = self.lista_jogos(self.base, sis)
             except Exception:
                 continue
             for jogo in jogos:
                 self._espera_jogo()
+                if self.manual:               # a tela BAIXAR CAPAS esta trabalhando
+                    time.sleep(5)
+                    continue
                 chave = sis + '/' + os.path.basename(jogo)
                 if chave in falhas:
                     continue
-                codigo = None
-                if sis == 'ps1':
-                    try:
-                        codigo = (self.identifica(jogo) or {}).get('codigo')
-                    except Exception:
-                        codigo = None
+                codigo = self.codigo_ps1(sis, jogo)
                 if self.tem_capa(sis, jogo, codigo):
                     continue
-                destino_dir = os.path.join(self.base, 'imagens', 'capas', sis)
-                ok = False
-                if codigo:
-                    try:
-                        ok = grava_capa(baixa(PSX_COVERS % codigo), os.path.join(destino_dir, codigo + '.png'),
-                                        self.cache)
-                        if ok:
-                            log('%s: %s (codigo %s, psx-covers)' % (sis, os.path.basename(jogo), codigo))
-                    except Exception:
-                        ok = False
-                if not ok:
-                    busca = self.nome_para_busca(sis, jogo)
-                    for p in pastas:
-                        lst = self.listas.get(p)
-                        if lst is None:
-                            lst = self.listas[p] = Lista(self.cache, p)
-                        achado = lst.acha(busca)
-                        if not achado:
-                            continue
-                        destino = os.path.join(destino_dir, os.path.splitext(os.path.basename(jogo))[0] + '.png')
-                        nome_url = urllib.parse.quote(achado + '.png')
-                        for url in (LIBRETRO + urllib.parse.quote(p) + '/Named_Boxarts/' + nome_url,
-                                    LIBRETRO_GH % (urllib.parse.quote(p.replace(' ', '_')), nome_url)):
-                            try:
-                                ok = grava_capa(baixa(url), destino, self.cache)
-                            except Exception:
-                                ok = False
-                            if ok:
-                                break
-                        if ok:
-                            log('%s: %s -> %s' % (sis, os.path.basename(jogo), achado))
-                            break
-                if ok:
+                if self.um_jogo(sis, jogo, codigo) == 'ok':
                     novas += 1
                     self.avisa()
                 else:
                     falhas[chave] = '%d' % time.time()
-                    log('%s: sem capa para %s' % (sis, os.path.basename(jogo)))
                 time.sleep(0.3)
         self._grava_falhas(falhas)
         return novas
+
+    def baixa_sistemas(self, sistemas, progresso, cancelado):
+        """OPCOES > BAIXAR CAPAS: todos os jogos dos sistemas pedidos, sem pular os que falharam
+        antes. progresso(feitos, total, sistema, jogo, achadas, sem) a cada jogo"""
+        self.manual = True
+        try:
+            jogos = []
+            for sis in sistemas:
+                try:
+                    jogos += [(sis, j) for j in self.lista_jogos(self.base, sis)]
+                except Exception:
+                    pass
+            falhas = self._falhas()
+            achadas = sem = 0
+            progresso(0, len(jogos), sistemas[0] if sistemas else '', '', 0, 0)
+            for n, (sis, jogo) in enumerate(jogos):
+                if cancelado():
+                    break
+                progresso(n, len(jogos), sis, jogo, achadas, sem)
+                codigo = self.codigo_ps1(sis, jogo)
+                if self.tem_capa(sis, jogo, codigo) or self.um_jogo(sis, jogo, codigo) == 'ok':
+                    achadas += 1
+                    falhas.pop(sis + '/' + os.path.basename(jogo), None)
+                    self.avisa()
+                else:
+                    sem += 1
+                    falhas[sis + '/' + os.path.basename(jogo)] = '%d' % time.time()
+            else:
+                progresso(len(jogos), len(jogos), '', '', achadas, sem)
+            self._grava_falhas(falhas)
+            return achadas, sem
+        finally:
+            self.manual = False
 
     def run(self):
         time.sleep(20)                       # deixa o boot e o Wi-Fi terminarem

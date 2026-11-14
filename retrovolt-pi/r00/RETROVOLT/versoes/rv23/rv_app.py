@@ -2120,9 +2120,11 @@ class Leitora(threading.Thread):
 
 
 # ---------------------------------------------------------------- telas
-ABAS = ['DISCO', 'JOGOS', 'TV', 'APPS', 'OPCOES']
+ABAS = ['DISCO', 'JOGOS', 'TV', 'RECENTES', 'FAVORITOS', 'APPS', 'OPCOES']
+N_RECENTES, N_FAVORITOS = 50, 20
 APPS = ['YOUTUBE', 'KODI']
-OPCOES = ['VOLUME', 'VIDEO', 'CONVERGENCIA', 'FONTE', 'WI-FI', 'PASTAS DE JOGOS', 'BIOS', 'TESTE DO CONTROLE', 'INFO',
+OPCOES = ['VOLUME', 'VIDEO', 'CONVERGENCIA', 'FONTE', 'WI-FI', 'PASTAS DE JOGOS', 'BIOS', 'BAIXAR CAPAS',
+          'TESTE DO CONTROLE', 'INFO',
           'REINICIAR', 'DESLIGAR']
 TECLAS = {False: ['1234567890', 'qwertyuiop', 'asdfghjkl@', 'zxcvbnm.-_'],
           True: ['!#$%&*()+=', 'QWERTYUIOP', 'ASDFGHJKL?', 'ZXCVBNM,:/']}
@@ -2134,13 +2136,33 @@ def cabecalho(c, aba, wifi, rodape_d):
         c.rect(0, 0, 6, H, ORANGE)
         c.rect(W - 6, 0, 6, H, ORANGE)
     linha_topo(c, wifi)
-    x = 16
-    for a in ABAS:
+    # R28: 7 abas nao cabem no tubo (320 pontos) nem no 720p: mostra as que cabem em volta da
+    # aba atual, com < e > avisando que tem mais para os lados (L1/R1 continua igual)
+    larg = [(len(a) + 3) * F.cw for a in ABAS]
+    lim = W - 16 - F.cw
+    sel = ABAS.index(aba) if aba in ABAS else 0
+    ini, fim = 0, len(ABAS)
+    if 16 + sum(larg) - 3 * F.cw > W - 16:
+        ini = sel
+        while ini > 0 and 16 + F.cw + sum(larg[ini - 1:sel + 1]) - 3 * F.cw <= lim:
+            ini -= 1
+        fim = ini
+        while fim < len(ABAS) and 16 + F.cw + sum(larg[ini:fim + 1]) - 3 * F.cw <= lim:
+            fim += 1
+        while fim < len(ABAS) and ini < sel and 16 + F.cw + sum(larg[ini + 1:fim + 1]) - 3 * F.cw <= lim:
+            ini += 1                      # prefere mostrar a proxima aba a uma antiga
+            fim += 1 if fim < len(ABAS) and 16 + F.cw + sum(larg[ini:fim + 1]) - 3 * F.cw <= lim else 0
+    x = 16 + (F.cw if ini > 0 else 0)
+    if ini > 0:
+        c.text(16 - F.cw // 2, 30, '<', ORANGE)
+    for a in ABAS[ini:fim]:
         on = a == aba
         c.text(x, 30, a, IVORY if on else SLATE)
         if on:
             c.rect(x, 30 + F.ch + 2, len(a) * F.cw, 2, ORANGE)
         x += (len(a) + 3) * F.cw
+    if fim < len(ABAS):
+        c.text(x - 2 * F.cw, 30, '>', ORANGE)
     c.rect(16, 30 + F.ch + 8, W - 32, 1, LINE)
     # legenda no centro da tela; se a dica da direita for comprida (TV), no centro do espaco
     # que sobra a esquerda dela
@@ -2505,6 +2527,8 @@ class App:
         if self.cfg.get('audio_dispositivo'):
             cmd += ['--audio', self.cfg['audio_dispositivo']]
         self.carregando(nome)
+        if arquivo and not cd:
+            self.anota_recente(lista_sis, arquivo)
         print('jogo: %s' % ' '.join(cmd), flush=True)
         copia_log()
         self.leitora.pausa.set()
@@ -2631,6 +2655,8 @@ class App:
                 self.desenha_jogos(c)
             elif self.aba == 'TV':
                 self.desenha_tv(c)
+            elif self.aba in ('RECENTES', 'FAVORITOS'):
+                self.desenha_minha_lista(c, self.aba)
             elif self.aba == 'APPS':
                 cabecalho(c, 'APPS', self.wifi, 'A ENTRA')
                 y = max(56, 30 + F.ch + 14)
@@ -2719,6 +2745,8 @@ class App:
             for k, nm in enumerate((self.ent.nomes or ['NENHUM'])[:3]):
                 c.text(24, 162 + k * (F.ch + 2), nm.upper()[:40], IVORY)
             bt_text(c, 24, 206, 'SAIR: APERTE B 3 VEZES', SLATE)
+        elif t == 'capas':
+            self.desenha_capas(c)
         elif t == 'bios':
             moldura(c, 'BIOS', 'B VOLTA')
             c.text(16, 48, 'RECONHECIDAS PELO CONTEUDO: O NOME DO ARQUIVO NAO IMPORTA', SLATE)
@@ -3013,14 +3041,213 @@ class App:
                     o = (y * w + x) * 3
                     c.px[Y * W + X] = (rgb[o], rgb[o + 1], rgb[o + 2])
 
-    def arte_jogo(self, arquivo):
-        """arte do disco de um jogo da lista (pelo codigo lido da imagem, ou pelo nome)"""
+    def arte_jogo(self, arquivo, sistema=None):
+        """capa de um jogo da lista (pelo codigo lido da imagem, ou pelo nome)"""
         if not hasattr(self, '_codigos'):
             self._codigos = {}
         if arquivo not in self._codigos:
             i = disco.identifica_arquivo(arquivo) or {}
             self._codigos[arquivo] = i.get('codigo')
-        return imagens.arte_disco(self.base, self.sistema, self._codigos[arquivo], arquivo, tipo='capas')
+        return imagens.arte_disco(self.base, sistema or self.sistema, self._codigos[arquivo], arquivo, tipo='capas')
+
+    # ---------------------------------------------------------- R28: RECENTES e FAVORITOS
+    def _lista_arq(self, nome):
+        return os.path.join(self.base, 'config', nome + '.json')
+
+    def minha_lista(self, nome):
+        """[(sistema da lista do menu, caminho)] so dos jogos que ainda existem"""
+        cache = self.__dict__.setdefault('_minhas', {})
+        if nome not in cache:
+            try:
+                with open(self._lista_arq(nome)) as f:
+                    cache[nome] = [(e['s'], e['a']) for e in json.load(f) if e.get('s') in SISTEMAS]
+            except (OSError, ValueError, KeyError, TypeError):
+                cache[nome] = []
+        return [(s_, os.path.join(self.base, a)) for s_, a in cache[nome] if os.path.exists(os.path.join(self.base, a))]
+
+    def _grava_lista(self, nome, lst):
+        self.__dict__.setdefault('_minhas', {})[nome] = lst
+        try:
+            arq = self._lista_arq(nome)
+            os.makedirs(os.path.dirname(arq), exist_ok=True)
+            with open(arq + '.tmp', 'w') as f:
+                json.dump([{'s': s_, 'a': a} for s_, a in lst], f, indent=0)
+            os.replace(arq + '.tmp', arq)
+        except OSError as ex:
+            print('listas: nao gravou %s: %s' % (nome, ex), flush=True)
+
+    def _rel(self, arquivo):
+        return os.path.relpath(arquivo, self.base)
+
+    def anota_recente(self, sistema, arquivo):
+        self.minha_lista('recentes')
+        r = self._rel(arquivo)
+        lst = [e for e in self._minhas['recentes'] if e != (sistema, r)]
+        self._grava_lista('recentes', [(sistema, r)] + lst[:N_RECENTES - 1])
+
+    def eh_favorito(self, sistema, arquivo):
+        self.minha_lista('favoritos')
+        return (sistema, self._rel(arquivo)) in self._minhas['favoritos']
+
+    def troca_favorito(self, sistema, arquivo):
+        self.minha_lista('favoritos')
+        e = (sistema, self._rel(arquivo))
+        lst = list(self._minhas['favoritos'])
+        if e in lst:
+            lst.remove(e)
+            self.mostra_aviso('TIRADO DOS FAVORITOS')
+        elif len(lst) >= N_FAVORITOS:
+            self.mostra_aviso('FAVORITOS CHEIOS (%d): TIRE UM ANTES' % N_FAVORITOS)
+            return
+        else:
+            lst.append(e)
+            self.mostra_aviso('ADICIONADO AOS FAVORITOS')
+        self._grava_lista('favoritos', lst)
+
+    def desenha_minha_lista(self, c, aba):
+        nome = aba.lower()
+        lst = self.minha_lista(nome)
+        bw = bh = max(96, min(H - 120, (W - 40) // 3))
+        cabecalho(c, aba, self.wifi, 'Y FAVORITO' if lst else '')
+        if not lst:
+            if aba == 'RECENTES':
+                txt = ['NENHUM JOGO AINDA.', 'OS ULTIMOS %d JOGADOS APARECEM AQUI.' % N_RECENTES]
+            else:
+                txt = ['NENHUM FAVORITO AINDA.', 'NA LISTA DE JOGOS, APERTE Y', 'PARA GUARDAR ATE %d AQUI.' % N_FAVORITOS]
+            for k, t_ in enumerate(txt):
+                bt_text(c, 24, 64 + k * (F.ch + 6), t_, SLATE if k else IVORY)
+            return
+        sel = self.sel[aba] = max(0, min(self.sel.get(aba, 0), len(lst) - 1))
+        s_sel, a_sel = lst[sel]
+        c.text(16, 50, NOME_SISTEMA.get(s_sel, ''), ORANGE)        # console do jogo marcado
+        c.rtext(W - 12, 50, '%d/%d' % (sel + 1, len(lst)), SLATE)
+        passo = F.ch + 7
+        y0 = 50 + F.ch + 10
+        cabem = (H - 8 - F.ch - y0) // passo
+        ini = max(0, min(sel - cabem // 2, len(lst) - cabem))
+        lim = (W - 40 - bw - 4) // F.cw - 3
+        for n in range(ini, min(len(lst), ini + cabem)):
+            s_, a_ = lst[n]
+            y = y0 + (n - ini) * passo
+            item(c, 24, y, nome_limpo(a_)[:lim], n == sel)
+            if aba == 'RECENTES' and self.eh_favorito(s_, a_):
+                c.text(9, y, '*', AMARELO)
+        sob = F.ch + 16
+        x0, y0c = W - 14 - bw, 50 + F.ch + 8 + (H - (50 + F.ch + 8) - 24 - bh - sob) // 2
+        self.desenha_capa(c, self.arte_jogo(a_sel, s_sel), x0, y0c, bw, bh)
+        jogar_seta(c, x0 + bw // 2, y0c + bh + 10)
+
+    def acao_minha_lista(self, aba, a):
+        lst = self.minha_lista(aba.lower())
+        if not lst:
+            return
+        sel = max(0, min(self.sel.get(aba, 0), len(lst) - 1))
+        if a in ('CIMA', 'BAIXO', 'ESQ', 'DIR'):
+            d = (-1 if a in ('CIMA', 'ESQ') else 1) * (1 if a in ('CIMA', 'BAIXO') else 10)
+            sel = (sel + d) % len(lst) if a in ('CIMA', 'BAIXO') else max(0, min(len(lst) - 1, sel + d))
+            self.sel[aba] = sel
+        elif a == 'A':
+            self.jogar(lst[sel][0], arquivo=lst[sel][1])
+        elif a == 'Y':
+            self.troca_favorito(*lst[sel])
+
+    # ---------------------------------------------------------- R28: BAIXAR CAPAS
+    def capas_sistemas(self):
+        return [s_ for s_ in self.sistemas_com_jogos() if s_ in capas.SISTEMAS_LIBRETRO]
+
+    def desenha_capas(self, c):
+        cp = self.__dict__.setdefault('cp', {'sel': 0, 'rodando': False, 'prog': None, 'fim': None})
+        if cp['rodando'] or cp['fim']:
+            moldura(c, 'BAIXAR CAPAS', 'B CANCELA' if cp['rodando'] else 'B VOLTA')
+            feitos, total, sis, jogo, achadas, sem = cp['prog'] or (0, 0, '', '', 0, 0)
+            pct = int(100 * feitos / total) if total else 0
+            y = 62
+            c.text(24, y, cp['titulo'], ORANGE)
+            y += F.ch + 14
+            # barra como a do RetroArch: porcentagem grande e a barra cheia na proporcao
+            bx, bw_ = 24, W - 48 - 6 * F.cw
+            c.rect(bx, y, bw_, F.ch + 4, (30, 38, 66))
+            c.rect(bx, y, bw_ * pct // 100, F.ch + 4, ORANGE)
+            c.rtext(W - 24, y + 2, '%d%%' % pct, IVORY)
+            y += F.ch + 16
+            c.text(24, y, '%d DE %d JOGOS' % (feitos, total), IVORY)
+            y += F.ch + 8
+            if cp['rodando'] and jogo:
+                c.text(24, y, ('%s: %s' % (NOME_SISTEMA.get(sis, sis), nome_limpo(jogo)))[:(W - 48) // F.cw], SLATE)
+            y += F.ch + 14
+            c.text(24, y, 'COM CAPA: %d' % achadas, GREEN)
+            c.text(24 + 18 * F.cw, y, 'SEM CAPA: %d' % sem, RED if sem else SLATE)
+            if cp['fim']:
+                c.text(24, y + F.ch + 14, cp['fim'], IVORY)
+            return
+        moldura(c, 'BAIXAR CAPAS', 'A BAIXA  B VOLTA')
+        c.text(16, 48, 'BAIXA AS CAPAS QUE FALTAM (PRECISA DE INTERNET)', SLATE)
+        lst = ['TODOS'] + self.capas_sistemas()
+        cp['sel'] = min(cp['sel'], len(lst) - 1)
+        passo = F.ch + 6
+        y0 = 48 + F.ch + 10
+        cabem = max(1, (H - 18 - y0) // passo)
+        ini = max(0, min(cp['sel'] - cabem // 2, len(lst) - cabem))
+        conta = self.__dict__.setdefault('_conta_capas', {})
+        for n in range(ini, min(len(lst), ini + cabem)):
+            s_ = lst[n]
+            y = y0 + (n - ini) * passo
+            if s_ == 'TODOS':
+                item(c, 24, y, 'TODOS OS CONSOLES', n == cp['sel'])
+                continue
+            if s_ not in conta:
+                js = lista_jogos(self.base, s_)
+                # codigo do disco so do que o menu ja leu (ler cada .chd aqui travaria a tela)
+                cods = [getattr(self, '_codigos', {}).get(j) for j in js]
+                conta[s_] = (sum(1 for j, k in zip(js, cods) if self.capas.tem_capa(s_, j, k)), len(js))
+            com, tot = conta[s_]
+            item(c, 24, y, NOME_SISTEMA[s_], n == cp['sel'], '%d/%d' % (com, tot))
+        if ini > 0:
+            c.text(7, y0, '^', SLATE)
+        if ini + cabem < len(lst):
+            c.text(7, y0 + (cabem - 1) * passo, 'v', SLATE)
+
+    def acao_capas(self, a):
+        cp = self.cp
+        if cp['rodando']:
+            if a == 'B':
+                cp['cancela'] = True
+            return
+        if cp['fim']:
+            if a in ('A', 'B'):
+                cp['fim'] = None
+                self._conta_capas = {}
+            return
+        lst = ['TODOS'] + self.capas_sistemas()
+        if a == 'B':
+            self.tela = 'menu'
+        elif a in ('CIMA', 'BAIXO'):
+            cp['sel'] = (cp['sel'] + (1 if a == 'BAIXO' else -1)) % len(lst)
+        elif a == 'A':
+            sis = lst[1:] if cp['sel'] == 0 else [lst[cp['sel']]]
+            cp.update(rodando=True, cancela=False, prog=None, fim=None,
+                      titulo='TODOS OS CONSOLES' if cp['sel'] == 0 else NOME_SISTEMA[sis[0]])
+
+            def prog(*v):
+                cp['prog'] = v
+                self.fila.put('_img')
+
+            def roda():
+                try:
+                    capas.baixa(capas.LIBRETRO, timeout=10)
+                except Exception:
+                    cp.update(rodando=False, fim='SEM INTERNET. CONFIRA O WI-FI.')
+                    self.fila.put('_img')
+                    return
+                try:
+                    com, sem = self.capas.baixa_sistemas(sis, prog, lambda: cp.get('cancela'))
+                    cp['fim'] = 'CANCELADO.' if cp.get('cancela') else 'PRONTO!'
+                    print('capas: tela BAIXAR CAPAS %s: %d com capa, %d sem' % (cp['titulo'], com, sem), flush=True)
+                except Exception as ex:
+                    cp['fim'] = 'ERRO: %s' % str(ex)[:30].upper()
+                cp['rodando'] = False
+                self.fila.put('_img')
+            threading.Thread(target=roda, daemon=True).start()
 
     def desenha_jogos(self, c):
         if not self.sistema:
@@ -3050,7 +3277,7 @@ class App:
             return
         itens = self.itens_pasta()
         bw = bh = max(96, min(H - 120, (W - 40) // 3))      # caixa da capa
-        cabecalho(c, 'JOGOS', self.wifi, 'B VOLTA')   # R28: o JOGAR fica embaixo da capa
+        cabecalho(c, 'JOGOS', self.wifi, 'Y FAVORITO  B VOLTA')   # R28: o JOGAR fica embaixo da capa
         titulo = NOME_SISTEMA[self.sistema]
         n_jogos = len(self.jogos)
         sel = self.sel['JOGOS']
@@ -3067,18 +3294,14 @@ class App:
         for n in range(ini, min(len(itens), ini + cabem)):
             k, v = itens[n]
             if k == 'cd':
-                ok = bool(cd and cd.get('sistema') == self.sistema)
-                valor = None
-                if not ok:
-                    valor = {'lendo': 'LENDO...', 'sem_leitora': 'SEM LEITORA', 'procurando': '...'}.get(self.leitora.estado, 'SEM DISCO')
-                    if cd:
-                        valor = NOME_SISTEMA.get(cd.get('sistema'), 'OUTRO DISCO')
-                item(c, 24, y, v, n == sel, valor)
-                if not ok and n != sel:
-                    pass
+                # R28: sem texto a direita (caia em cima da capa: "PC ENGINE CD" em todos os
+                # consoles); o estado da leitora aparece embaixo do CD quando INICIAR CD esta marcado
+                item(c, 24, y, v, n == sel)
             elif k == 'arq':
                 lim = (W - 40 - bw - 4) // F.cw - 3
                 item(c, 24, y, nome_limpo(v)[:lim], n == sel)
+                if self.eh_favorito(self.sistema, v):
+                    c.text(9, y, '*', AMARELO)
             y += passo
         if not self.jogos:
             c.text(24, y0 + 3 * passo, 'SEM JOGOS NA PASTA ROMS/%s' % self.sistema.upper(), SLATE)
@@ -3098,6 +3321,10 @@ class App:
                 desenha_cd(c, x0 + bw // 2, y0c + bh // 2, bh // 2, giro_passo(CD_PASSOS, 5) if gira else 0)
                 self.anima = self.anima or gira
             pode = bool(cd and cd.get('sistema') == self.sistema and SISTEMAS.get(self.sistema, (0, None))[1])
+            if not pode:
+                st = 'OUTRO DISCO' if cd else {'lendo': 'LENDO...', 'sem_leitora': 'SEM LEITORA',
+                                               'procurando': '...'}.get(self.leitora.estado, 'SEM DISCO')
+                c.text(x0 + (bw - len(st) * F.cw) // 2, y0c + bh + 10, st, SLATE)
         if pode:
             jogar_seta(c, x0 + bw // 2, y0c + bh + 10)
 
@@ -3145,6 +3372,9 @@ class App:
         if self.aba == 'TV':
             self.acao_tv(a)
             return
+        if self.aba in ('RECENTES', 'FAVORITOS'):
+            self.acao_minha_lista(self.aba, a)
+            return
         if self.aba == 'DISCO':
             i = self.leitora.info if self.leitora.estado == 'ok' else None
             if a == 'A' and i:
@@ -3186,6 +3416,8 @@ class App:
                 self.sel['JOGOS'] = sel
             elif a == 'B':
                 self.sistema = None
+            elif a == 'Y' and itens and itens[sel][0] == 'arq':
+                self.troca_favorito(self.sistema, itens[sel][1])
             elif a == 'A' and itens:
                 k, v = itens[sel]
                 if k == 'cd':
@@ -3225,7 +3457,11 @@ class App:
                     self.confirma = o
                     return
                 self.tela = {'CONVERGENCIA': 'conv', 'FONTE': 'fonte', 'TESTE DO CONTROLE': 'controle', 'INFO': 'info',
-                             'WI-FI': 'wifi', 'PASTAS DE JOGOS': 'pastas', 'VIDEO': 'video', 'BIOS': 'bios'}[o]
+                             'WI-FI': 'wifi', 'PASTAS DE JOGOS': 'pastas', 'VIDEO': 'video', 'BIOS': 'bios',
+                             'BAIXAR CAPAS': 'capas'}[o]
+                if self.tela == 'capas':
+                    self.__dict__.setdefault('cp', {'sel': 0, 'rodando': False, 'prog': None, 'fim': None})
+                    self._conta_capas = {}
                 if self.tela == 'bios':
                     self.bios_sel = 0
                     self.bios_linhas = bios_resumo(self.base)
@@ -4547,6 +4783,8 @@ class App:
         elif t == 'info':
             if a == 'B':
                 self.tela = 'menu'
+        elif t == 'capas':
+            self.acao_capas(a)
         elif t == 'bios':
             if a == 'B':
                 self.tela = 'menu'

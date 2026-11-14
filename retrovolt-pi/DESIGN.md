@@ -992,3 +992,16 @@ agudos como chiado; e o run-ahead com o som do quadro errado (R26).
 - Teste do R28 no PC (rv-jogo.x86): save state em thread (serializa, grava, carrega esperando a
   gravacao); TELA CHEIA com SCANLINES no GB (144 linhas): 900p 960x864, 720p 800x720, 1080p
   1120x1008, linhas inteiras; sem filtro continua enchendo (1000x900, 800x720, 1200x1080).
+
+## R28b (menu Python)
+- JOGOS: INICIAR CD sem o nome do sistema a direita (caia em cima da capa, "PC ENGINE CD" em
+  todos os consoles, foto do autor); o estado (SEM DISCO / OUTRO DISCO / LENDO) vai embaixo do CD.
+- Abas RECENTES (50 ultimos jogados, gravado ao abrir o jogo) e FAVORITOS (ate 20; Y liga/desliga
+  na lista de JOGOS, em RECENTES e em FAVORITOS; * amarelo na lista). Ficam em
+  config/recentes.json e config/favoritos.json, com caminho relativo a pasta RETROVOLT. O titulo
+  da aba mostra o console do jogo marcado. So jogos de arquivo (disco fisico nao entra).
+- Abas: se nao couberem (fonte grande / tela estreita), rolam em volta da atual com < e >.
+- OPCOES > BAIXAR CAPAS: TODOS OS CONSOLES ou um console (com capas/jogos de cada), barra com
+  porcentagem como a do RetroArch, jogo atual, contagem com/sem capa; B cancela. Ignora o
+  sem_capa.txt (tenta de novo tudo). A volta automatica espera enquanto a tela trabalha.
+- Escolha da capa: versoes Virtual Console/Classic Mini/Beta/Proto/Demo/Hack perdem pontos.
