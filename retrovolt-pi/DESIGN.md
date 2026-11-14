@@ -1033,3 +1033,11 @@ agudos como chiado; e o run-ahead com o som do quadro errado (R26).
 - R28g dentro do pacote R28f: capas do PS1 voltam a ser as normais (2D, psx-covers default JPG ->
   ffmpeg -> PNG). As 3D ja baixadas (nome = codigo do disco) saem uma vez (marca
   imagens/capas/ps1/.estilo = 2d) e as falhas do PS1 sao esquecidas para tentar de novo.
+
+## R28h (menu Python, esboco enviado)
+- Pastas em roms/<console>: jogos da raiz aparecem direto; subpastas de categoria (Hacks, RPG,
+  Acao...) aparecem com icone de pasta, entram com A, B sobe (cursor na pasta de onde saiu), ate
+  4 niveis; no lugar da capa, uma pasta grande com quantos jogos tem dentro. Pasta de JOGO
+  (varios discos de um titulo, .m3u, ou pasta com o nome do jogo) continua aberta na lista.
+  .bin de .cue e discos de .m3u escondidos pelo conteudo do arquivo (FILE/linhas), nao pela
+  pasta. lista_jogos continua com todos os jogos (capas, contagem); lista_menu so o nivel aberto.

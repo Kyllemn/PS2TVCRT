@@ -1881,35 +1881,115 @@ def fbneo_dados():
     return _FBNEO
 
 
-def _lista_pasta(b, pasta, exts):
-    raiz = os.path.join(b, 'roms', pasta)
-    achados = []
+# R28h: pastas dentro de roms/<console> (pedido do autor: "Hacks", "RPG", "Acao"...).
+# - pasta de JOGO (os discos de um jogo so: "Final Fantasy VII (Disc 1/2/3)", ou com .m3u):
+#   continua como antes, os discos aparecem direto na lista;
+# - pasta de CATEGORIA (jogos diferentes ou outras pastas dentro): aparece na lista como pasta
+#   e entra com A (B volta). Ate 4 niveis. lista_jogos continua devolvendo TODOS os jogos
+#   (capas, contagem, "tem jogos"); lista_menu devolve so o nivel aberto.
+PROF_PASTAS = 4
+
+
+def _arquivos_jogo(pasta, exts):
+    """jogos de UMA pasta (sem entrar em subpastas): o .bin de um .cue e os discos de um .m3u
+    nao aparecem sozinhos"""
     try:
-        nomes = sorted(os.listdir(raiz))
+        nomes = sorted(os.listdir(pasta))
     except OSError:
         return []
+    arqs = [os.path.join(pasta, n) for n in nomes if not n.startswith('.')
+            and os.path.splitext(n)[1].lower() in exts and os.path.isfile(os.path.join(pasta, n))]
+    escondidos = set()
+    for p in arqs:
+        ext = os.path.splitext(p)[1].lower()
+        if ext not in ('.cue', '.m3u'):
+            continue
+        try:
+            with open(p, errors='replace') as f:
+                for l in f:
+                    l = l.strip()
+                    if ext == '.cue' and l.upper().startswith('FILE'):
+                        alvo = l.split('"')[1] if '"' in l else (l.split()[1] if len(l.split()) > 1 else '')
+                    elif ext == '.m3u' and l and not l.startswith('#'):
+                        alvo = l
+                    else:
+                        continue
+                    escondidos.add(os.path.normcase(os.path.normpath(os.path.join(pasta, alvo))))
+        except OSError:
+            pass
+    tem_cue = any(p.lower().endswith('.cue') for p in arqs)
+    out = []
+    for p in arqs:
+        if os.path.normcase(os.path.normpath(p)) in escondidos:
+            continue
+        if p.lower().endswith('.bin') and tem_cue and not escondidos:
+            continue                    # .cue sem FILE legivel: regra antiga (esconde os .bin)
+        out.append(p)
+    return out
+
+
+def _titulo_jogo(p):
+    import re
+    n = os.path.splitext(os.path.basename(p))[0]
+    n = re.sub(r'\((?:disc|disco|cd|track|faixa)\s*\d+[^)]*\)', '', n, flags=re.I)
+    return re.sub(r'\s*[\(\[][^\)\]]*[\)\]]', '', n).strip().lower()
+
+
+def _eh_pasta_de_jogo(pasta, exts):
+    """True: pasta com os discos de um jogo so (aparece aberta na lista, como antes)"""
+    try:
+        if any(os.path.isdir(os.path.join(pasta, n)) and not n.startswith('.') for n in os.listdir(pasta)):
+            return False
+    except OSError:
+        return False
+    arqs = _arquivos_jogo(pasta, exts)
+    if not arqs:
+        return False
+    if len([p for p in arqs if p.lower().endswith('.m3u')]) == 1:
+        return True
+    titulos = {_titulo_jogo(p) for p in arqs}
+    if len(titulos) != 1:
+        return False
+    # um titulo so: e pasta de jogo se tem varios discos dele ou se a pasta tem o nome do jogo;
+    # "Acao" com so o Tekken 3 dentro continua sendo pasta de categoria
+    import re
+    so_letras = lambda t: re.sub(r'[^a-z0-9]', '', t.lower())
+    return len(arqs) > 1 or so_letras(_titulo_jogo(pasta + '.x')) == so_letras(titulos.pop())
+
+
+def lista_menu(b, sistema, sub=''):
+    """(subpastas de categoria com jogos, jogos) do nivel 'sub' de roms/<sistema>"""
+    exts = EXT_JOGO.get(sistema, ())
+    raiz = os.path.join(b, 'roms', sistema, sub)
+    jogos = _arquivos_jogo(raiz, exts)
+    pastas = []
+    try:
+        nomes = sorted(n for n in os.listdir(raiz) if not n.startswith('.') and os.path.isdir(os.path.join(raiz, n)))
+    except OSError:
+        nomes = []
     for n in nomes:
         p = os.path.join(raiz, n)
-        if os.path.isdir(p):           # um nivel: pasta de jogo com varios discos
-            try:
-                for m in sorted(os.listdir(p)):
-                    achados.append(os.path.join(p, m))
-            except OSError:
-                pass
-        else:
-            achados.append(p)
-    achados = [p for p in achados if os.path.splitext(p)[1].lower() in exts and not os.path.basename(p).startswith('.')]
-    # .bin com .cue na mesma pasta: mostra so o .cue; com .m3u, so o .m3u
-    pastas_cue = {os.path.dirname(p) for p in achados if p.lower().endswith('.cue')}
-    pastas_m3u = {os.path.dirname(p) for p in achados if p.lower().endswith('.m3u')}
-    out = []
-    for p in achados:
-        d, ext = os.path.dirname(p), os.path.splitext(p)[1].lower()
-        if ext == '.bin' and d in pastas_cue:
-            continue
-        if ext != '.m3u' and d in pastas_m3u and d != raiz:
-            continue
-        out.append(p)
+        if _eh_pasta_de_jogo(p, exts):
+            jogos += _arquivos_jogo(p, exts)
+        elif sub.count('/') < PROF_PASTAS - 1 and _lista_pasta(b, os.path.join(sistema, sub, n), exts):
+            pastas.append(n)
+    if sistema in FBNEO:
+        bios = set(fbneo_dados().get('bios', [])) | {'neogeo', 'qsound', 'hiscore'}
+        jogos = [p for p in jogos if os.path.splitext(os.path.basename(p))[0].lower() not in bios]
+    return pastas, sorted(jogos, key=lambda p: nome_limpo(p))
+
+
+def _lista_pasta(b, pasta, exts, prof=0):
+    """todos os jogos de roms/<pasta> e das subpastas (ate PROF_PASTAS niveis)"""
+    raiz = os.path.join(b, 'roms', pasta)
+    out = _arquivos_jogo(raiz, exts)
+    if prof < PROF_PASTAS:
+        try:
+            for n in sorted(os.listdir(raiz)):
+                if not n.startswith('.') and os.path.isdir(os.path.join(raiz, n)):
+                    out += _lista_pasta(b, os.path.join(pasta, n), exts, prof + 1)
+        except OSError:
+            pass
     return sorted(out, key=lambda p: nome_limpo(p))
 
 
@@ -2254,6 +2334,27 @@ def _cd_calcula(r, fase):
     return pts
 
 
+def icone_pasta(c, x, y, on):
+    """pastinha (8 pontos) antes do nome de uma pasta da lista de jogos"""
+    cor = ORANGE if on else AMARELO
+    c.rect(x, y + 1, 3, 1, cor)
+    c.rect(x, y + 2, 8, 5, cor)
+    c.rect(x + 1, y + 3, 6, 3, NAV)
+
+
+def pasta_grande(c, x0, y0, bw, bh, nome, n):
+    """no lugar da capa, para uma pasta: desenho de pasta, nome e quantos jogos"""
+    pw, ph = bw * 3 // 4, bh * 9 // 16
+    px, py = x0 + (bw - pw) // 2, y0 + (bh - ph) // 2 - F.ch
+    c.rect(px, py - ph // 8, pw * 2 // 5, ph // 8 + 1, ORANGE)                # aba
+    c.rect(px, py, pw, ph, ORANGE)
+    c.rect(px + 2, py + 2, pw - 4, ph - 4, (40, 34, 30))
+    txt = '%d JOGO%s' % (n, '' if n == 1 else 'S')
+    c.text(px + (pw - len(txt) * F.cw) // 2, py + (ph - F.ch) // 2, txt, IVORY)
+    nm = nome[:bw // F.cw]
+    c.text(x0 + (bw - len(nm) * F.cw) // 2, py + ph + 8, nm, ORANGE)
+
+
 def moldura_capa(c, x0, y0, bw, bh, iw, ih):
     """R28f: moldura laranja justa em volta da capa (cada formato a sua): capa escura sobre o
     fundo escuro nao mostrava onde terminava. 1 ponto de folga e 1 de linha."""
@@ -2408,7 +2509,8 @@ class App:
         self.tela = os.environ.get('RV_TELA', 'menu')   # menu | conv | fonte | controle | info | aviso
         self.sel = {'JOGOS': 0, 'OPCOES': 0, 'SIS': 0}
         self.sistema = os.environ.get('RV_SISTEMA')       # dentro de uma pasta de JOGOS
-        self.jogos = lista_jogos(self.base, self.sistema) if self.sistema else []
+        self.sub = ''                 # R28h: subpasta aberta dentro de roms/<sistema>
+        self.subpastas, self.jogos = lista_menu(self.base, self.sistema) if self.sistema else ([], [])
         self.info = {'temp': None, 'ram': None, 'ip': None, 'wifi': None, 'mascara': None, 'gateway': None}
         self.wifi = None
         self.salvo = 0
@@ -2448,9 +2550,13 @@ class App:
     def itens_pasta(self):
         """lista da pasta: INICIAR CD, 2 linhas vazias, jogos"""
         itens = []
-        if SISTEMAS[self.sistema][2]:
+        if SISTEMAS[self.sistema][2] and not self.sub:
             itens.append(('cd', 'INICIAR CD'))
             itens.append(('vazio', ''))
+            itens.append(('vazio', ''))
+        for n in self.subpastas:
+            itens.append(('pasta', n))
+        if self.subpastas and self.jogos:
             itens.append(('vazio', ''))
         for p in self.jogos:
             itens.append(('arq', p))
@@ -2590,7 +2696,13 @@ class App:
             ordem = self.sistemas_com_jogos()
             if lista_sis in ordem:
                 self.sel['SIS'] = ordem.index(lista_sis)
-            self.jogos = lista_jogos(self.base, lista_sis)
+            # volta do jogo: a pasta onde o jogo esta
+            pasta_j = os.path.dirname(arquivo) if arquivo else ''
+            if pasta_j and _eh_pasta_de_jogo(pasta_j, EXT_JOGO.get(lista_sis, ())):
+                pasta_j = os.path.dirname(pasta_j)          # discos de um jogo: a pasta de cima
+            rel = os.path.relpath(pasta_j, os.path.join(self.base, 'roms', lista_sis)) if pasta_j else '.'
+            self.sub = '' if rel.startswith('..') or rel == '.' else rel
+            self.subpastas, self.jogos = lista_menu(self.base, lista_sis, self.sub)
             itens = self.itens_pasta()
             self.sel['JOGOS'] = 0
             for n, (k, v) in enumerate(itens):
@@ -3301,12 +3413,13 @@ class App:
             if ini + vis < len(sis):
                 c.text(7, y0 + (vis - 1) * passo, 'v', SLATE)
             return
-        itens = self.itens_pasta()
+        itens = self.itens_pasta() or [('vazio', '')]
         bw = bh = max(96, min(H - 120, (W - 40) // 3))      # caixa da capa
-        cabecalho(c, 'JOGOS', self.wifi, 'Y FAVORITO  B VOLTA')   # R28: o JOGAR fica embaixo da capa
-        titulo = NOME_SISTEMA[self.sistema]
+        sel = self.sel['JOGOS'] = max(0, min(self.sel['JOGOS'], len(itens) - 1))
+        cabecalho(c, 'JOGOS', self.wifi, 'A ABRE  B VOLTA' if itens[sel][0] == 'pasta' else 'Y FAVORITO  B VOLTA')
+        titulo = NOME_SISTEMA[self.sistema] + (' / ' + self.sub.upper().replace('/', ' / ') if self.sub else '')
+        titulo = titulo[:(W - 40) // F.cw - 6]
         n_jogos = len(self.jogos)
-        sel = self.sel['JOGOS']
         c.text(16, 50, titulo, ORANGE)
         pos_jogo = sum(1 for k, _ in itens[:sel + 1] if k == 'arq')
         if itens[sel][0] == 'arq':
@@ -3323,13 +3436,17 @@ class App:
                 # R28: sem texto a direita (caia em cima da capa: "PC ENGINE CD" em todos os
                 # consoles); o estado da leitora aparece embaixo do CD quando INICIAR CD esta marcado
                 item(c, 24, y, v, n == sel)
+            elif k == 'pasta':
+                lim = (W - 40 - bw - 4) // F.cw - 3
+                item(c, 24, y, v.upper()[:lim], n == sel)
+                icone_pasta(c, 6, y, n == sel)
             elif k == 'arq':
                 lim = (W - 40 - bw - 4) // F.cw - 3
                 item(c, 24, y, nome_limpo(v)[:lim], n == sel)
                 if self.eh_favorito(self.sistema, v):
                     c.text(9, y, '*', AMARELO)
             y += passo
-        if not self.jogos:
+        if not self.jogos and not self.subpastas:
             c.text(24, y0 + 3 * passo, 'SEM JOGOS NA PASTA ROMS/%s' % self.sistema.upper(), SLATE)
         # a direita da lista: capa do jogo (arquivos) ou arte do CD (INICIAR CD)
         k, v = itens[sel]
@@ -3337,7 +3454,11 @@ class App:
         sob = F.ch + 16
         x0, y0c = W - 14 - bw, 50 + F.ch + 8 + (H - (50 + F.ch + 8) - 24 - bh - sob) // 2
         pode = False
-        if k == 'arq':
+        if k == 'pasta':
+            # pasta: desenho de pasta grande e quantos jogos tem dentro (contando subpastas)
+            n_dentro = len(_lista_pasta(self.base, os.path.join(self.sistema, self.sub, v), EXT_JOGO.get(self.sistema, ())))
+            pasta_grande(c, x0, y0c, bw, bh, v.upper(), n_dentro)
+        elif k == 'arq':
             self.desenha_capa(c, self.arte_jogo(v), x0, y0c, bw, bh)
             pode = bool(SISTEMAS.get(self.sistema, (0, None))[1])
         elif k == 'cd':
@@ -3394,6 +3515,7 @@ class App:
                 if self.sistema in ordem:
                     self.sel['SIS'] = ordem.index(self.sistema)
                 self.sistema = None
+                self.sub = ''
             self.aba = ABAS[(i + (1 if a == 'R1' else -1)) % len(ABAS)]
             self.tv_para_previa()
             if self.aba == 'TV':
@@ -3426,7 +3548,8 @@ class App:
                     self.sel['SIS'] = (self.sel['SIS'] + 1) % len(sis)
                 elif a == 'A':
                     self.sistema = sis[min(self.sel['SIS'], len(sis) - 1)]
-                    self.jogos = lista_jogos(self.base, self.sistema)
+                    self.sub = ''
+                    self.subpastas, self.jogos = lista_menu(self.base, self.sistema)
                     self.sel['JOGOS'] = 0
                 return
             itens = self.itens_pasta()
@@ -3449,8 +3572,20 @@ class App:
                     else:
                         break
                 self.sel['JOGOS'] = sel
+            elif a == 'B' and self.sub:
+                saiu = os.path.basename(self.sub)              # sobe uma pasta, com o cursor nela
+                self.sub = os.path.dirname(self.sub)
+                self.subpastas, self.jogos = lista_menu(self.base, self.sistema, self.sub)
+                novos = self.itens_pasta()
+                self.sel['JOGOS'] = next((n for n, (k, v) in enumerate(novos) if k == 'pasta' and v == saiu),
+                                         next((n for n, (k, v) in enumerate(novos) if k != 'vazio'), 0))
             elif a == 'B':
                 self.sistema = None
+            elif a == 'A' and itens and itens[sel][0] == 'pasta':
+                self.sub = os.path.join(self.sub, itens[sel][1]) if self.sub else itens[sel][1]
+                self.subpastas, self.jogos = lista_menu(self.base, self.sistema, self.sub)
+                novos = self.itens_pasta()
+                self.sel['JOGOS'] = next((n for n, (k, v) in enumerate(novos) if k != 'vazio'), 0)
             elif a == 'Y' and itens and itens[sel][0] == 'arq':
                 self.troca_favorito(self.sistema, itens[sel][1])
             elif a == 'A' and itens:
