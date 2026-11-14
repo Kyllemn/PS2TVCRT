@@ -981,7 +981,8 @@ agudos como chiado; e o run-ahead com o som do quadro errado (R26).
   graus), arte do disco girada numa thread (GiroArte, sem PIL); ate 15 quadros/s, adaptado ao
   tempo de desenho (LOG "menu: CD girando"). Imagem fixa opcional imagens/discos/cd.png.
 - Capas automaticas (capas.py, cfg capas_automaticas = SIM): ao ligar e a cada 30 min, com
-  internet, baixa a capa dos jogos sem capa. PS1 primeiro pelo codigo no psx-covers; depois
+  internet, baixa a capa dos jogos sem capa. PS1 primeiro a capa 3D pelo codigo no psx-covers
+  (pedido do autor; PNG com transparencia, 226x226); depois
   pelo nome no libretro-thumbnails (lista de nomes por console em imagens/.cache/capas/,
   renovada a cada 30 dias; nome exato, titulo limpo, difflib 0.9 ou "uma palavra a mais" se
   unico; regiao: tags iguais > Brasil > USA > World > Europa > Japao). Reduz com ffmpeg (600

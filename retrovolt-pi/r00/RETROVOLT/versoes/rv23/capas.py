@@ -3,7 +3,8 @@ ele baixar").
 
 Ao ligar (e depois a cada 30 min), com internet, numa thread de baixa prioridade:
 - para cada jogo das pastas roms/<sistema> que ainda nao tem capa em imagens/capas/<sistema>/,
-- PlayStation: tenta primeiro pelo codigo do disco (SLUS-01158) no psx-covers (GitHub);
+- PlayStation: tenta primeiro a capa 3D pelo codigo do disco (SLUS-01158) no psx-covers;
+  se nao houver 3D, cai na capa normal do libretro pelo nome (abaixo);
 - todos: cruza o nome do arquivo com a lista de capas do libretro-thumbnails (a lista de
   nomes de cada console fica em imagens/.cache/capas/ e e baixada de novo a cada 30 dias)
   e baixa a capa do nome que bate;
@@ -23,7 +24,8 @@ import urllib.request
 
 LIBRETRO = 'https://thumbnails.libretro.com/'
 LIBRETRO_GH = 'https://raw.githubusercontent.com/libretro-thumbnails/%s/master/Named_Boxarts/%s'
-PSX_COVERS = 'https://raw.githubusercontent.com/xlenore/psx-covers/main/covers/default/%s.jpg'
+# PS1: capa 3D (caixa em perspectiva, fundo transparente), pedido do autor
+PSX_COVERS = 'https://raw.githubusercontent.com/xlenore/psx-covers/main/covers/3d/%s.png'
 AGENTE = {'User-Agent': 'RetroVolt/1.0'}
 DIAS = 30 * 86400
 ALTURA = 600
@@ -161,7 +163,8 @@ def baixa(url, timeout=20):
 
 
 def grava_capa(dados, destino, tmp_dir):
-    """reduz com o ffmpeg (PNG RGB de ate 600 linhas); sem ffmpeg, grava o PNG como veio"""
+    """reduz com o ffmpeg (PNG RGBA de ate 600 linhas: a transparencia da capa 3D vira o fundo
+    do menu); sem ffmpeg, grava o PNG como veio"""
     os.makedirs(os.path.dirname(destino), exist_ok=True)
     os.makedirs(tmp_dir, exist_ok=True)
     ent = os.path.join(tmp_dir, 'capa_baixada')
@@ -169,7 +172,7 @@ def grava_capa(dados, destino, tmp_dir):
         f.write(dados)
     try:
         r = subprocess.run(['nice', '-n', '19', 'ffmpeg', '-v', 'error', '-y', '-i', ent, '-vf',
-                            "scale=-2:'min(%d,ih)'" % ALTURA, '-frames:v', '1', '-pix_fmt', 'rgb24',
+                            "scale=-2:'min(%d,ih)'" % ALTURA, '-frames:v', '1', '-pix_fmt', 'rgba',
                             destino + '.tmp.png'], timeout=60)
         if r.returncode == 0 and os.path.getsize(destino + '.tmp.png') > 0:
             os.replace(destino + '.tmp.png', destino)
