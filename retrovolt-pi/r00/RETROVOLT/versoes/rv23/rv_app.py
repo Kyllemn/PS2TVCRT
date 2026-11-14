@@ -978,7 +978,15 @@ class Entrada(threading.Thread):
         self.shift = False
         self.caps = False
         self.layout = 'br'
-        self.layout_ctl = 'xbox'    # desenho dos icones: o do ultimo controle usado
+        # desenho dos icones: o do ultimo controle usado. Comeca com o da ultima vez (guardado no
+        # cartao): a 1a tela sai antes de o controle ser reconhecido e vinha sempre Xbox
+        self.layout_ctl = 'xbox'
+        try:
+            v = open(os.path.join(DADOS, 'ultimo_controle.txt')).read().strip()
+            if v in ('xbox', 'playstation', 'nintendo'):
+                self.layout_ctl = v
+        except OSError:
+            pass
         self._lay_dev = {}
         try:
             for l in open('/etc/default/keyboard'):
@@ -1095,10 +1103,12 @@ class Entrada(threading.Thread):
             return 'playstation'
         if vendor == 0x057e or any(k in n for k in ('nintendo', 'pro controller', 'joy-con', 'switch')):
             return 'nintendo'
+        # 8BitDo antes da Microsoft: no modo XInput ele se apresenta com o codigo da Microsoft
+        # (045e), mas as letras sao do padrao Nintendo (B embaixo)
+        if (vendor == 0x2dc8 or '8bitdo' in n) and 'xbox' not in n:
+            return 'nintendo'
         if 'xbox' in n or 'x-box' in n or vendor == 0x045e:
             return 'xbox'
-        if vendor == 0x2dc8 or '8bitdo' in n:   # 8BitDo: letras no padrao Nintendo (B embaixo)
-            return 'nintendo'
         return 'xbox'
 
     def nota_controle(self, p, d):
@@ -1116,6 +1126,12 @@ class Entrada(threading.Thread):
             self.layout_ctl = lay
             print('controle: icones %s (%s)' % (lay, d.name), flush=True)
             self.fila.put('_icones')
+            try:
+                os.makedirs(DADOS, exist_ok=True)
+                with open(os.path.join(DADOS, 'ultimo_controle.txt'), 'w') as f:
+                    f.write(lay + '\n')
+            except OSError:
+                pass
 
     def solta(self, nome):
         self.segurando.pop(nome, None)

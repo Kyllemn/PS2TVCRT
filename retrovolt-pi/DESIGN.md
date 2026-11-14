@@ -957,3 +957,7 @@ agudos como chiado; e o run-ahead com o som do quadro errado (R26).
   de video (tv/aplica_video) desenha em outra thread junto com a tela normal, e o controle era
   reconhecido no meio. desenha() agora com trava (um desenho por vez; padrao lido uma vez por
   tela). Teste: 2 threads desenhando + troca de padrao a cada 3 ms: 2880 telas, 0 misturadas.
+- R27c (2): A verde do Xbox na 1a tela com AUTO em Nintendo: o 8BitDo no modo XInput se apresenta
+  com o codigo da Microsoft (045e) e a regra "045e = Xbox" vinha antes de "nome 8BitDo =
+  Nintendo"; invertido. E o ultimo desenho de controle fica guardado em
+  /var/lib/retrovolt/ultimo_controle.txt: a 1a tela (antes de reconhecer o controle) ja sai certa.
