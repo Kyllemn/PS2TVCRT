@@ -1062,3 +1062,12 @@ agudos como chiado; e o run-ahead com o som do quadro errado (R26).
 - Teste no PC (FBNeo x86, so Neo Geo, ssideki3.zip falso): rv-jogo antigo "No romset found at
   .../roms/neogeo/ssideki3", novo "Romset found at ...". Gambatte e mGBA continuam (save/load ok).
   Entregue em RETROVOLT_R28l.zip (rv-jogo + menu Python completo).
+
+## R28m (menu Python)
+- Com o R28l o FBNeo ja acha os .zip; os erros que sobraram sao de romset (mslug sem 201-c1..c4,
+  neogeo.zip sem sm1.sm1/sfix.sfix/000-lo.lo = BIOS antiga). OPCOES > VERIFICAR ARCADE
+  (verifica_arcade.py): confere roms/arcade, roms/neogeo e bios contra dados/fbneo_roms.txt.gz
+  (tools/mkfbneo_roms.py do DAT do FBNeo; CRC de cada arquivo, pai/clone, BIOS) lendo so o indice
+  do .zip; mostra OK / FALTAM N / SEM BIOS / DESCONHECIDO com barra de porcentagem, detalhe do
+  marcado embaixo, e grava RETROVOLT/verificacao_arcade.txt (com o que tem dentro de cada zip).
+  O pacote leva o DAT em RETROVOLT/dats/ para o autor usar com ClrMamePro/RomVault no PC.

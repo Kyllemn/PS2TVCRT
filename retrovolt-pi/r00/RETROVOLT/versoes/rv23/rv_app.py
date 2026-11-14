@@ -2208,7 +2208,7 @@ class Leitora(threading.Thread):
 ABAS = ['DISCO', 'JOGOS', 'RECENTES', 'FAVORITOS', 'APPS', 'OPCOES']
 N_RECENTES, N_FAVORITOS = 50, 20
 APPS = ['TV', 'YOUTUBE', 'KODI']
-OPCOES = ['VOLUME', 'VIDEO', 'CONVERGENCIA', 'FONTE', 'WI-FI', 'PASTAS DE JOGOS', 'BIOS', 'BAIXAR CAPAS',
+OPCOES = ['VOLUME', 'VIDEO', 'CONVERGENCIA', 'FONTE', 'WI-FI', 'PASTAS DE JOGOS', 'BIOS', 'BAIXAR CAPAS', 'VERIFICAR ARCADE',
           'TESTE DO CONTROLE', 'INFO',
           'REINICIAR', 'DESLIGAR']
 TECLAS = {False: ['1234567890', 'qwertyuiop', 'asdfghjkl@', 'zxcvbnm.-_'],
@@ -2886,6 +2886,8 @@ class App:
             bt_text(c, 24, 206, 'SAIR: APERTE B 3 VEZES', SLATE)
         elif t == 'capas':
             self.desenha_capas(c)
+        elif t == 'varc':
+            self.desenha_varc(c)
         elif t == 'bios':
             moldura(c, 'BIOS', 'B VOLTA')
             c.text(16, 48, 'RECONHECIDAS PELO CONTEUDO: O NOME DO ARQUIVO NAO IMPORTA', SLATE)
@@ -3388,6 +3390,98 @@ class App:
                 self.fila.put('_img')
             threading.Thread(target=roda, daemon=True).start()
 
+    # ---------------------------------------------------------- R28m: VERIFICAR ARCADE
+    def varc_inicia(self):
+        import verifica_arcade
+        vc = self.vc = {'rodando': True, 'prog': (0, 0, ''), 'res': None, 'sel': 0, 'cancela': False, 'rel': None}
+
+        def prog(k, n, nome):
+            vc['prog'] = (k, n, nome)
+            if k % 20 == 0 or k == n:
+                self.fila.put('_img')
+
+        def roda():
+            try:
+                res, rel = verifica_arcade.verifica(self.base, prog, lambda: vc['cancela'])
+                res.sort(key=lambda r: (r[2] == 'OK', r[0]))      # problemas primeiro
+                vc.update(res=res, rel=rel)
+                ok = sum(1 for r in res if r[2] == 'OK')
+                print('arcade: verificacao: %d .zip, %d OK, %d com problema (relatorio %s)'
+                      % (len(res), ok, len(res) - ok, rel), flush=True)
+                for r in res:
+                    if r[2] != 'OK':
+                        print('arcade: %s: %s %s' % (r[0], r[2], ' | '.join(r[3][:2])[:300]), flush=True)
+            except Exception as ex:
+                vc['res'] = [('ERRO', '', str(ex)[:40].upper(), [])]
+            vc['rodando'] = False
+            self.fila.put('_img')
+        threading.Thread(target=roda, daemon=True).start()
+
+    def desenha_varc(self, c):
+        vc = self.vc
+        if vc['rodando']:
+            moldura(c, 'VERIFICAR ARCADE', 'B CANCELA')
+            k, n, nome = vc['prog']
+            pct = int(100 * k / n) if n else 0
+            c.text(24, 62, 'CONFERINDO OS .ZIP COM A LISTA DO FBNEO', ORANGE)
+            bx, bw_ = 24, W - 48 - 6 * F.cw
+            y = 62 + F.ch + 14
+            c.rect(bx, y, bw_, F.ch + 4, (30, 38, 66))
+            c.rect(bx, y, bw_ * pct // 100, F.ch + 4, ORANGE)
+            c.rtext(W - 24, y + 2, '%d%%' % pct, IVORY)
+            c.text(24, y + F.ch + 16, '%d DE %d   %s' % (k, n, nome.upper()), SLATE)
+            return
+        res = vc['res'] or []
+        moldura(c, 'VERIFICAR ARCADE', 'B VOLTA')
+        ok = sum(1 for r in res if r[2] == 'OK')
+        c.text(16, 48, '%d .ZIP: ' % len(res), IVORY)
+        c.text(16 + (len('%d .ZIP: ' % len(res))) * F.cw, 48, '%d OK' % ok, GREEN)
+        c.text(16 + (len('%d .ZIP: %d OK  ' % (len(res), ok))) * F.cw, 48, '%d COM PROBLEMA' % (len(res) - ok),
+               RED if len(res) - ok else SLATE)
+        if not res:
+            c.text(24, 70, 'NENHUM .ZIP EM ROMS/ARCADE OU ROMS/NEOGEO', SLATE)
+            return
+        vc['sel'] = max(0, min(vc['sel'], len(res) - 1))
+        passo = F.ch + 5
+        y0 = 48 + F.ch + 8
+        rodape = 3 * (F.ch + 3) + 14                 # detalhe do marcado embaixo
+        cabem = max(1, (H - 16 - rodape - y0) // passo)
+        ini = max(0, min(vc['sel'] - cabem // 2, len(res) - cabem))
+        nomes = fbneo_dados().get('nomes', {})
+        for i in range(ini, min(len(res), ini + cabem)):
+            n, p, st, det = res[i]
+            y = y0 + (i - ini) * passo
+            on = i == vc['sel']
+            nm = (nomes.get(n) or n).upper()
+            lim = (W - 40) // F.cw - len(st) - 2
+            if on:
+                c.rect(16, y - 1, 3, F.ch + 2, ORANGE)
+            c.text(24, y, nm[:lim], IVORY if on else SLATE)
+            c.rtext(W - 14, y, st, GREEN if st == 'OK' else RED if st.startswith('FALTA') or st.startswith('SEM') else AMARELO)
+        n, p, st, det = res[vc['sel']]
+        txt = ' '.join(d for d in det if not d.startswith('TEM NO ZIP')) or ('%s.ZIP CERTO PARA ESTE FBNEO' % n.upper())
+        lw = (W - 32) // F.cw
+        ys = H - 16 - rodape + 6
+        c.rect(16, ys - 4, W - 32, 1, LINE)
+        for k in range(3):
+            parte = txt[k * lw:(k + 1) * lw]
+            if parte:
+                c.text(16, ys + k * (F.ch + 3), parte.upper(), IVORY if k == 0 else SLATE)
+
+    def acao_varc(self, a):
+        vc = self.vc
+        if vc['rodando']:
+            if a == 'B':
+                vc['cancela'] = True
+            return
+        n = len(vc['res'] or [])
+        if a == 'B':
+            self.tela = 'menu'
+        elif n and a in ('CIMA', 'BAIXO'):
+            vc['sel'] = (vc['sel'] + (1 if a == 'BAIXO' else -1)) % n
+        elif n and a in ('ESQ', 'DIR'):
+            vc['sel'] = max(0, min(n - 1, vc['sel'] + (10 if a == 'DIR' else -10)))
+
     def desenha_jogos(self, c):
         if not self.sistema:
             cabecalho(c, 'JOGOS', self.wifi, 'A ENTRA')
@@ -3630,7 +3724,9 @@ class App:
                     return
                 self.tela = {'CONVERGENCIA': 'conv', 'FONTE': 'fonte', 'TESTE DO CONTROLE': 'controle', 'INFO': 'info',
                              'WI-FI': 'wifi', 'PASTAS DE JOGOS': 'pastas', 'VIDEO': 'video', 'BIOS': 'bios',
-                             'BAIXAR CAPAS': 'capas'}[o]
+                             'BAIXAR CAPAS': 'capas', 'VERIFICAR ARCADE': 'varc'}[o]
+                if self.tela == 'varc':
+                    self.varc_inicia()
                 if self.tela == 'capas':
                     self.__dict__.setdefault('cp', {'sel': 0, 'rodando': False, 'prog': None, 'fim': None})
                     self._conta_capas = {}
@@ -4957,6 +5053,8 @@ class App:
                 self.tela = 'menu'
         elif t == 'capas':
             self.acao_capas(a)
+        elif t == 'varc':
+            self.acao_varc(a)
         elif t == 'bios':
             if a == 'B':
                 self.tela = 'menu'
