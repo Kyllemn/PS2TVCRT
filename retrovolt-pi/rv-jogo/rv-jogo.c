@@ -1530,7 +1530,11 @@ static void desenha_base(const void *data, unsigned w, unsigned h, size_t pitch,
 			lp--;
 			dh = gh * lp;
 		}
-		if (imagem == 1 && !sem_filtro && !dot_int) /* TELA CHEIA: usa a altura toda (linhas de 3 ou 4 pontos) */
+		/* R28: SCANLINES / SCANLINES LEVES / CRT na TELA CHEIA tambem ficam com linhas inteiras:
+		 * esticando ate a altura toda, os grupos ficavam de 4 e 5 linhas e as scanlines saiam
+		 * desiguais (opcao B do esboco, aprovada). 720p 896x672, 900p 1195x896, 1080p 1195x896. */
+		bool sl_int = efeitos && filtro >= 1 && filtro <= 3 && !sem_filtro && !alta && lp >= 2;
+		if (imagem == 1 && !sem_filtro && !dot_int && !sl_int) /* TELA CHEIA: usa a altura toda */
 			dh = fb.h;
 		cw = (int)lround(dh * (aspecto > 0 ? aspecto : 4.0 / 3.0));
 		if (dot_int) {
@@ -4846,11 +4850,28 @@ static void slot_mini_rgb(uint8_t *rgb, int *pw, int *ph)
 		}
 }
 
+static volatile int est_slot = -1;      /* slot do estado sendo gravado agora (-1 nenhum) */
+
+static void slot_mini_de(int i, const uint8_t *rgb, int w, int h)
+{
+	int mw2 = w > MINI_W ? MINI_W : w, mh2 = h > MINI_H ? MINI_H : h;
+	for (int y = 0; y < mh2; y++)
+		for (int x = 0; x < mw2; x++) {
+			const uint8_t *q = rgb + ((size_t)(y * h / mh2) * w + x * w / mw2) * 3;
+			slots[i].mini[y * mw2 + x] = ((q[0] >> 3) << 11) | ((q[1] >> 2) << 5) | (q[2] >> 3);
+		}
+	slots[i].mw = mw2;
+	slots[i].mh = mh2;
+	slots[i].tem_mini = true;
+}
+
 static void slots_le(void)
 {
 	for (int i = 0; i < N_SLOTS; i++) {
 		char p[4200];
 		struct stat st;
+		if (i == est_slot)
+			continue; /* gravando agora: os dados ja estao na memoria */
 		slot_path(i, "state", p, sizeof p);
 		slots[i].tem = !stat(p, &st);
 		slots[i].tem_mini = false;
@@ -4861,56 +4882,107 @@ static void slots_le(void)
 		int w, h;
 		uint8_t *rgb = png_le(p, &w, &h);
 		if (rgb) {      /* miniaturas antigas (160x120, 320x240) tambem servem */
-			int mw2 = w > MINI_W ? MINI_W : w, mh2 = h > MINI_H ? MINI_H : h;
-			for (int y = 0; y < mh2; y++)
-				for (int x = 0; x < mw2; x++) {
-					uint8_t *q = rgb + ((size_t)(y * h / mh2) * w + x * w / mw2) * 3;
-					slots[i].mini[y * mw2 + x] = ((q[0] >> 3) << 11) | ((q[1] >> 2) << 5) | (q[2] >> 3);
-				}
-			slots[i].mw = mw2;
-			slots[i].mh = mh2;
-			slots[i].tem_mini = true;
+			slot_mini_de(i, rgb, w, h);
 			free(rgb);
 		}
 	}
 }
 
+/* R28: o estado do Dreamcast tem ~36 MB (RAM+VRAM+ARAM+10 MB de folga do Flycast) e gravar isso
+ * no pendrive com fsync + sync() travava o menu por minutos. Agora: serializa na hora (o nucleo
+ * precisa estar parado) e a gravacao vai para uma thread; o LOG mostra o tempo de cada parte.
+ * Carregar, reler a lista e sair do jogo esperam a gravacao pendente terminar. */
+struct est_job {
+	uint8_t *d;
+	size_t t;
+	int n, mw, mh;
+	uint8_t rgb[MINI_W * MINI_H * 3];
+};
+static pthread_t est_th;
+static bool est_th_ok;
+
+static void *est_thread(void *x)
+{
+	struct est_job *j = x;
+	double t0 = agora();
+	char p[4200], tmp[4300];
+	slot_path(j->n, "state", p, sizeof p);
+	mkdir_pai(p);
+	snprintf(tmp, sizeof tmp, "%s.tmp", p);
+	bool ok = false;
+	double t1 = t0;
+	FILE *f = fopen(tmp, "wb");
+	if (f) {
+		ok = fwrite(j->d, 1, j->t, f) == j->t;
+		fflush(f);
+		t1 = agora();
+		ok = fsync(fileno(f)) == 0 && ok;
+		ok = fclose(f) == 0 && ok;
+		if (ok)
+			ok = rename(tmp, p) == 0;
+	}
+	double t2 = agora();
+	if (ok) {
+		slot_path(j->n, "png", p, sizeof p);
+		png_grava(p, j->rgb, j->mw, j->mh);
+	}
+	LOG("estado: slot %d %s (%.1f MB: escrita %.1f s, fsync %.1f s, miniatura %.1f s)", j->n + 1,
+	    ok ? "gravado no pendrive" : "ERRO ao gravar no pendrive", j->t / 1048576.0, t1 - t0, t2 - t1,
+	    agora() - t2);
+	free(j->d);
+	free(j);
+	est_slot = -1;
+	return NULL;
+}
+
+static void est_espera(void)
+{
+	if (!est_th_ok)
+		return;
+	if (est_slot >= 0)
+		LOG("estado: esperando a gravacao do slot %d terminar", est_slot + 1);
+	pthread_join(est_th, NULL);
+	est_th_ok = false;
+}
+
 static bool slot_salva(int n)
 {
+	est_espera(); /* uma gravacao por vez */
+	double t0 = agora();
 	size_t t = core.serialize_size();
 	if (!t)
 		return false;
-	uint8_t *d = malloc(t);
-	bool ok = core.serialize(d, t);
-	char p[4200], tmp[4300];
-	slot_path(n, "state", p, sizeof p);
-	mkdir_pai(p);
-	snprintf(tmp, sizeof tmp, "%s.tmp", p);
-	FILE *f = ok ? fopen(tmp, "wb") : NULL;
-	if (f) {
-		ok = fwrite(d, 1, t, f) == t;
-		fflush(f);
-		fsync(fileno(f));
-		fclose(f);
-		if (ok)
-			rename(tmp, p);
-	} else
-		ok = false;
-	free(d);
-	if (ok) {
-		static uint8_t rgb[MINI_W * MINI_H * 3];
-		int mw2, mh2;
-		slot_mini_rgb(rgb, &mw2, &mh2);
-		slot_path(n, "png", p, sizeof p);
-		png_grava(p, rgb, mw2, mh2);
-		sync();
+	struct est_job *j = malloc(sizeof *j);
+	uint8_t *d = j ? malloc(t) : NULL;
+	bool ok = d && core.serialize(d, t);
+	double t1 = agora();
+	LOG("estado: slot %d %s (%.1f MB em %.2f s)", n + 1, ok ? "serializado" : "ERRO ao serializar",
+	    t / 1048576.0, t1 - t0);
+	if (!ok) {
+		free(d);
+		free(j);
+		return false;
 	}
-	LOG("estado: slot %d %s", n + 1, ok ? "salvo" : "ERRO ao salvar");
-	return ok;
+	j->d = d;
+	j->t = t;
+	j->n = n;
+	slot_mini_rgb(j->rgb, &j->mw, &j->mh);
+	/* a lista de slots ja mostra o novo enquanto grava */
+	slots[n].tem = true;
+	time_t agora_t = time(NULL);
+	strftime(slots[n].quando, sizeof slots[n].quando, "%d/%m %H:%M", localtime(&agora_t));
+	slot_mini_de(n, j->rgb, j->mw, j->mh);
+	est_slot = n;
+	if (pthread_create(&est_th, NULL, est_thread, j) == 0)
+		est_th_ok = true;
+	else
+		est_thread(j); /* sem thread: grava na hora */
+	return true;
 }
 
 static bool slot_carrega(int n)
 {
+	est_espera();
 	char p[4200];
 	slot_path(n, "state", p, sizeof p);
 	FILE *f = fopen(p, "rb");
@@ -6058,6 +6130,7 @@ int main(int argc, char **argv)
 			break;
 		}
 	}
+	est_espera(); /* estado ainda gravando no pendrive */
 	sram_fim();
 	fb_grava_fake();
 	g_sair = 1;

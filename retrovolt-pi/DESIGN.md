@@ -670,7 +670,7 @@ LOG do Neo Geo CD (R19, 2 discos, sem BIOS):
   3) Manual: SELECT 5 s; escolha TUBO/LCD so vale na tela em que foi feita.
   Limite de 2 trocas em 10 min continua (evita ficar reiniciando sem parar).
 
-## PENDENTE (anotado, sem codigo): scanlines desiguais em TELA CHEIA (LCD)
+## RESOLVIDO no R28 (era PENDENTE): scanlines desiguais em TELA CHEIA (LCD)
 - Fotos do autor (LCD 1280x960): no tamanho ORIGINAL as scanlines ficam iguais; em TELA
   CHEIA ficam "descompassadas" (umas linhas grossas, outras finas).
 - Causa: ORIGINAL usa um numero inteiro de linhas da tela por linha do jogo (960/240 = 4:
@@ -961,3 +961,17 @@ agudos como chiado; e o run-ahead com o som do quadro errado (R26).
   com o codigo da Microsoft (045e) e a regra "045e = Xbox" vinha antes de "nome 8BitDo =
   Nintendo"; invertido. E o ultimo desenho de controle fica guardado em
   /var/lib/retrovolt/ultimo_controle.txt: a 1a tela (antes de reconhecer o controle) ja sai certa.
+
+## R28 (rv-jogo; precisa de #compilar)
+- Scanlines na TELA CHEIA (opcao B do esboco, aprovada): com SCANLINES, SCANLINES LEVES ou CRT
+  a TELA CHEIA usa linhas inteiras (todas as linhas do jogo com a mesma altura), como o DOT
+  MATRIX. 224 linhas: 720p 896x672, 900p 1195x896, 1080p 1195x896. Sem filtro continua enchendo
+  a tela toda. Conferido em tools/teste_dotmatrix.py (12 monitores, 0 desiguais).
+- Save state do Dreamcast levando ~4 min: o estado do Flycast tem ~36 MB (RAM+VRAM+ARAM+10 MB
+  de folga) e o rv-jogo gravava no pendrive com fsync + sync() geral dentro do menu. Agora o
+  nucleo so serializa (rapido, com tempo no LOG "estado: slot N serializado") e a gravacao vai
+  para uma thread (LOG "gravado no pendrive" com tempo de escrita/fsync/miniatura). Carregar,
+  reabrir a lista e sair do jogo esperam a gravacao pendente. Se a serializacao em si for a
+  lenta, o LOG mostra e o proximo passo e no Flycast (emu.stop com renderizacao em thread).
+- DOT MATRIX PEQUENO na TELA CHEIA: explicado ao autor (quadrado menor com a tela cheia so com
+  outro desenho do ponto); aguardando escolha pelo esboco.

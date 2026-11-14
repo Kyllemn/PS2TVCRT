@@ -61,3 +61,20 @@ print('PEQUENO: combinacoes:', len(monitores) * len(larguras) * 2, '| desalinhad
 for fw, fh in ((1280, 720), (1440, 900), (1920, 1080)):
     print('PEQUENO', fw, fh, ' '.join('%dx224->%dx%d(%dx%d)' % (w, *geo(w, 224, fw, fh, pequeno=True)[:2],
           list(geo(w, 224, fw, fh, pequeno=True)[2])[0], list(geo(w, 224, fw, fh, pequeno=True)[3])[0]) for w in (256, 320, 384)))
+
+# R28: SCANLINES/CRT na TELA CHEIA com linhas inteiras (sl_int): todas as linhas do jogo com a mesma altura
+def geo_sl(w, h, fw, fh, aspecto=4/3):
+    lp = max(1, fh // h)
+    dh = h * lp if lp >= 2 else fh
+    cw = min(round(dh * aspecto), fw)
+    alts = {(j + 1) * dh // h - j * dh // h for j in range(h)}
+    return cw, dh, alts
+ruins = 0
+for fw, fh in monitores:
+    for h in (224, 240):
+        cw, dh, al = geo_sl(320, h, fw, fh)
+        if len(al) > 1 or dh > fh:
+            ruins += 1
+print('SCANLINES TELA CHEIA: desiguais', ruins)
+for fw, fh in ((1280, 720), (1440, 900), (1920, 1080)):
+    print('SCANLINES', fw, fh, ' '.join('%d linhas->%dx%d (%s por linha)' % (h, *geo_sl(320, h, fw, fh)[:2], list(geo_sl(320, h, fw, fh)[2])[0]) for h in (224, 240)))
