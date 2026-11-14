@@ -1036,7 +1036,7 @@ agudos como chiado; e o run-ahead com o som do quadro errado (R26).
 
 ## R28h (menu Python, esboco enviado)
 - Pastas em roms/<console>: jogos da raiz aparecem direto; subpastas de categoria (Hacks, RPG,
-  Acao...) aparecem com icone de pasta, em ordem alfabetica junto com os jogos (como um nome
+  Acao...) aparecem com icone de pasta, primeiro (como nomes da lista, sem linha vazia), depois os jogos soltos (como um nome
   da lista), entram com A, B sobe (cursor na pasta de onde saiu), ate
   4 niveis; pasta marcada deixa o lugar da capa vazio (moldura das capas igual). Pasta de JOGO
   (varios discos de um titulo, .m3u, ou pasta com o nome do jogo) continua aberta na lista.

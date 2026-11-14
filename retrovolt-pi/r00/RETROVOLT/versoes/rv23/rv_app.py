@@ -2541,10 +2541,10 @@ class App:
             itens.append(('cd', 'INICIAR CD'))
             itens.append(('vazio', ''))
             itens.append(('vazio', ''))
-        # R28h: pastas no meio dos jogos, em ordem alfabetica, como um nome a mais da lista
-        mistos = [('pasta', n) for n in self.subpastas] + [('arq', p) for p in self.jogos]
-        mistos.sort(key=lambda kv: kv[1].upper().replace('_', ' ') if kv[0] == 'pasta' else nome_limpo(kv[1]))
-        itens += mistos
+        # R28h: pastas primeiro (como nomes da lista, sem linha vazia), depois os jogos soltos;
+        # o que esta dentro de uma pasta so aparece quando ela e aberta
+        itens += [('pasta', n) for n in sorted(self.subpastas, key=lambda n: n.upper())]
+        itens += [('arq', p) for p in self.jogos]
         return itens
 
     def jogar(self, sistema, arquivo=None, cd=False):
