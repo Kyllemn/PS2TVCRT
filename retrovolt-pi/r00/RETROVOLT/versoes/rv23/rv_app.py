@@ -2541,12 +2541,10 @@ class App:
             itens.append(('cd', 'INICIAR CD'))
             itens.append(('vazio', ''))
             itens.append(('vazio', ''))
-        for n in self.subpastas:
-            itens.append(('pasta', n))
-        if self.subpastas and self.jogos:
-            itens.append(('vazio', ''))
-        for p in self.jogos:
-            itens.append(('arq', p))
+        # R28h: pastas no meio dos jogos, em ordem alfabetica, como um nome a mais da lista
+        mistos = [('pasta', n) for n in self.subpastas] + [('arq', p) for p in self.jogos]
+        mistos.sort(key=lambda kv: kv[1].upper().replace('_', ' ') if kv[0] == 'pasta' else nome_limpo(kv[1]))
+        itens += mistos
         return itens
 
     def jogar(self, sistema, arquivo=None, cd=False):
