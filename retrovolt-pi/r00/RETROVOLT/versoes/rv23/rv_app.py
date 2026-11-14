@@ -780,7 +780,7 @@ class FB:
         corte_e = max(0, -x0) * bpp
         dest_x = max(0, x0)
         geo = (W, cw, x0, self.w, self.bpp, fl, fc)
-        if getattr(self, '_geo_cache', None) != geo or len(self._linhas_cache) > 3000 or len(self._cor_cache) > 200000:
+        if getattr(self, '_geo_cache', None) != geo or len(self._linhas_cache) > 4500 or len(self._cor_cache) > 200000:
             self._geo_cache = geo
             self._linhas_cache = {}      # linha logica (cores) -> bytes da linha da tela
             self._efeito_cache = {}      # (cores, escura) -> bytes com o efeito
@@ -2209,11 +2209,13 @@ def caixa(c, linhas, cores=None):
         bt_ctext(c, y0 + 8 + k * (F.ch + 6), l, (cores or [IVORY] * len(linhas))[k], inis[k])
 
 
-# R28: CD girando (pedido do autor). O desenho dos aneis se repete a cada 1/6 de volta, entao
-# 12 quadros de 5 graus bastam para o giro do CD liso; ficam prontos (lista de pontos) e o
-# desenho de cada quadro so copia. O brilho fica parado (a luz nao gira com o disco).
-GIRO_GRAUS_S = 60          # velocidade do giro (graus por segundo)
-CD_PASSOS = 12             # quadros do CD liso (60 graus em passos de 5)
+# R28: CD girando (pedido do autor). R28e: o giro so dos aneis coloridos quase nao aparecia
+# ("muito ruim, quase nao da pra ver"); agora o disco tem 3 faixas escuras que giram com ele
+# (contraste forte). O desenho se repete a cada 1/3 de volta: 20 quadros de 6 graus, prontos
+# (lista de pontos); cada quadro so copia.
+GIRO_GRAUS_S = 90          # velocidade do giro (graus por segundo)
+CD_PASSOS = 20             # quadros do CD liso (120 graus em passos de 6)
+CD_GRAUS = 6
 ARTE_PASSOS = 36           # quadros da arte do disco (volta inteira em passos de 10 graus)
 _CD_QUADROS = {}
 
@@ -2242,8 +2244,10 @@ def _cd_calcula(r, fase):
             a, b = cores[i], cores[(i + 1) % len(cores)]
             f = k * len(cores) - i
             col = [int(a[j] + (b[j] - a[j]) * f) for j in range(3)]
-            brilho = max(0.0, math.cos(ang + 0.8)) ** 6 * 70
-            col = tuple(min(255, int(v + brilho)) for v in col)
+            # 3 faixas escuras que giram com o disco (luz de 30% a 100%)
+            luz = 0.30 + 0.70 * (0.5 + 0.5 * math.cos(3 * (ang - fase))) ** 1.6
+            brilho = max(0.0, math.cos(ang + 0.8)) ** 8 * 40        # reflexo parado, mais fraco
+            col = tuple(min(255, int(v * luz + brilho)) for v in col)
             if d > r - 1.2:
                 col = tuple(int(v * 0.6) for v in col)
             pts.append((dx, dy, col))
@@ -2258,7 +2262,7 @@ def desenha_cd(c, cx, cy, r, passo=0):
     if pts is None:
         if len(_CD_QUADROS) > 3 * CD_PASSOS:
             _CD_QUADROS.clear()
-        pts = _CD_QUADROS[chave] = _cd_calcula(r, (passo % CD_PASSOS) * 2 * math.pi / (6 * CD_PASSOS))
+        pts = _CD_QUADROS[chave] = _cd_calcula(r, math.radians((passo % CD_PASSOS) * CD_GRAUS))
     px = c.px
     for dx, dy, col in pts:
         X, Y = cx + dx, cy + dy
@@ -2927,7 +2931,7 @@ class App:
         if st == 'ok':
             arte = imagens.arte_disco(self.base, i.get('sistema'), i.get('codigo')) if i else None
             if not (arte and self.desenha_arte(c, arte, cx, cy, 2 * raio, gira=True)):
-                desenha_cd(c, cx, cy, raio, giro_passo(CD_PASSOS, 5))
+                desenha_cd(c, cx, cy, raio, giro_passo(CD_PASSOS, CD_GRAUS))
                 self.anima = True
         else:
             furo = raio * 5 // 14
@@ -3320,7 +3324,7 @@ class App:
             arte = imagens.arte_disco(self.base, cd.get('sistema'), cd.get('codigo')) if cd else None
             gira = bool(cd and cd.get('sistema') == self.sistema)
             if not (arte and self.desenha_arte(c, arte, x0 + bw // 2, y0c + bh // 2, bh, gira)):
-                desenha_cd(c, x0 + bw // 2, y0c + bh // 2, bh // 2, giro_passo(CD_PASSOS, 5) if gira else 0)
+                desenha_cd(c, x0 + bw // 2, y0c + bh // 2, bh // 2, giro_passo(CD_PASSOS, CD_GRAUS) if gira else 0)
                 self.anima = self.anima or gira
             pode = bool(cd and cd.get('sistema') == self.sistema and SISTEMAS.get(self.sistema, (0, None))[1])
             if not pode:

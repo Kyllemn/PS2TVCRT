@@ -1020,3 +1020,7 @@ agudos como chiado; e o run-ahead com o som do quadro errado (R26).
 - TV saiu das abas e virou o 1o item de APPS (TV, YOUTUBE, KODI). A tela da TV e os botoes
   continuam iguais; B na lista de listas (ou com lista unica, fora da previa) volta para APPS;
   L1/R1 de dentro da TV andam a partir de APPS.
+
+## R28e (menu Python)
+- CD liso: 3 faixas escuras (luz 30%-100%) giram com o disco; reflexo parado mais fraco; 20
+  quadros de 6 graus (repete a cada 120 graus), 90 graus/s. Cache de linhas do FB 3000 -> 4500.
