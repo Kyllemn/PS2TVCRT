@@ -2108,6 +2108,17 @@ def cabecalho(c, aba, wifi, rodape_d):
 
 
 AZUL_CAIXA = (24, 44, 110)
+AZUL_NOME = (110, 175, 255)     # nome do jogo nas telas DISCO / JOGOS (pedido do autor)
+
+
+def jogar_seta(c, xc, y):
+    """'A JOGAR ->' sublinhado em laranja, centralizado em xc (perto do CD / da capa)"""
+    s = 'A JOGAR'
+    lw = bt_largura(s) + 3 * F.cw
+    x = xc - lw // 2
+    xf = bt_text(c, x, y, s, IVORY)
+    c.rect(x, y + F.ch + 2, xf - x, 1, ORANGE)
+    c.text(xf + F.cw, y, '->', ORANGE)
 
 
 def caixa(c, linhas, cores=None):
@@ -2733,7 +2744,7 @@ class App:
         st = self.leitora.estado
         i = self.leitora.info if st == 'ok' else None
         pode = bool(i and SISTEMAS.get(i.get('sistema'), (0, None))[1])
-        cabecalho(c, 'DISCO', self.wifi, 'A JOGAR' if pode else '')
+        cabecalho(c, 'DISCO', self.wifi, '')
         raio = min(56 + (H - 240) // 2, (W - 200) // 3)
         cx, cy = 32 + raio, (H + 16) // 2
         if st == 'ok':
@@ -2761,14 +2772,14 @@ class App:
             if st != 'lendo':
                 c.text(x, y + F.ch + 6, 'COLOQUE UM DISCO', SLATE)
             return
-        c.text(x, y, 'DISCO NA LEITORA', SLATE)
+        # R28 (pedido do autor): sem codigo do disco e sem nucleo; bloco centralizado na area a
+        # direita do CD (na horizontal e na altura do CD); nome do jogo em azul; o JOGAR fica so
+        # aqui (saiu do rodape)
         sis = i.get('sistema')
-        c.text(x, y + F.ch + 8, NOME_SISTEMA.get(sis, 'DESCONHECIDO'), ORANGE)
         nome = i.get('nome') or i.get('rotulo') or ''
-        yy = y + 2 * F.ch + 16
-        palavras, linha = nome.upper().split(), ''
-        lim = (W - 16 - x) // F.cw
-        linhas = []
+        x1 = W - 16
+        lim = (x1 - x) // F.cw
+        palavras, linha, linhas = nome.upper().split(), '', []
         for p in palavras:
             if len(linha) + len(p) + (1 if linha else 0) > lim:
                 linhas.append(linha)
@@ -2777,19 +2788,16 @@ class App:
                 linha = (linha + ' ' + p).strip()
         if linha:
             linhas.append(linha)
-        for l in linhas[:3]:
-            c.text(x, yy, l, IVORY)
-            yy += F.ch + 2
-        if i.get('codigo'):
-            c.text(x, yy + 4, i['codigo'], SLATE)
-            yy += F.ch + 6
-        if sis in SISTEMAS:
-            c.text(x, yy + 4, 'NUCLEO: %s' % (SISTEMAS[sis][1] or 'AINDA NAO').replace('_libretro.so', '').upper(), SLATE)
+        linhas = linhas[:3]
+        bloco = [('DISCO NA LEITORA', SLATE, F.ch + 8), (NOME_SISTEMA.get(sis, 'DESCONHECIDO'), ORANGE, F.ch + 8)]
+        bloco += [(l, AZUL_NOME, F.ch + 2) for l in linhas]
+        alt = sum(p for _, _, p in bloco) + (F.ch + 18 if pode else 0)
+        yy = max(58, cy - alt // 2)
+        for s, cor, p in bloco:
+            c.text(x + (x1 - x - len(s) * F.cw) // 2, yy, s, cor)
+            yy += p
         if pode:
-            yj = H - 52
-            xf = bt_text(c, x, yj, 'A JOGAR', IVORY)
-            c.rect(x, yj + F.ch + 2, xf - x, 1, ORANGE)
-            c.text(xf + F.cw, yj, '->', ORANGE)
+            jogar_seta(c, (x + x1) // 2, yy + 16)
 
     def desenha_arte(self, c, arte, cx, cy, diam):
         """arte do disco num circulo, com o furo do meio; False se ainda nao ha imagem"""
@@ -2884,7 +2892,7 @@ class App:
             return
         itens = self.itens_pasta()
         bw = bh = max(96, min(H - 120, (W - 40) // 3))      # caixa da capa
-        cabecalho(c, 'JOGOS', self.wifi, 'A JOGA  B VOLTA')
+        cabecalho(c, 'JOGOS', self.wifi, 'B VOLTA')   # R28: o JOGAR fica embaixo da capa
         titulo = NOME_SISTEMA[self.sistema]
         n_jogos = len(self.jogos)
         sel = self.sel['JOGOS']
@@ -2918,13 +2926,20 @@ class App:
             c.text(24, y0 + 3 * passo, 'SEM JOGOS NA PASTA ROMS/%s' % self.sistema.upper(), SLATE)
         # a direita da lista: capa do jogo (arquivos) ou arte do CD (INICIAR CD)
         k, v = itens[sel]
-        x0, y0c = W - 14 - bw, 50 + F.ch + 8 + (H - (50 + F.ch + 8) - 24 - bh) // 2
+        # capa um pouco acima do meio para caber o 'A JOGAR ->' embaixo dela (como na aba DISCO)
+        sob = F.ch + 16
+        x0, y0c = W - 14 - bw, 50 + F.ch + 8 + (H - (50 + F.ch + 8) - 24 - bh - sob) // 2
+        pode = False
         if k == 'arq':
             self.desenha_capa(c, self.arte_jogo(v), x0, y0c, bw, bh)
+            pode = bool(SISTEMAS.get(self.sistema, (0, None))[1])
         elif k == 'cd':
             arte = imagens.arte_disco(self.base, cd.get('sistema'), cd.get('codigo')) if cd else None
             if not (arte and self.desenha_arte(c, arte, x0 + bw // 2, y0c + bh // 2, bh)):
                 desenha_cd(c, x0 + bw // 2, y0c + bh // 2, bh // 2)
+            pode = bool(cd and cd.get('sistema') == self.sistema and SISTEMAS.get(self.sistema, (0, None))[1])
+        if pode:
+            jogar_seta(c, x0 + bw // 2, y0c + bh + 10)
 
     # ---------------------------------------------------------- acoes
     def acao_menu(self, a):
