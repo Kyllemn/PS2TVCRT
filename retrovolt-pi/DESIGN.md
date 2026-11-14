@@ -930,3 +930,12 @@ agudos como chiado; e o run-ahead com o som do quadro errado (R26).
   normal). rv-jogo: F_DOT2, N_FILTROS 10; rv_app: FILTROS + 'DOT MATRIX PEQUENO' (OPCOES >
   VIDEO > FILTRO e menu do jogo). Simulado (tools/teste_dotmatrix.py): 168 combinacoes sem
   desalinhar. 224 linhas: 720p 2x2 (640x448 no MD), 900p e 1080p 3x3 (960x672).
+
+## R27 (compilada 2026-11-14)
+- Pendrive do autor perdido (pasta RETROVOLT apagada ao mover dentro dela mesma). Recuperados por
+  ele: pcsx_rearmed, genesis_plus_gx, mednafen_pce_fast, mednafen_saturn (R23q). Recompilados
+  com o mknucleos travado: flycast 72b8e67 (remendo 16 KB ok), picodrive 1890c29 (o mesmo de
+  antes), neocd b1e04c7. Build precisa de libgles-dev:arm64 (ports.ubuntu.com + dpkg arm64).
+- rv-jogo com DOT MATRIX PEQUENO (filtro 9): testado no PC (Mesen, 1440x900): pontos 2x2 iguais.
+- Pacote R27: rv23 completo (rv-jogo, Python atual, 10 nucleos: os 7 novos + flycast, neocd,
+  picodrive). Os 4 recuperados ficam no pendrive do autor.
