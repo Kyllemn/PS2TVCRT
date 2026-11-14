@@ -893,7 +893,15 @@ class FB:
         w, h, rgb = m
         bpp = self.bpp // 8
         chave = (id(m), circulo, self.bpp)
-        linhas = self._linhas_img.get(chave)
+        linhas = None if circulo == 'gira' else self._linhas_img.get(chave)
+        if linhas is None and circulo and bpp == 4:
+            # R28: caminho rapido (copias de trechos em C, sem laco por ponto): a arte girando
+            # muda a cada quadro e o laco por ponto levava ~0,5 s no Pi
+            linhas = self._circulo_rapido(w, h, rgb)
+            if circulo != 'gira':
+                if len(self._linhas_img) > 12:
+                    self._linhas_img.clear()
+                self._linhas_img[chave] = linhas
         if linhas is None:
             # cada linha: lista de trechos (x, bytes); fora do disco e o furo ficam
             # sem desenhar (aparece o fundo do menu)
@@ -938,6 +946,43 @@ class FB:
                 for x, row in trechos:
                     off = yy * self.stride + (ox + x) * bpp
                     frame[off:off + len(row)] = row
+
+    _segs_circ = {}
+
+    def _circulo_rapido(self, w, h, rgb):
+        """linhas (trechos) de uma imagem recortada em disco com furo, 32 bits: o recorte
+        (trechos de imagem e do aro do furo) e calculado uma vez por tamanho"""
+        segs = self._segs_circ.get((w, h))
+        if segs is None:
+            r2 = (min(w, h) / 2.0) ** 2
+            f2 = (min(w, h) / 9.0) ** 2
+            f2b = (min(w, h) / 9.0 - 2) ** 2
+            segs = []
+            for y in range(h):
+                lin, ant, x_ini = [], None, 0
+                for x in range(w + 1):
+                    t = None
+                    if x < w:
+                        dx, dy = x - w / 2.0 + 0.5, y - h / 2.0 + 0.5
+                        d2 = dx * dx + dy * dy
+                        t = None if (d2 > r2 or d2 <= f2b) else ('aro' if d2 <= f2 else 'img')
+                    if t != ant:
+                        if ant:
+                            lin.append((x_ini, x, ant))
+                        ant, x_ini = t, x
+                segs.append(lin)
+            if len(self._segs_circ) > 8:
+                self._segs_circ.clear()
+            self._segs_circ[(w, h)] = segs
+        bgrx = bytearray(w * h * 4)
+        bgrx[0::4], bgrx[1::4], bgrx[2::4] = rgb[2::3], rgb[1::3], rgb[0::3]
+        mv = memoryview(bytes(bgrx))
+        aro = self.pixel((200, 205, 215))
+        linhas = []
+        for y, lin in enumerate(segs):
+            o = y * w
+            linhas.append([(a, mv[(o + a) * 4:(o + b) * 4] if t == 'img' else aro * (b - a)) for a, b, t in lin])
+        return linhas
 
     def espera_vsync(self):
         """espera o retraco vertical (FBIO_WAITFORVSYNC), se o driver suportar"""
@@ -2138,22 +2183,35 @@ def caixa(c, linhas, cores=None):
         bt_ctext(c, y0 + 8 + k * (F.ch + 6), l, (cores or [IVORY] * len(linhas))[k], inis[k])
 
 
-def desenha_cd(c, cx, cy, r):
-    """CD liso: aneis iridescentes, brilho e furo"""
+# R28: CD girando (pedido do autor). O desenho dos aneis se repete a cada 1/6 de volta, entao
+# 12 quadros de 5 graus bastam para o giro do CD liso; ficam prontos (lista de pontos) e o
+# desenho de cada quadro so copia. O brilho fica parado (a luz nao gira com o disco).
+GIRO_GRAUS_S = 60          # velocidade do giro (graus por segundo)
+CD_PASSOS = 12             # quadros do CD liso (60 graus em passos de 5)
+ARTE_PASSOS = 36           # quadros da arte do disco (volta inteira em passos de 10 graus)
+_CD_QUADROS = {}
+
+
+def giro_passo(n, graus):
+    """quadro do giro agora: n quadros de 'graus' cada, pelo relogio (velocidade constante
+    mesmo se o Pi desenhar menos quadros por segundo)"""
+    return int(time.monotonic() * GIRO_GRAUS_S / graus) % n
+
+
+def _cd_calcula(r, fase):
     import math
     cores = [(170, 180, 200), (190, 170, 220), (160, 200, 230), (200, 220, 190), (230, 200, 170), (210, 180, 210)]
-    for y in range(cy - r, cy + r + 1):
-        for x in range(cx - r, cx + r + 1):
-            d = math.hypot(x - cx, (y - cy))
-            if d > r:
-                continue
-            if d < r * 0.13:
-                continue                                  # furo
+    pts = []
+    for dy in range(-r, r + 1):
+        for dx in range(-r, r + 1):
+            d = math.hypot(dx, dy)
+            if d > r or d < r * 0.13:
+                continue                                  # fora / furo
             if d < r * 0.30:
-                c.px[y * W + x] = (200, 205, 215) if d > r * 0.16 else (120, 125, 140)
+                pts.append((dx, dy, (200, 205, 215) if d > r * 0.16 else (120, 125, 140)))
                 continue
-            ang = math.atan2(y - cy, x - cx)
-            k = (ang / (2 * math.pi) + 0.5 + d / r * 0.35) % 1.0
+            ang = math.atan2(dy, dx)
+            k = ((ang - fase) / (2 * math.pi) + 0.5 + d / r * 0.35) % 1.0
             i = int(k * len(cores))
             a, b = cores[i], cores[(i + 1) % len(cores)]
             f = k * len(cores) - i
@@ -2162,7 +2220,84 @@ def desenha_cd(c, cx, cy, r):
             col = tuple(min(255, int(v + brilho)) for v in col)
             if d > r - 1.2:
                 col = tuple(int(v * 0.6) for v in col)
-            c.px[y * W + x] = col
+            pts.append((dx, dy, col))
+    return pts
+
+
+def desenha_cd(c, cx, cy, r, passo=0):
+    """CD liso: aneis iridescentes, brilho e furo; passo = quadro do giro (0 = parado)"""
+    import math
+    chave = (r, passo % CD_PASSOS)
+    pts = _CD_QUADROS.get(chave)
+    if pts is None:
+        if len(_CD_QUADROS) > 3 * CD_PASSOS:
+            _CD_QUADROS.clear()
+        pts = _CD_QUADROS[chave] = _cd_calcula(r, (passo % CD_PASSOS) * 2 * math.pi / (6 * CD_PASSOS))
+    px = c.px
+    for dx, dy, col in pts:
+        X, Y = cx + dx, cy + dy
+        if 0 <= X < W and 0 <= Y < H:
+            px[Y * W + X] = col
+
+
+class GiroArte(threading.Thread):
+    """quadros girados da arte do disco (vizinho mais proximo), feitos numa thread com pausas
+    (o Pi nao tem PIL; em Python puro cada quadro leva uns 0,1-0,3 s). Enquanto nao fica
+    pronto, a arte aparece parada. So a ultima arte fica guardada."""
+
+    def __init__(self, fila):
+        super().__init__(daemon=True)
+        self.fila = fila
+        self.q = queue.Queue()
+        self.atual = None          # (id da imagem, [quadros])
+        self.pedido = None
+
+    def quadros(self, m):
+        a = self.atual
+        if a and a[0] is m and len(a[1]) == ARTE_PASSOS:
+            return a[1]
+        if self.pedido is not m:
+            self.pedido = m
+            self.q.put(m)
+        return None
+
+    def _mapa(self, w, h, k):
+        import math
+        # sem guardar os mapas: 36 mapas de uma arte de 400x400 passariam de 90 MB
+        if True:
+            t = k * 2 * math.pi / ARTE_PASSOS
+            co, si = math.cos(t), math.sin(t)
+            xc, yc = (w - 1) / 2.0, (h - 1) / 2.0
+            mp = []
+            for y in range(h):
+                dy = y - yc
+                bx, by = si * dy + xc, co * dy + yc
+                for x in range(w):
+                    dx = x - xc
+                    sx, sy = int(co * dx + bx + 0.5), int(-si * dx + by + 0.5)
+                    mp.append(sy * w + sx if 0 <= sx < w and 0 <= sy < h else y * w + x)
+        return mp
+
+    def run(self):
+        import operator
+        while True:
+            m = self.q.get()
+            while not self.q.empty():
+                m = self.q.get()
+            try:
+                w, h, rgb = m
+                ped = [rgb[i:i + 3] for i in range(0, w * h * 3, 3)]
+                qs = []
+                for k in range(ARTE_PASSOS):
+                    if self.pedido is not m:
+                        break
+                    qs.append(b''.join(operator.itemgetter(*self._mapa(w, h, k))(ped)) if k else bytes(rgb))
+                    time.sleep(0.02)       # deixa o menu respirar
+                if len(qs) == ARTE_PASSOS:
+                    self.atual = (m, [(w, h, q) for q in qs])
+                    self.fila.put('_img')
+            except Exception as ex:
+                print('giro: erro na arte: %s' % ex, flush=True)
 
 
 class App:
@@ -2208,6 +2343,9 @@ class App:
         self.carrega_fundo()
         self.mini = Miniaturas(self.fila, os.path.join(self.base, 'imagens', '.cache'))
         self.mini.start()
+        self.giro_arte = GiroArte(self.fila)
+        self.giro_arte.start()
+        self.anima = False            # R28: o CD esta girando na tela (o laco redesenha sozinho)
         self.aba = os.environ.get('RV_ABA', 'DISCO')
         self.tela = os.environ.get('RV_TELA', 'menu')   # menu | conv | fonte | controle | info | aviso
         self.sel = {'JOGOS': 0, 'OPCOES': 0, 'SIS': 0}
@@ -2465,6 +2603,7 @@ class App:
     def _desenha(self):
         global ICONES_LAYOUT
         ICONES_LAYOUT = self.layout_icones()
+        self.anima = False
         t = self.tela
         if t == 'conv':     # teste de convergencia: a tela inteira, sem descer e sem fundo
             global H
@@ -2749,8 +2888,9 @@ class App:
         cx, cy = 32 + raio, (H + 16) // 2
         if st == 'ok':
             arte = imagens.arte_disco(self.base, i.get('sistema'), i.get('codigo')) if i else None
-            if not (arte and self.desenha_arte(c, arte, cx, cy, 2 * raio)):
-                desenha_cd(c, cx, cy, raio)
+            if not (arte and self.desenha_arte(c, arte, cx, cy, 2 * raio, gira=True)):
+                desenha_cd(c, cx, cy, raio, giro_passo(CD_PASSOS, 5))
+                self.anima = True
         else:
             furo = raio * 5 // 14
             for y in range(cy - raio, cy + raio + 1):
@@ -2799,17 +2939,27 @@ class App:
         if pode:
             jogar_seta(c, (x + x1) // 2, yy + 16)
 
-    def desenha_arte(self, c, arte, cx, cy, diam):
-        """arte do disco num circulo, com o furo do meio; False se ainda nao ha imagem"""
+    def desenha_arte(self, c, arte, cx, cy, diam, gira=False):
+        """arte do disco num circulo, com o furo do meio; False se ainda nao ha imagem.
+        gira: girando (R28) quando os quadros girados ja estiverem prontos"""
         if self.esc:            # LCD: imagem com os pontos do monitor (nitida)
             m = self.mini.pega(arte, diam * self.esc, diam * self.esc)
             if not m:
                 return False
-            c.extras.append((cx - diam // 2, cy - diam // 2, diam, diam, m, True))
+            qs = self.giro_arte.quadros(m) if gira else None
+            if qs:
+                self.anima = True
+                c.extras.append((cx - diam // 2, cy - diam // 2, diam, diam, qs[giro_passo(ARTE_PASSOS, 10)], 'gira'))
+            else:
+                c.extras.append((cx - diam // 2, cy - diam // 2, diam, diam, m, True))
             return True
         m = self.mini.pega(arte, diam, diam)
         if not m:
             return False
+        qs = self.giro_arte.quadros(m) if gira else None
+        if qs:
+            self.anima = True
+            m = qs[giro_passo(ARTE_PASSOS, 10)]
         w, h, rgb = m
         r = diam / 2.0
         for y in range(h):
@@ -2935,8 +3085,10 @@ class App:
             pode = bool(SISTEMAS.get(self.sistema, (0, None))[1])
         elif k == 'cd':
             arte = imagens.arte_disco(self.base, cd.get('sistema'), cd.get('codigo')) if cd else None
-            if not (arte and self.desenha_arte(c, arte, x0 + bw // 2, y0c + bh // 2, bh)):
-                desenha_cd(c, x0 + bw // 2, y0c + bh // 2, bh // 2)
+            gira = bool(cd and cd.get('sistema') == self.sistema)
+            if not (arte and self.desenha_arte(c, arte, x0 + bw // 2, y0c + bh // 2, bh, gira)):
+                desenha_cd(c, x0 + bw // 2, y0c + bh // 2, bh // 2, giro_passo(CD_PASSOS, 5) if gira else 0)
+                self.anima = self.anima or gira
             pode = bool(cd and cd.get('sistema') == self.sistema and SISTEMAS.get(self.sistema, (0, None))[1])
         if pode:
             jogar_seta(c, x0 + bw // 2, y0c + bh + 10)
@@ -4293,9 +4445,22 @@ class App:
         except Exception:
             self.falha_tela('botao %s' % a)
 
+    def intervalo_anima(self):
+        """R28: tempo entre quadros do CD girando: ate 15 por segundo, mas o Pi fica no maximo
+        ~2/3 do tempo desenhando (no tubo e no LCD o custo do desenho e diferente)"""
+        return max(1 / 15.0, 1.5 * getattr(self, 't_desenho', 0.05))
+
     def mostra_seguro(self):
+        t0 = time.monotonic()
         try:
             self.fb.show(self.desenha(), self.conv)
+            dt = time.monotonic() - t0
+            self.t_desenho = dt if not hasattr(self, 't_desenho') else 0.8 * self.t_desenho + 0.2 * dt
+            if self.anima:
+                self.n_anima = getattr(self, 'n_anima', 0) + 1
+                if self.n_anima % 300 == 1:
+                    print('menu: CD girando, %.0f ms por desenho (%.1f quadros/s)'
+                          % (self.t_desenho * 1000, 1 / self.intervalo_anima()), flush=True)
         except Exception:
             self.falha_tela('desenho')
             self.fb.show(self.desenha(), self.conv)
@@ -4523,7 +4688,10 @@ class App:
                     rolando = self.aviso and len(self.aviso[0]) > (W - 44) // F.cw
                     curto = (self.contagem or self.tela in ('teste_video', 'tv_cheia', 'yt_cheia') or getattr(self, 'tv_previa', None)
                              or getattr(self, 'tv_pre', 0))
-                    a = self.fila.get(timeout=0.25 if curto else 0.1 if rolando else 1.0)
+                    espera = 0.25 if curto else 0.1 if rolando else 1.0
+                    if self.anima and self.tela == 'menu':   # CD girando: proximo quadro
+                        espera = min(espera, max(0.005, ultimo_desenho + self.intervalo_anima() - time.monotonic()))
+                    a = self.fila.get(timeout=espera)
                 except queue.Empty:
                     a = None
                 mudou = bool(self.contagem) or bool(self.aviso and len(self.aviso[0]) > (W - 44) // F.cw)
@@ -4580,6 +4748,8 @@ class App:
                     mudou = True
                 if self.tela in ('tv_cheia', 'yt_cheia'):   # o mpv e dono da tela
                     continue
+                if self.anima and self.tela == 'menu' and time.monotonic() >= ultimo_desenho + self.intervalo_anima() - 0.003:
+                    mudou = True
                 if mudou or time.monotonic() - ultimo_desenho > 60:
                     if time.monotonic() - ultimo_desenho > 60:
                         copia_log()
