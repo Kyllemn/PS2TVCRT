@@ -2120,9 +2120,11 @@ class Leitora(threading.Thread):
 
 
 # ---------------------------------------------------------------- telas
-ABAS = ['DISCO', 'JOGOS', 'TV', 'RECENTES', 'FAVORITOS', 'APPS', 'OPCOES']
+# R28d: a TV saiu das abas e virou o 1o item de APPS (a tela e o controle continuam iguais;
+# por dentro a aba continua se chamando 'TV' enquanto ela esta aberta)
+ABAS = ['DISCO', 'JOGOS', 'RECENTES', 'FAVORITOS', 'APPS', 'OPCOES']
 N_RECENTES, N_FAVORITOS = 50, 20
-APPS = ['YOUTUBE', 'KODI']
+APPS = ['TV', 'YOUTUBE', 'KODI']
 OPCOES = ['VOLUME', 'VIDEO', 'CONVERGENCIA', 'FONTE', 'WI-FI', 'PASTAS DE JOGOS', 'BIOS', 'BAIXAR CAPAS',
           'TESTE DO CONTROLE', 'INFO',
           'REINICIAR', 'DESLIGAR']
@@ -3356,7 +3358,7 @@ class App:
                 self.confirma = None
             return
         if a in ('L1', 'R1'):
-            i = ABAS.index(self.aba)
+            i = ABAS.index(self.aba if self.aba in ABAS else 'APPS')     # TV fica dentro de APPS
             if self.aba == 'JOGOS' and self.sistema:
                 # saindo de JOGOS de dentro de um console: na volta, lista de consoles com o
                 # cursor nele
@@ -3370,6 +3372,11 @@ class App:
                 self.tv_carrega()
             return
         if self.aba == 'TV':
+            st = getattr(self, 'tv_st', None)
+            if a == 'B' and not getattr(self, 'tv_previa', None) and (
+                    not st or st['lista'] is None or len(self.tv_listas) <= 1):
+                self.aba = 'APPS'                  # B na lista de listas (ou lista unica): volta a APPS
+                return
             self.acao_tv(a)
             return
         if self.aba in ('RECENTES', 'FAVORITOS'):
@@ -3434,6 +3441,9 @@ class App:
             n = self.sel.get('APPS', 0)
             if a in ('CIMA', 'BAIXO'):
                 self.sel['APPS'] = (n + (1 if a == 'BAIXO' else -1)) % len(APPS)
+            elif a == 'A' and APPS[n] == 'TV':
+                self.aba = 'TV'
+                self.tv_carrega()
             elif a == 'A' and APPS[n] == 'YOUTUBE':
                 self.tela = 'youtube'
                 self.__dict__.setdefault('yt', {'termo': '', 'res': [], 'sel': 0, 'msg': '', 'ocupado': False})
@@ -3552,7 +3562,7 @@ class App:
         if not hasattr(self, 'tv_st'):
             self.tv_carrega()
         st = self.tv_st
-        cabecalho(c, 'TV', self.wifi, '<- -> 10  LT/RT GRUPO  A VER' if st['lista'] is not None else 'A ENTRA')
+        cabecalho(c, 'APPS', self.wifi, '<- -> 10  LT/RT GRUPO  A VER' if st['lista'] is not None else 'A ENTRA  B VOLTA')
         if not self.tv_progs['ffmpeg']:
             c.text(24, 64, 'FALTA O FFMPEG NO SISTEMA. NO PUTTY:', ORANGE)
             c.text(24, 64 + F.ch + 6, 'SUDO APT INSTALL -Y FFMPEG MPV', IVORY)

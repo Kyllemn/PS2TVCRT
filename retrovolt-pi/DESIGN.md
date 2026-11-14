@@ -1015,3 +1015,8 @@ agudos como chiado; e o run-ahead com o som do quadro errado (R26).
   intervalo de 0/150/225 setores). So mostra quando todos os candidatos sao o mesmo titulo.
   Simulado: PC Engine CD 95 de 120 com nome certo, 0 errados. O LOG mostra a TOC
   ("disco: PC Engine CD, faixas ...") para calibrar com os discos reais do autor.
+
+## R28d (menu Python)
+- TV saiu das abas e virou o 1o item de APPS (TV, YOUTUBE, KODI). A tela da TV e os botoes
+  continuam iguais; B na lista de listas (ou com lista unica, fora da previa) volta para APPS;
+  L1/R1 de dentro da TV andam a partir de APPS.
