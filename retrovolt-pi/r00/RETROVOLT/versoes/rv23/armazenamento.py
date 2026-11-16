@@ -164,3 +164,30 @@ def migra_sistema(de_base, sis):
                     except OSError:
                         pass
     return n
+
+
+def exporta_saves(sis, destino_raiz, progresso=lambda *a: None):
+    """OPCOES > EXPORTAR SAVES: copia saves/ e states/ do cartao para
+    <destino_raiz>/backup/saves_AAAA-MM-DD_HHMM/ (pasta nova a cada vez; nunca traz de volta
+    nem apaga nada). Devolve (pasta, arquivos, bytes)."""
+    import time
+    pasta = os.path.join(destino_raiz, 'backup', 'saves_' + time.strftime('%Y-%m-%d_%H%M'))
+    lista = _arquivos(sis, ('saves', 'states'))
+    total = sum(os.path.getsize(os.path.join(sis, r)) for r in lista) or 1
+    feito = n = 0
+    for rel in lista:
+        progresso(feito * 100 // total, rel)
+        b = os.path.join(pasta, rel)
+        os.makedirs(os.path.dirname(b), exist_ok=True)
+        shutil.copy2(os.path.join(sis, rel), b)
+        feito += os.path.getsize(os.path.join(sis, rel))
+        n += 1
+    os.makedirs(pasta, exist_ok=True)
+    with open(os.path.join(pasta, 'LEIA-ME.TXT'), 'w') as f:
+        f.write('RETROVOLT - copia dos saves e estados do cartao em %s.\n'
+                'saves/<console>/ = memoria dos jogos; states/<console>/<jogo>/ = estados (slots).\n'
+                'Para usar de novo, copie de volta para o cartao (o RetroVolt nunca faz isso sozinho).\n'
+                % time.strftime('%d/%m/%Y %H:%M'))
+    subprocess.run(['sync'])
+    progresso(100, '')
+    return pasta, n, feito

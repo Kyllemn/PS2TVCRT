@@ -1105,3 +1105,6 @@ agudos como chiado; e o run-ahead com o som do quadro errado (R26).
   o cartao e avisa.
 - Migracao (1x, marca /var/lib/retrovolt/migrado_r29): saves/states/config do pendrive -> cartao.
 - Teste simulado: so pastas = bios+tv copiados, roms nao; tudo = 4 arquivos; origem intacta.
+- OPCOES > EXPORTAR SAVES: copia saves/ e states/ do cartao para o pendrive em
+  RETROVOLT/backup/saves_AAAA-MM-DD_HHMM/ (pasta nova a cada vez, com LEIA-ME); nunca traz de
+  volta nem apaga. Saves/estados ficam fixos no cartao: mudar o armazenamento nao mexe neles.

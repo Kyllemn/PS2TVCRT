@@ -2215,7 +2215,7 @@ class Leitora(threading.Thread):
 ABAS = ['DISCO', 'JOGOS', 'RECENTES', 'FAVORITOS', 'APPS', 'OPCOES']
 N_RECENTES, N_FAVORITOS = 50, 20
 APPS = ['TV', 'YOUTUBE', 'KODI']
-OPCOES = ['VOLUME', 'VIDEO', 'CONVERGENCIA', 'FONTE', 'WI-FI', 'ARMAZENAMENTO', 'BIOS', 'BAIXAR CAPAS', 'VERIFICAR ARCADE',
+OPCOES = ['VOLUME', 'VIDEO', 'CONVERGENCIA', 'FONTE', 'WI-FI', 'ARMAZENAMENTO', 'EXPORTAR SAVES', 'BIOS', 'BAIXAR CAPAS', 'VERIFICAR ARCADE',
           'ATUALIZAR', 'TESTE DO CONTROLE', 'INFO',
           'REINICIAR', 'DESLIGAR']
 TECLAS = {False: ['1234567890', 'qwertyuiop', 'asdfghjkl@', 'zxcvbnm.-_'],
@@ -2915,6 +2915,8 @@ class App:
             self.desenha_varc(c)
         elif t == 'atualizar':
             self.desenha_atu(c)
+        elif t == 'exporta':
+            self.desenha_exporta(c)
         elif t == 'bios':
             moldura(c, 'BIOS', 'B VOLTA')
             c.text(16, 48, 'RECONHECIDAS PELO CONTEUDO: O NOME DO ARQUIVO NAO IMPORTA', SLATE)
@@ -3452,6 +3454,59 @@ class App:
                 self.fila.put('_img')
             threading.Thread(target=roda, daemon=True).start()
 
+    # ---------------------------------------------------------- R29: EXPORTAR SAVES
+    def desenha_exporta(self, c):
+        ex = self.ex
+        moldura(c, 'EXPORTAR SAVES', '' if ex['fase'] == 'copiando' else 'B VOLTA')
+        mb = lambda sub: armazenamento.tamanho(os.path.join(self.sis, sub)) // 1048576
+        if 'mb' not in ex:
+            ex['mb'] = (mb('saves'), mb('states'))
+        c.text(24, 56, 'SAVES E ESTADOS FICAM NO CARTAO:', SLATE)
+        c.text(32, 56 + F.ch + 6, 'SAVES  %d MB    ESTADOS  %d MB' % ex['mb'], IVORY)
+        c.text(24, 56 + 2 * F.ch + 18, 'A COPIA VAI PARA O PENDRIVE, NUMA PASTA NOVA', SLATE)
+        c.text(24, 56 + 3 * F.ch + 22, 'COM A DATA. NADA E APAGADO OU SUBSTITUIDO.', SLATE)
+        if ex['fase'] == 'pergunta':
+            caixa(c, ['COPIAR SAVES E ESTADOS PARA O', 'PENDRIVE (RETROVOLT/BACKUP)?', 'A SIM  B NAO'])
+        elif ex['fase'] == 'copiando':
+            pct, arq = ex['prog']
+            bx, bw_ = 24, W - 48 - 6 * F.cw
+            yb = H - 60
+            c.text(24, yb - F.ch - 6, arq.upper()[:(W - 48) // F.cw], SLATE)
+            c.rect(bx, yb, bw_, F.ch + 4, (30, 38, 66))
+            c.rect(bx, yb, bw_ * pct // 100, F.ch + 4, ORANGE)
+            c.rtext(W - 24, yb + 2, '%d%%' % pct, IVORY)
+        elif ex['msg']:
+            caixa(c, ex['msg'] + ['B VOLTA'], [GREEN if ex['fase'] == 'pronto' else RED] + [IVORY] * (len(ex['msg']) - 1) + [SLATE])
+
+    def acao_exporta(self, a):
+        ex = self.ex
+        if ex['fase'] == 'copiando':
+            return
+        if ex['fase'] == 'pergunta' and a == 'A':
+            destino = armazenamento.raiz('pendrive')
+            if not destino:
+                ex.update(fase='erro', msg=['PENDRIVE NAO ENCONTRADO', 'COLOQUE UM PENDRIVE E TENTE DE NOVO'])
+                return
+            ex['fase'] = 'copiando'
+
+            def prog(pct, arq):
+                ex['prog'] = (pct, arq)
+                self.fila.put('_img')
+
+            def roda():
+                try:
+                    pasta, n, b = armazenamento.exporta_saves(self.sis, destino, prog)
+                    print('saves: %d arquivos (%d MB) copiados para %s' % (n, b // 1048576, pasta), flush=True)
+                    ex.update(fase='pronto', msg=['PRONTO: %d ARQUIVOS (%d MB)' % (n, b // 1048576),
+                                                  'RETROVOLT/BACKUP/%s' % os.path.basename(pasta).upper()])
+                except Exception as e:
+                    print('saves: ERRO ao exportar: %s' % e, flush=True)
+                    ex.update(fase='erro', msg=['NAO COPIOU', str(e).upper()[:40]])
+                self.fila.put('_img')
+            threading.Thread(target=roda, daemon=True).start()
+        elif a == 'B':
+            self.tela = 'menu'
+
     # ---------------------------------------------------------- R29: ATUALIZAR (rvup_Vxx.bin)
     def atu_inicia(self):
         import atualiza
@@ -3892,10 +3947,12 @@ class App:
                     self.confirma = o
                     return
                 self.tela = {'CONVERGENCIA': 'conv', 'FONTE': 'fonte', 'TESTE DO CONTROLE': 'controle', 'INFO': 'info',
-                             'WI-FI': 'wifi', 'ARMAZENAMENTO': 'pastas', 'VIDEO': 'video', 'BIOS': 'bios',
+                             'WI-FI': 'wifi', 'ARMAZENAMENTO': 'pastas', 'EXPORTAR SAVES': 'exporta', 'VIDEO': 'video', 'BIOS': 'bios',
                              'BAIXAR CAPAS': 'capas', 'VERIFICAR ARCADE': 'varc', 'ATUALIZAR': 'atualizar'}[o]
                 if self.tela == 'atualizar':
                     self.atu_inicia()
+                if self.tela == 'exporta':
+                    self.ex = {'fase': 'pergunta', 'prog': (0, ''), 'msg': ''}
                 if self.tela == 'varc':
                     self.varc_inicia()
                 if self.tela == 'capas':
@@ -5266,6 +5323,8 @@ class App:
             self.acao_varc(a)
         elif t == 'atualizar':
             self.acao_atu(a)
+        elif t == 'exporta':
+            self.acao_exporta(a)
         elif t == 'bios':
             if a == 'B':
                 self.tela = 'menu'
