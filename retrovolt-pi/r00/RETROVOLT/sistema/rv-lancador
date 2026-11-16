@@ -54,18 +54,25 @@ copia_log() {
 
 ruim() { [ -f "$DADOS/ruins" ] && grep -qx "$1" "$DADOS/ruins"; }
 
-# lista de candidatas: "origem diretorio", da mais preferida para a menos
+# lista de candidatas: "origem diretorio", da mais preferida para a menos.
+# R29: a versao MAIS NOVA entre pendrive e cartao (no empate, o cartao). Antes o pendrive vinha
+# sempre primeiro e uma atualizacao instalada no cartao (OPCOES > ATUALIZAR) ficava escondida
+# atras de um pendrive com versao antiga.
 candidatas() {
-	if mountpoint -q "$USB" && [ -d "$USB/RETROVOLT/versoes" ]; then
-		for d in $(ls -1d "$USB"/RETROVOLT/versoes/rv[0-9]* 2>/dev/null | sort -rV); do
+	{
+		if mountpoint -q "$USB" && [ -d "$USB/RETROVOLT/versoes" ]; then
+			for d in "$USB"/RETROVOLT/versoes/rv[0-9]*; do
+				[ -d "$d" ] || continue
+				v=$(basename "$d")
+				[ -f "$d/rv_app.py" ] && ! ruim "usb:$v" && echo "$v 2usb usb $d"
+			done
+		fi
+		for d in "$CARTAO"/rv[0-9]*; do
+			[ -d "$d" ] || continue
 			v=$(basename "$d")
-			[ -f "$d/rv_app.py" ] && ! ruim "usb:$v" && echo "usb $d"
+			[ -f "$d/rv_app.py" ] && ! ruim "cartao:$v" && echo "$v 1cartao cartao $d"
 		done
-	fi
-	for d in $(ls -1d "$CARTAO"/rv[0-9]* 2>/dev/null | sort -rV); do
-		v=$(basename "$d")
-		[ -f "$d/rv_app.py" ] && ! ruim "cartao:$v" && echo "cartao $d"
-	done
+	} | sort -k1,1Vr -k2,2 | cut -d' ' -f3-
 }
 
 log "=== RETROVOLT Pi: boot ==="

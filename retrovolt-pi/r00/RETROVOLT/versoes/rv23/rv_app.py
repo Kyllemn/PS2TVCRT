@@ -2209,7 +2209,7 @@ ABAS = ['DISCO', 'JOGOS', 'RECENTES', 'FAVORITOS', 'APPS', 'OPCOES']
 N_RECENTES, N_FAVORITOS = 50, 20
 APPS = ['TV', 'YOUTUBE', 'KODI']
 OPCOES = ['VOLUME', 'VIDEO', 'CONVERGENCIA', 'FONTE', 'WI-FI', 'PASTAS DE JOGOS', 'BIOS', 'BAIXAR CAPAS', 'VERIFICAR ARCADE',
-          'TESTE DO CONTROLE', 'INFO',
+          'ATUALIZAR', 'TESTE DO CONTROLE', 'INFO',
           'REINICIAR', 'DESLIGAR']
 TECLAS = {False: ['1234567890', 'qwertyuiop', 'asdfghjkl@', 'zxcvbnm.-_'],
           True: ['!#$%&*()+=', 'QWERTYUIOP', 'ASDFGHJKL?', 'ZXCVBNM,:/']}
@@ -2892,6 +2892,8 @@ class App:
             self.desenha_capas(c)
         elif t == 'varc':
             self.desenha_varc(c)
+        elif t == 'atualizar':
+            self.desenha_atu(c)
         elif t == 'bios':
             moldura(c, 'BIOS', 'B VOLTA')
             c.text(16, 48, 'RECONHECIDAS PELO CONTEUDO: O NOME DO ARQUIVO NAO IMPORTA', SLATE)
@@ -3406,6 +3408,113 @@ class App:
                 self.fila.put('_img')
             threading.Thread(target=roda, daemon=True).start()
 
+    # ---------------------------------------------------------- R29: ATUALIZAR (rvup_Vxx.bin)
+    def atu_inicia(self):
+        import atualiza
+        at = self.at = {'fase': 'nada', 'arq': None, 'man': None, 'pct': 0, 'txt': '', 'msg': ''}
+        at['atual'] = atualiza.versao_atual()
+        if not tem_pendrive():
+            at['msg'] = 'COLOQUE O PENDRIVE COM O ARQUIVO EM RETROVOLT/UPDATE/'
+            return
+        arq = atualiza.procura(USB)
+        if not arq:
+            at['msg'] = 'NENHUM RVUP_VXX.BIN EM RETROVOLT/UPDATE/ DO PENDRIVE'
+            return
+        try:
+            at['man'] = atualiza.le_manifesto(arq)
+        except atualiza.ErroAtualizacao as ex:
+            at.update(fase='erro', msg=str(ex))
+            return
+        at.update(arq=arq, fase='pergunta')
+        print('atualizar: instalada %s, arquivo %s (%s)' % (at['atual'][1], os.path.basename(arq), at['man'].get('nome')),
+              flush=True)
+
+    def desenha_atu(self, c):
+        at = self.at
+        moldura(c, 'ATUALIZAR', '' if at['fase'] in ('aplicando', 'pronto') else 'B VOLTA')
+        y = 56
+        c.text(24, y, 'VERSAO INSTALADA: %s (%s)' % (at['atual'][1], ORIGEM), IVORY)
+        y += F.ch + 8
+        man = at['man']
+        if man:
+            c.text(24, y, 'NO PENDRIVE: %s  %s' % (man.get('nome', '?'), os.path.basename(at['arq']).upper()), ORANGE)
+            y += F.ch + 4
+            if man.get('data'):
+                c.text(24, y, 'DE %s' % man['data'], SLATE)
+                y += F.ch + 8
+            for nota in (man.get('notas') or [])[:max(0, (H - 40 - y) // (F.ch + 3))]:
+                c.text(32, y, ('- ' + nota).upper()[:(W - 48) // F.cw], SLATE)
+                y += F.ch + 3
+        elif at['msg'] and at['fase'] == 'nada':
+            c.text(24, y + 6, at['msg'][:(W - 48) // F.cw], SLATE)
+        if at['fase'] == 'pergunta':
+            novo, atual = man['versao'], at['atual'][0]
+            if novo > atual:
+                caixa(c, ['INSTALADA: %s   NO PENDRIVE: %s' % (at['atual'][1], man.get('nome')),
+                          'ATUALIZAR? A SIM  B NAO'])
+            elif novo == atual:
+                caixa(c, ['ESTA E A MESMA VERSAO (%s)' % at['atual'][1], 'REINSTALAR? A SIM  B NAO'])
+            else:
+                caixa(c, ['ESTE ARQUIVO (%s) E MAIS ANTIGO' % man.get('nome'),
+                          'QUE A INSTALADA (%s).' % at['atual'][1], 'INSTALAR MESMO ASSIM?', 'A SIM  B NAO'],
+                      [AMARELO, AMARELO, IVORY, IVORY])
+        elif at['fase'] == 'backup':
+            caixa(c, ['ATENCAO: FACA BACKUP ANTES', 'COPIE O MICROSD E O PENDRIVE NO PC.',
+                      'SE A ENERGIA CAIR NO MEIO OU ALGO', 'DER ERRADO, PODE HAVER PERDA DE DADOS.',
+                      'A CONFIRMA  B CANCELA'], [AMARELO, IVORY, SLATE, SLATE, IVORY])
+        elif at['fase'] == 'aplicando':
+            bx, bw_ = 24, W - 48 - 6 * F.cw
+            yb = H - 60
+            c.text(24, yb - F.ch - 8, at['txt'] + '. NAO DESLIGUE O RETROVOLT.', ORANGE)
+            c.rect(bx, yb, bw_, F.ch + 4, (30, 38, 66))
+            c.rect(bx, yb, bw_ * at['pct'] // 100, F.ch + 4, ORANGE)
+            c.rtext(W - 24, yb + 2, '%d%%' % at['pct'], IVORY)
+        elif at['fase'] == 'erro':
+            caixa(c, ['NAO ATUALIZOU: NADA FOI MUDADO', at['msg'][:44], 'B VOLTA'], [RED, IVORY, SLATE])
+        elif at['fase'] == 'pronto':
+            caixa(c, ['ATUALIZADO PARA %s' % man.get('nome'), 'REINICIANDO EM %d S...' % max(0, int(at['fim'] - time.monotonic()))],
+                  [GREEN, IVORY])
+
+    def acao_atu(self, a):
+        at = self.at
+        f = at['fase']
+        if f in ('aplicando', 'pronto'):
+            return
+        if f == 'pergunta' and a == 'A':
+            at['fase'] = 'backup'
+        elif f == 'backup' and a == 'A':
+            at['fase'] = 'aplicando'
+            threading.Thread(target=self.atu_aplica, daemon=True).start()
+        elif a == 'B':
+            self.tela = 'menu'
+
+    def atu_aplica(self):
+        import atualiza
+        at = self.at
+
+        def prog(pct, txt):
+            if pct != at['pct'] or txt != at['txt']:
+                at.update(pct=pct, txt=txt)
+                self.fila.put('_img')
+        print('atualizar: aplicando %s' % at['arq'], flush=True)
+        try:
+            self.leitora.pausa.set()
+            nova = atualiza.aplica(at['arq'], prog)
+            print('atualizar: instalado em %s; reiniciando' % nova, flush=True)
+            cfg_gravar(self.cfg)
+            at.update(fase='pronto', fim=time.monotonic() + 5)
+            for _ in range(6):
+                self.fila.put('_img')
+                time.sleep(1)
+            copia_log()
+            os.sync()
+            subprocess.Popen(['systemctl', 'reboot'])
+        except Exception as ex:
+            print('atualizar: ERRO %s' % ex, flush=True)
+            at.update(fase='erro', msg=str(ex).upper())
+            self.leitora.pausa.clear()
+            self.fila.put('_img')
+
     # ---------------------------------------------------------- R28m: VERIFICAR ARCADE
     def varc_inicia(self):
         import verifica_arcade
@@ -3740,7 +3849,9 @@ class App:
                     return
                 self.tela = {'CONVERGENCIA': 'conv', 'FONTE': 'fonte', 'TESTE DO CONTROLE': 'controle', 'INFO': 'info',
                              'WI-FI': 'wifi', 'PASTAS DE JOGOS': 'pastas', 'VIDEO': 'video', 'BIOS': 'bios',
-                             'BAIXAR CAPAS': 'capas', 'VERIFICAR ARCADE': 'varc'}[o]
+                             'BAIXAR CAPAS': 'capas', 'VERIFICAR ARCADE': 'varc', 'ATUALIZAR': 'atualizar'}[o]
+                if self.tela == 'atualizar':
+                    self.atu_inicia()
                 if self.tela == 'varc':
                     self.varc_inicia()
                 if self.tela == 'capas':
@@ -5071,6 +5182,8 @@ class App:
             self.acao_capas(a)
         elif t == 'varc':
             self.acao_varc(a)
+        elif t == 'atualizar':
+            self.acao_atu(a)
         elif t == 'bios':
             if a == 'B':
                 self.tela = 'menu'

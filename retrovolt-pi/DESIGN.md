@@ -1076,3 +1076,16 @@ agudos como chiado; e o run-ahead com o som do quadro errado (R26).
 - R28o: OPCOES > BAIXAR CAPAS: B sai da tela e o download continua por tras (Y cancela);
   rodape "CAPAS 37%" no menu enquanto baixa; aviso no fim ("CAPAS PRONTAS: N COM CAPA, M SEM");
   com jogo aberto o download espera (baixa_sistemas chama _espera_jogo).
+
+## R29 (menu Python + lancador): OPCOES > ATUALIZAR
+- Arquivo RETROVOLT/update/rvup_Vxx.bin no pendrive (tools/mkupdate.py: zip com manifest.json
+  {formato 1, versao, nome, data, notas, arquivos: sha256}, versao/ = pasta rvNN completa,
+  sistema/ = rv-lancador e retrovolt.service). atualiza.py: popup 1 compara com versao.txt (nova /
+  mesma = reinstalar / mais antiga), popup 2 manda fazer backup do microSD e do pendrive
+  (CONFIRMA/CANCELA); depois confere SHA-256 de tudo e o espaco ANTES de mexer, extrai em
+  /opt/retrovolt/versoes/.rvXX.novo e troca o nome no fim, troca lancador/servico guardando
+  .anterior, tira rvXX dos "ruins", mantem a nova + 2 anteriores, sync e reinicia.
+- rv-lancador: escolhe a versao MAIS NOVA entre pendrive e cartao (empate: cartao); antes o
+  pendrive vinha sempre primeiro e esconderia a atualizacao no cartao. Volta automatica igual.
+- Teste em pasta simulada: instalou rv29 ao lado de rv05/rv23, lancador trocado com .anterior,
+  arquivo com 1 byte trocado recusado sem mudar nada.
