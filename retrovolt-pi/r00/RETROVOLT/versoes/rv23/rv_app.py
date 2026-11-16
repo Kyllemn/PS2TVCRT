@@ -30,6 +30,7 @@ def tempo(etapa):
     print('tempo: %.2f s %s' % (time.monotonic() - T0, etapa), flush=True)
 
 
+import armazenamento
 import capas
 import disco
 import json
@@ -129,7 +130,7 @@ CFG_PADRAO = [
     ('leitora_acordar', '10', 'segundos sem leitura ate o RetroVolt acordar a leitora (2 a 60)'),
     ('JOGOS', None, None),
     ('capas_automaticas', 'SIM', 'SIM = com internet, baixa sozinho as capas dos jogos que nao tem (libretro-thumbnails e psx-covers)'),
-    ('pasta_jogos', 'pendrive', 'onde ficam jogos, BIOS e saves: pendrive ou cartao'),
+    ('pasta_jogos', 'cartao', 'ARMAZENAMENTO de jogos e midias (roms, bios, tv, imagens): cartao, pendrive ou m2. Config, saves e states ficam sempre no cartao'),
     ('VIDEO', None, None),
     ('video_saida', 'AUTO', 'AUTO detecta pela EDID; TUBO ou LCD forca (so na tela em que foi escolhido)'),
     ('video_saida_tela', '', 'tela onde TUBO/LCD foi escolhido (preenchido sozinho; outra tela = detecta)'),
@@ -143,11 +144,12 @@ CFG_PADRAO = [
 ]
 
 
-def cfg_caminhos():
-    p = []
-    if os.path.isdir(os.path.join(USB, 'RETROVOLT')):
+def cfg_caminhos(gravar=False):
+    """R29: a configuracao e do SISTEMA e fica no cartao. A do pendrive (versoes antigas) so e
+    lida se o cartao ainda nao tiver uma (migracao); nunca mais e gravada."""
+    p = [os.path.join(DADOS, 'config', 'retrovolt.cfg')]
+    if not gravar and os.path.isdir(os.path.join(USB, 'RETROVOLT')):
         p.append(os.path.join(USB, 'RETROVOLT', 'config', 'retrovolt.cfg'))
-    p.append(os.path.join(DADOS, 'config', 'retrovolt.cfg'))
     return p
 
 
@@ -179,7 +181,7 @@ def cfg_gravar(c):
             continue
         txt.append('%s = "%s"%s' % (k, c.get(k, v), '    # ' + com if com else ''))
     data = '\n'.join(txt) + '\n'
-    for path in cfg_caminhos():
+    for path in cfg_caminhos(gravar=True):
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
             tmp = path + '.tmp'
@@ -1723,15 +1725,20 @@ def tem_pendrive():
     return os.path.isdir(os.path.join(USB, 'RETROVOLT'))
 
 
-def base(onde='pendrive'):
-    """pasta RETROVOLT do dispositivo escolhido (OPCOES > PASTAS DE JOGOS: pendrive ou
-    cartao); sem pendrive usa o cartao. Cria a estrutura se faltar (nunca apaga nada)"""
+def pasta_sistema():
+    """R29: config, saves, states e logs: SEMPRE no cartao (testes no PC: RV_SIS ou RV_BASE)"""
+    s = os.environ.get('RV_SIS') or os.environ.get('RV_BASE') or BASE_CARTAO
+    armazenamento.prepara(s, sistema=True)
+    return s
+
+
+def base(onde='cartao'):
+    """R29: pasta RETROVOLT do ARMAZENAMENTO de jogos e midias (OPCOES > ARMAZENAMENTO: cartao,
+    pendrive ou m2). Dispositivo ausente: usa o cartao (e avisa). Cria as pastas que faltam."""
     b = os.environ.get('RV_BASE')
     if not b:
-        b = os.path.join(USB, 'RETROVOLT') if onde != 'cartao' and tem_pendrive() else BASE_CARTAO
-    for p in ('config', 'bios', 'roms', 'saves', 'states', 'tv', 'imagens/consoles', 'imagens/wallpapers',
-              'capturas', 'logs'):
-        os.makedirs(os.path.join(b, p), exist_ok=True)
+        b = armazenamento.raiz(onde if onde in armazenamento.LUGARES else 'cartao') or BASE_CARTAO
+    armazenamento.prepara(b)
     for s, (_, nucleo, _) in SISTEMAS.items():
         if s not in APELIDO:          # uma pasta de BIOS por sistema (pcenginecd usa a do pcengine)
             os.makedirs(os.path.join(b, 'bios', s), exist_ok=True)
@@ -2208,7 +2215,7 @@ class Leitora(threading.Thread):
 ABAS = ['DISCO', 'JOGOS', 'RECENTES', 'FAVORITOS', 'APPS', 'OPCOES']
 N_RECENTES, N_FAVORITOS = 50, 20
 APPS = ['TV', 'YOUTUBE', 'KODI']
-OPCOES = ['VOLUME', 'VIDEO', 'CONVERGENCIA', 'FONTE', 'WI-FI', 'PASTAS DE JOGOS', 'BIOS', 'BAIXAR CAPAS', 'VERIFICAR ARCADE',
+OPCOES = ['VOLUME', 'VIDEO', 'CONVERGENCIA', 'FONTE', 'WI-FI', 'ARMAZENAMENTO', 'BIOS', 'BAIXAR CAPAS', 'VERIFICAR ARCADE',
           'ATUALIZAR', 'TESTE DO CONTROLE', 'INFO',
           'REINICIAR', 'DESLIGAR']
 TECLAS = {False: ['1234567890', 'qwertyuiop', 'asdfghjkl@', 'zxcvbnm.-_'],
@@ -2497,7 +2504,21 @@ class App:
         self.ent = Entrada(self.fila)
         self.leitora = Leitora(self.fila)
         self.mini = None
-        self.base = base(self.cfg.get('pasta_jogos', 'pendrive'))
+        self.sis = pasta_sistema()
+        self.base = base(self.cfg.get('pasta_jogos', 'cartao'))
+        self.lugar = self.cfg.get('pasta_jogos', 'cartao')
+        if self.lugar != 'cartao' and self.base == BASE_CARTAO and not os.environ.get('RV_BASE'):
+            print('armazenamento: %s nao encontrado, usando o cartao' % self.lugar, flush=True)
+            self.aviso_inicio = '%s NAO ENCONTRADO: USANDO O CARTAO' % armazenamento.NOMES.get(self.lugar, '?')
+        marca = os.path.join(DADOS, 'migrado_r29')
+        if not os.environ.get('RV_BASE') and not os.path.exists(marca):
+            # 1a vez no R29: config/saves/states do pendrive (onde as versoes antigas guardavam)
+            n = armazenamento.migra_sistema(os.path.join(USB, 'RETROVOLT') if tem_pendrive() else None, self.sis)
+            print('armazenamento: %d arquivos de config/saves/states passados para o cartao' % n, flush=True)
+            try:
+                open(marca, 'w').write('ok\n')
+            except OSError:
+                pass
         self.carrega_fundo()
         self.mini = Miniaturas(self.fila, os.path.join(self.base, 'imagens', '.cache'))
         self.mini.start()
@@ -2591,9 +2612,9 @@ class App:
             nome = nome_limpo(arquivo)
             save = i.get('codigo') or os.path.splitext(os.path.basename(arquivo))[0]
         save = ''.join(ch if ch.isalnum() or ch in '-_ ' else '_' for ch in save).strip() or 'jogo'
-        saves = os.path.join(self.base, 'saves', sistema)
+        saves = os.path.join(self.sis, 'saves', sistema)
         os.makedirs(saves, exist_ok=True)
-        opt = os.path.join(self.base, 'config', 'nucleos', nucleo.replace('_libretro.so', '.opt'))
+        opt = os.path.join(self.sis, 'config', 'nucleos', nucleo.replace('_libretro.so', '.opt'))
         if nucleo in OPCOES_PADRAO:
             # arquivo novo: todas as opcoes iniciais; arquivo que ja existe: so as que faltam
             # (opcao nova de uma versao nova; o que a pessoa escolheu fica)
@@ -2618,14 +2639,14 @@ class App:
         cmd = [exe, '--nucleo', so, '--bios', bios_pasta_nucleo(self.base, sistema), '--saves', saves,
                '--nome', nome[:60], '--save', save, '--fonte', F.nome, '--volume', str(self.volume()),
                '--conv', '%d,%d,%.3f,%.3f' % tuple(self.conv),
-               '--opcoes', os.path.join(self.base, 'config', 'nucleos', nucleo.replace('_libretro.so', '.opt')),
-               '--botoes', os.path.join(self.base, 'config', 'nucleos', nucleo.replace('_libretro.so', '.botoes')),
-               '--conv-arq', os.path.join(self.base, 'config', 'nucleos', nucleo.replace('_libretro.so', '.conv')),
-               '--states', os.path.join(self.base, 'states', sistema, save),
+               '--opcoes', os.path.join(self.sis, 'config', 'nucleos', nucleo.replace('_libretro.so', '.opt')),
+               '--botoes', os.path.join(self.sis, 'config', 'nucleos', nucleo.replace('_libretro.so', '.botoes')),
+               '--conv-arq', os.path.join(self.sis, 'config', 'nucleos', nucleo.replace('_libretro.so', '.conv')),
+               '--states', os.path.join(self.sis, 'states', sistema, save),
                '--filtro', str(self.FILTROS.index(self.cfg.get('video_filtro', 'NENHUM').upper())
                                if self.cfg.get('video_filtro', 'NENHUM').upper() in self.FILTROS else 0),
-               '--filtro-arq', os.path.join(self.base, 'config', 'nucleos', nucleo.replace('_libretro.so', '.filtro')),
-               '--imagem-arq', os.path.join(self.base, 'config', 'nucleos', nucleo.replace('_libretro.so', '.imagem'))]
+               '--filtro-arq', os.path.join(self.sis, 'config', 'nucleos', nucleo.replace('_libretro.so', '.filtro')),
+               '--imagem-arq', os.path.join(self.sis, 'config', 'nucleos', nucleo.replace('_libretro.so', '.imagem'))]
         rom = arquivo
         if not cd and sistema in ZIP_EXTRAI and arquivo.lower().endswith('.zip'):
             rom = extrai_zip(arquivo, sistema)
@@ -2639,7 +2660,7 @@ class App:
             cmd += ['--gpu', 'gles' if self.cfg.get('dreamcast_gpu', 'VULKAN').upper() == 'GLES' else 'vulkan']
             # opcoes por jogo (ex.: Gunbird 2 em 1280x960 sem pontinhos, 3D em 640x480): o que
             # mudar no menu do jogo vale so para ele; o resto vem do flycast.opt
-            cmd += ['--opcoes-jogo', os.path.join(self.base, 'config', 'nucleos', 'flycast', save + '.opt')]
+            cmd += ['--opcoes-jogo', os.path.join(self.sis, 'config', 'nucleos', 'flycast', save + '.opt')]
         if sistema in RUN_AHEAD and self.cfg.get('run_ahead', 'SIM').upper() != 'NAO':
             cmd += ['--runahead', '1']        # 1 quadro a menos de atraso no controle
         if sistema == 'gba':      # o som do GBA e baixo de fabrica: ganho (com limitador suave)
@@ -2647,9 +2668,9 @@ class App:
         if sistema == 'nds' and self.cfg.get('ds_duas_telas', 'SIM').upper() != 'NAO':
             cmd += ['--ds-duas-telas', '1']   # so liga se tiver 2 monitores ligados
         if sistema in FBNEO:      # opcoes por jogo (ex.: AES so num jogo)
-            cmd += ['--opcoes-jogo', os.path.join(self.base, 'config', 'nucleos', 'fbneo', save + '.opt')]
+            cmd += ['--opcoes-jogo', os.path.join(self.sis, 'config', 'nucleos', 'fbneo', save + '.opt')]
         if sistema == 'saturn':   # opcoes por jogo, como no Dreamcast
-            cmd += ['--opcoes-jogo', os.path.join(self.base, 'config', 'nucleos', nucleo.replace('_libretro.so', ''),
+            cmd += ['--opcoes-jogo', os.path.join(self.sis, 'config', 'nucleos', nucleo.replace('_libretro.so', ''),
                                                   save + '.opt')]
         if cd and sistema == 'saturn':
             # disco comum (1 sessao). Cache + copia para a memoria em 2o plano, como no Dreamcast
@@ -2925,7 +2946,7 @@ class App:
                 ('IP', d.get('ip') or 'SEM REDE'),
                 ('MASCARA', d.get('mascara') or '-'),
                 ('GATEWAY', d.get('gateway') or '-'),
-                ('JOGOS', ('PENDRIVE' if self.base.startswith(USB) else 'CARTAO') +
+                ('JOGOS', armazenamento.NOMES.get(self.lugar, 'CARTAO').split(' ')[0] +
                  (' %d/%d MB' % espaco(self.base) if espaco(self.base) else '')),
                 ('LEITORA', {'procurando': '...', 'ok': 'COM DISCO', 'vazia': 'VAZIA', 'aberta': 'ABERTA', 'lendo': 'LENDO',
                              'sem_leitora': 'NAO ENCONTRADA'}.get(self.leitora.estado, '?')),
@@ -3039,25 +3060,48 @@ class App:
             c.text(24, H - 18 - 2 * F.ch, 'TECLADO USB TAMBEM FUNCIONA', SLATE)
 
     def desenha_pastas(self, c):
-        moldura(c, 'PASTAS DE JOGOS', 'A ESCOLHE  B VOLTA')
-        atual = 'pendrive' if self.base.startswith(USB) else 'cartao'
-        c.text(24, 56, 'JOGOS, BIOS E SAVES FICAM EM:', SLATE)
-        y = 66 + F.ch
-        for n, (k, nome) in enumerate((('pendrive', 'PENDRIVE'), ('cartao', 'CARTAO (MICRO SD)'))):
-            pasta = os.path.join(USB, 'RETROVOLT') if k == 'pendrive' else BASE_CARTAO
-            disp = tem_pendrive() if k == 'pendrive' else True
-            esp = espaco(pasta if os.path.exists(pasta) else os.path.dirname(pasta)) if disp else None
-            valor = ('EM USO' if k == atual else None) if disp else 'NAO ENCONTRADO'
-            item(c, 24, y, nome, n == self.pastas_sel, valor)
-            if esp:
-                c.text(40, y + F.ch + 5, '%d MB USADOS DE %d MB' % esp, SLATE)
-            y += 2 * F.ch + 16
-        c.text(24, y + 4, 'A PASTA RETROVOLT E CRIADA SE FALTAR.', SLATE)
-        c.text(24, y + 8 + F.ch, 'NADA E APAGADO.', SLATE)
-        if self.pastas_msg:
-            c.text(24, H - 26 - F.ch, self.pastas_msg[:44], ORANGE)
-        if self.confirma == 'COPIAR':
-            caixa(c, ['COPIAR SAVES E CONFIGURACAO', 'PARA O NOVO? A SIM  B NAO'])
+        """R29: OPCOES > ARMAZENAMENTO (desenho do autor): jogos e midias no cartao, pendrive ou
+        M.2; config, saves e estados sempre no cartao"""
+        ar = self.ar
+        moldura(c, 'ARMAZENAMENTO', '' if ar['fase'] == 'copiando' else 'A ESCOLHE  B VOLTA')
+        c.text(24, 50, 'ONDE FICAM JOGOS, BIOS, LISTAS DE TV E MIDIAS:', SLATE)
+        y = 50 + F.ch + 12
+        for n, k in enumerate(armazenamento.LUGARES):
+            r = armazenamento.raiz(k) if k != 'm2' or ar.get('m2_ok') is not False else None
+            if k == 'm2':
+                ar['m2_ok'] = bool(r)
+            valor = 'EM USO' if (k == self.lugar and self.base == (r or BASE_CARTAO)) else (None if r else 'NAO ENCONTRADO')
+            item(c, 24, y, armazenamento.NOMES[k], n == ar['sel'], valor)
+            if r:
+                esp = espaco(r if os.path.exists(r) else os.path.dirname(r))
+                if esp:
+                    c.text(40, y + F.ch + 4, '%d MB USADOS DE %d MB' % esp, SLATE)
+            y += 2 * F.ch + 14
+        c.text(24, y + 2, 'CONFIGURACAO, SAVES E ESTADOS FICAM SEMPRE', SLATE)
+        c.text(24, y + 4 + F.ch, 'NO CARTAO. NADA E APAGADO AO MUDAR.', SLATE)
+        if ar['msg']:
+            c.text(24, H - 26 - F.ch, ar['msg'][:(W - 48) // F.cw], ORANGE)
+        if ar['fase'] == 'modo':
+            d = ar['destino']
+            roms, livre_mb, obrig = ar['roms_mb'], ar['livre_mb'], ar['obrig_mb']
+            cabe = roms + obrig + 50 <= livre_mb
+            op1 = ('> ' if ar['modo'] == 0 else '  ') + 'COPIAR TUDO: JOGOS, LISTAS E MIDIAS'
+            op1b = '  (%d MB; LIVRE %d MB)%s' % (roms + obrig, livre_mb, '' if cabe else ' NAO CABE!')
+            op2 = ('> ' if ar['modo'] == 1 else '  ') + 'SO CRIAR AS PASTAS (VOCE COPIA DEPOIS)'
+            caixa(c, ['MUDAR PARA %s' % armazenamento.NOMES[d], 'BIOS E LISTAS DE TV SEMPRE VAO JUNTO.',
+                      'COPIAR OS JOGOS PODE DEMORAR MUITO.', op1, op1b, op2, 'A CONFIRMA  B CANCELA'],
+                  [ORANGE, IVORY, AMARELO, ORANGE if ar['modo'] == 0 else SLATE, RED if not cabe else SLATE,
+                   ORANGE if ar['modo'] == 1 else SLATE, IVORY])
+        elif ar['fase'] == 'copiando':
+            pct, arq = ar.get('prog', (0, ''))
+            bx, bw_ = 24, W - 48 - 6 * F.cw
+            yb = H - 64
+            c.text(24, yb - 2 * F.ch - 10, 'COPIANDO PARA %s' % armazenamento.NOMES[ar['destino']], ORANGE)
+            c.text(24, yb - F.ch - 6, arq.upper()[:(W - 48) // F.cw], SLATE)
+            c.rect(bx, yb, bw_, F.ch + 4, (30, 38, 66))
+            c.rect(bx, yb, bw_ * pct // 100, F.ch + 4, ORANGE)
+            c.rtext(W - 24, yb + 2, '%d%%' % pct, IVORY)
+            bt_text(c, 24, yb + F.ch + 10, 'B CANCELA (NADA E APAGADO)', SLATE)
 
     def desenha_confirma(self, c):
         caixa(c, ['%s? A SIM  B NAO' % self.confirma])
@@ -3200,7 +3244,7 @@ class App:
 
     # ---------------------------------------------------------- R28: RECENTES e FAVORITOS
     def _lista_arq(self, nome):
-        return os.path.join(self.base, 'config', nome + '.json')
+        return os.path.join(self.sis, 'config', nome + '.json')
 
     def minha_lista(self, nome):
         """[(sistema da lista do menu, caminho)] so dos jogos que ainda existem"""
@@ -3848,7 +3892,7 @@ class App:
                     self.confirma = o
                     return
                 self.tela = {'CONVERGENCIA': 'conv', 'FONTE': 'fonte', 'TESTE DO CONTROLE': 'controle', 'INFO': 'info',
-                             'WI-FI': 'wifi', 'PASTAS DE JOGOS': 'pastas', 'VIDEO': 'video', 'BIOS': 'bios',
+                             'WI-FI': 'wifi', 'ARMAZENAMENTO': 'pastas', 'VIDEO': 'video', 'BIOS': 'bios',
                              'BAIXAR CAPAS': 'capas', 'VERIFICAR ARCADE': 'varc', 'ATUALIZAR': 'atualizar'}[o]
                 if self.tela == 'atualizar':
                     self.atu_inicia()
@@ -3866,8 +3910,8 @@ class App:
                     self.wf.update(sel=0, msg='')
                     self.wifi_tarefa(lambda: None, 'LENDO...')
                 if self.tela == 'pastas':
-                    self.pastas_sel = 0 if self.base.startswith(USB) else 1
-                    self.pastas_msg = ''
+                    self.ar = {'sel': armazenamento.LUGARES.index(self.lugar) if self.lugar in armazenamento.LUGARES else 0,
+                               'fase': 'lista', 'msg': '', 'modo': 0}
                 if self.tela == 'conv':
                     self.conv_antes = list(self.conv)
                 if self.tela == 'fonte':
@@ -5030,40 +5074,78 @@ class App:
 
     # ---------------------------------------------------------- pastas de jogos
     def acao_pastas(self, a):
-        if self.confirma == 'COPIAR':
-            if a in ('A', 'B'):
-                self.confirma = None
-                self.muda_pasta(self.pastas_destino, copiar=(a == 'A'))
+        ar = self.ar
+        n = len(armazenamento.LUGARES)
+        if ar['fase'] == 'copiando':
+            if a == 'B':
+                ar['cancela'] = True
+            return
+        if ar['fase'] == 'modo':
+            if a in ('CIMA', 'BAIXO'):
+                ar['modo'] = 1 - ar['modo']
+            elif a == 'B':
+                ar['fase'] = 'lista'
+            elif a == 'A':
+                tudo = ar['modo'] == 0
+                if (ar['roms_mb'] if tudo else 0) + ar['obrig_mb'] + 50 > ar['livre_mb']:
+                    ar['msg'] = 'NAO CABE NO DESTINO: ESCOLHA "SO CRIAR AS PASTAS"' if tudo else 'SEM ESPACO NO DESTINO'
+                    return
+                self.muda_pasta(ar['destino'], tudo)
             return
         if a in ('CIMA', 'BAIXO'):
-            self.pastas_sel = 1 - self.pastas_sel
+            ar['sel'] = (ar['sel'] + (1 if a == 'BAIXO' else -1)) % n
+            ar['msg'] = ''
         elif a == 'B':
             self.tela = 'menu'
-            self.pastas_msg = ''
         elif a == 'A':
-            destino = ('pendrive', 'cartao')[self.pastas_sel]
-            atual = 'pendrive' if self.base.startswith(USB) else 'cartao'
-            if destino == atual:
-                self.pastas_msg = 'JA ESTA EM USO'
+            destino = armazenamento.LUGARES[ar['sel']]
+            r = armazenamento.raiz(destino)
+            if not r:
+                ar['msg'] = '%s NAO ENCONTRADO' % armazenamento.NOMES[destino]
                 return
-            if destino == 'pendrive' and not tem_pendrive():
-                self.pastas_msg = 'PENDRIVE NAO ENCONTRADO'
+            if os.path.abspath(r) == os.path.abspath(self.base):
+                ar['msg'] = 'JA ESTA EM USO'
                 return
-            self.pastas_destino = destino
-            self.confirma = 'COPIAR'
+            mb = lambda sub: armazenamento.tamanho(os.path.join(self.base, sub)) // 1048576
+            ar.update(destino=destino, fase='modo', modo=0, msg='',
+                      roms_mb=sum(mb(x) for x in armazenamento.OPCIONAIS),
+                      obrig_mb=sum(mb(x) for x in armazenamento.OBRIGATORIAS),
+                      livre_mb=armazenamento.livre(os.path.dirname(r) if not os.path.exists(r) else r) // 1048576)
 
-    def muda_pasta(self, destino, copiar):
-        antiga = self.base
-        self.cfg['pasta_jogos'] = destino
-        self.base = base(destino)
-        self.capas.base = self.base
-        self.capas.cache = os.path.join(self.base, 'imagens', '.cache', 'capas')
-        self.capas.falhas_arq = os.path.join(self.capas.cache, 'sem_capa.txt')
-        cfg_gravar(self.cfg)
-        n = copia_sem_sobrescrever(antiga, self.base) if copiar else 0
-        print('pastas: %s -> %s (%d arquivos copiados)' % (antiga, self.base, n), flush=True)
-        self.pastas_msg = 'PRONTO' + (': %d ARQUIVOS COPIADOS' % n if copiar else '')
-        self.sistema = None
+    def muda_pasta(self, destino, tudo):
+        """copia (BIOS e TV sempre; roms/imagens/capturas com tudo=True) e passa a usar o novo
+        armazenamento. Cancelado: continua no antigo. Nunca apaga nada."""
+        ar = self.ar
+        origem = self.base
+        novo = armazenamento.raiz(destino)
+        ar.update(fase='copiando', prog=(0, ''), cancela=False)
+
+        def prog(pct, arq):
+            ar['prog'] = (pct, arq)
+            self.fila.put('_img')
+
+        def roda():
+            cop, exist, err = armazenamento.copia(origem, novo, tudo, prog, lambda: ar.get('cancela'))
+            print('armazenamento: %s -> %s (%s): %d copiados, %d ja existiam, %d erros%s'
+                  % (origem, novo, 'tudo' if tudo else 'so bios e tv', cop, exist, err,
+                     ' CANCELADO' if ar.get('cancela') else ''), flush=True)
+            if ar.get('cancela'):
+                ar.update(fase='lista', msg='CANCELADO: CONTINUA EM %s' % armazenamento.NOMES[self.lugar])
+            else:
+                self.cfg['pasta_jogos'] = destino
+                cfg_gravar(self.cfg)
+                self.lugar = destino
+                self.base = base(destino)
+                self.capas.base = self.base
+                self.capas.cache = os.path.join(self.base, 'imagens', '.cache', 'capas')
+                self.capas.falhas_arq = os.path.join(self.capas.cache, 'sem_capa.txt')
+                self.__dict__.pop('_minhas', None)
+                self.sistema = None
+                self.sub = ''
+                ar.update(fase='lista', msg=('PRONTO: %d ARQUIVOS COPIADOS%s' % (cop, ', %d COM ERRO' % err if err else ''))
+                          if tudo else 'PRONTO: COLOQUE OS JOGOS EM RETROVOLT/ROMS DO NOVO')
+            self.fila.put('_img')
+        threading.Thread(target=roda, daemon=True).start()
 
     def falha_tela(self, onde):
         """erro numa tela: registra no LOG e volta ao menu (o menu nunca cai por isso)"""
@@ -5317,6 +5399,8 @@ class App:
             tempo('preparado (configuracao, pastas, controles)')
             self.mostra_seguro()
             tempo('primeira tela desenhada')
+            if getattr(self, 'aviso_inicio', None):
+                self.mostra_aviso(self.aviso_inicio)
             os.makedirs(os.path.dirname(OK_FILE), exist_ok=True)
             open(OK_FILE, 'w').write(VERSAO + '\n')
             if os.path.exists(video.TESTE):        # resolucao nova: confirma em 15 s

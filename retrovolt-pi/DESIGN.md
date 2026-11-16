@@ -1089,3 +1089,19 @@ agudos como chiado; e o run-ahead com o som do quadro errado (R26).
   pendrive vinha sempre primeiro e esconderia a atualizacao no cartao. Volta automatica igual.
 - Teste em pasta simulada: instalou rv29 ao lado de rv05/rv23, lancador trocado com .anterior,
   arquivo com 1 byte trocado recusado sem mudar nada.
+
+## R29 (cont.): sistema so no cartao; ARMAZENAMENTO para jogos e midias
+- Desenho do autor: o sistema roda SO do cartao (rv-lancador so procura /opt/retrovolt/versoes);
+  o pendrive serve para atualizacao (RETROVOLT/update) e, se escolhido, para jogos e midias.
+- armazenamento.py: SISTEMA no cartao (/var/lib/retrovolt/RETROVOLT: config, config/nucleos,
+  saves, states, logs; retrovolt.cfg em /var/lib/retrovolt/config, lido do pendrive so se o cartao
+  ainda nao tiver). ARMAZENAMENTO (cfg pasta_jogos = cartao | pendrive | m2): bios, roms, tv,
+  imagens, capturas. M.2 NVMe montado em /media/rvm2 (1a particao vfat/exfat/ext4; nao testado sem
+  hardware). Pendrive sem a pasta RETROVOLT tambem e montado (o lancador so monta com a pasta).
+- OPCOES > ARMAZENAMENTO (era PASTAS DE JOGOS): cartao / pendrive / M.2 com espaco; ao mudar,
+  popup: BIOS e listas de TV sempre vao; COPIAR TUDO (roms+imagens+capturas, mostra MB e o
+  livre; nao deixa se nao couber) ou SO CRIAR AS PASTAS; copia com porcentagem, B cancela e
+  continua no antigo; nunca apaga a origem nem sobrescreve. Armazenamento ausente no boot: usa
+  o cartao e avisa.
+- Migracao (1x, marca /var/lib/retrovolt/migrado_r29): saves/states/config do pendrive -> cartao.
+- Teste simulado: so pastas = bios+tv copiados, roms nao; tudo = 4 arquivos; origem intacta.
